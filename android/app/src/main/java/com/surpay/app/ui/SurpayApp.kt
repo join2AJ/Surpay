@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AttachMoney
+import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -26,6 +27,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -39,7 +41,11 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.surpay.app.ui.screens.AgreementScreen
 import com.surpay.app.ui.screens.AuthScreen
+import com.surpay.app.ui.screens.ClaimScreen
+import com.surpay.app.ui.screens.ClaimsScreen
+import com.surpay.app.ui.screens.IdentityScreen
 import com.surpay.app.ui.screens.LoadingScreen
 import com.surpay.app.ui.screens.ServerSettingsDialog
 import com.surpay.app.ui.screens.UnreachableScreen
@@ -50,9 +56,17 @@ import com.surpay.app.ui.screens.ProfileScreen
 private object Routes {
     const val SETUP = "setup"
     const val MATCHES = "matches"
+    const val CLAIMS = "claims"
     const val PROFILE = "profile"
     const val DETAIL = "match/{id}"
+    const val CLAIM = "claim/{id}"
+    const val IDENTITY = "claim/{id}/identity"
+    const val AGREEMENT = "claim/{id}/agreement"
     fun detail(id: Int) = "match/$id"
+    fun claim(id: Int) = "claim/$id"
+    fun identity(id: Int) = "claim/$id/identity"
+    fun agreement(id: Int) = "claim/$id/agreement"
+    val TABS = setOf(MATCHES, CLAIMS, PROFILE)
 }
 
 @Composable
@@ -97,10 +111,28 @@ private fun SignedInApp(vm: SurpayViewModel, session: SessionState.SignedIn) {
     val nav = rememberNavController()
     val form by vm.form.collectAsStateWithLifecycle()
     val matches by vm.matches.collectAsStateWithLifecycle()
+    val claims by vm.claims.collectAsStateWithLifecycle()
+    val agreement by vm.agreement.collectAsStateWithLifecycle()
+    val counties by vm.counties.collectAsStateWithLifecycle()
     val backStack by nav.currentBackStackEntryAsState()
     val route = backStack?.destination?.route
+    // Everyone must list at least one home before searching; decided once per sign-in.
+    val start = remember { if (session.isNewUser || session.profile.addresses.isEmpty()) Routes.SETUP else Routes.MATCHES }
 
-    LaunchedEffect(Unit) { vm.refreshMatches() }
+    LaunchedEffect(Unit) {
+        vm.refreshMatches()
+        vm.refreshClaims()
+    }
+    LaunchedEffect(route) { vm.clearFormError() }
+
+    /** After starting a claim, go straight to whatever the person has to do next. */
+    fun continueClaim(claim: com.surpay.app.data.Claim) {
+        nav.navigate(Routes.claim(claim.id)) { launchSingleTop = true }
+        when (claim.nextAction) {
+            "verify_identity" -> nav.navigate(Routes.identity(claim.id))
+            "sign_agreement" -> nav.navigate(Routes.agreement(claim.id))
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -112,13 +144,17 @@ private fun SignedInApp(vm: SurpayViewModel, session: SessionState.SignedIn) {
                                 Routes.SETUP -> "Set up your search"
                                 Routes.PROFILE -> "Profile"
                                 Routes.DETAIL -> "Surplus details"
+                                Routes.CLAIMS -> "My claims"
+                                Routes.CLAIM -> "Claim status"
+                                Routes.IDENTITY -> "Identity check"
+                                Routes.AGREEMENT -> "Agreement"
                                 else -> "Your money"
                             },
                         )
                     },
                     navigationIcon = {
-                        if (route == Routes.DETAIL) {
-                            IconButton(onClick = { nav.popBackStack() }) {
+                        if (route != null && route !in Routes.TABS && route != Routes.SETUP) {
+                            IconButton(onClick = { nav.popBackStack() }, modifier = Modifier.testTag("back")) {
                                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                             }
                         }
@@ -136,13 +172,20 @@ private fun SignedInApp(vm: SurpayViewModel, session: SessionState.SignedIn) {
             }
         },
         bottomBar = {
-            if (route == Routes.MATCHES || route == Routes.PROFILE) {
+            if (route in Routes.TABS) {
                 NavigationBar {
                     NavigationBarItem(
                         selected = route == Routes.MATCHES,
                         onClick = { nav.switchTab(Routes.MATCHES) },
                         icon = { Icon(Icons.Filled.AttachMoney, contentDescription = null) },
                         label = { Text("My money") },
+                    )
+                    NavigationBarItem(
+                        selected = route == Routes.CLAIMS,
+                        onClick = { nav.switchTab(Routes.CLAIMS) },
+                        icon = { Icon(Icons.Filled.Checklist, contentDescription = null) },
+                        label = { Text("My claims") },
+                        modifier = Modifier.testTag("claimsTab"),
                     )
                     NavigationBarItem(
                         selected = route == Routes.PROFILE,
@@ -154,11 +197,7 @@ private fun SignedInApp(vm: SurpayViewModel, session: SessionState.SignedIn) {
             }
         },
     ) { padding ->
-        NavHost(
-            navController = nav,
-            startDestination = if (session.isNewUser) Routes.SETUP else Routes.MATCHES,
-            modifier = Modifier.padding(padding),
-        ) {
+        NavHost(navController = nav, startDestination = start, modifier = Modifier.padding(padding)) {
             composable(Routes.SETUP) {
                 ProfileScreen(
                     profile = session.profile, form = form, firstRun = true,
@@ -168,6 +207,7 @@ private fun SignedInApp(vm: SurpayViewModel, session: SessionState.SignedIn) {
                         }
                     },
                     onLogout = vm::logout,
+                    counties = counties, onStateChosen = vm::loadCounties,
                 )
             }
             composable(Routes.MATCHES) {
@@ -178,11 +218,20 @@ private fun SignedInApp(vm: SurpayViewModel, session: SessionState.SignedIn) {
                     onEditProfile = { nav.switchTab(Routes.PROFILE) },
                 )
             }
+            composable(Routes.CLAIMS) {
+                LaunchedEffect(Unit) { vm.refreshClaims() }
+                ClaimsScreen(
+                    claims = claims,
+                    onOpen = { nav.navigate(Routes.claim(it.id)) },
+                    onFindMoney = { nav.switchTab(Routes.MATCHES) },
+                )
+            }
             composable(Routes.PROFILE) {
                 ProfileScreen(
                     profile = session.profile, form = form, firstRun = false,
                     onSave = { update -> vm.saveProfile(update) { nav.switchTab(Routes.MATCHES) } },
                     onLogout = vm::logout,
+                    counties = counties, onStateChosen = vm::loadCounties,
                 )
             }
             composable(Routes.DETAIL, arguments = listOf(navArgument("id") { type = NavType.IntType })) { entry ->
@@ -193,11 +242,50 @@ private fun SignedInApp(vm: SurpayViewModel, session: SessionState.SignedIn) {
                 } else {
                     MatchDetailScreen(
                         match = match,
-                        claiming = matches.claimingRecordId == match.recordId,
-                        error = matches.error,
-                        onStartClaim = { vm.startClaim(match.recordId) },
+                        claiming = form.busy,
+                        error = form.error ?: matches.error,
+                        onStartClaim = { vm.startClaim(match.recordId) { continueClaim(it) } },
+                        onViewClaim = {
+                            claims?.firstOrNull { it.recordId == match.recordId }?.let { nav.navigate(Routes.claim(it.id)) }
+                                ?: vm.startClaim(match.recordId) { nav.navigate(Routes.claim(it.id)) }
+                        },
                     )
                 }
+            }
+            composable(Routes.CLAIM, arguments = listOf(navArgument("id") { type = NavType.IntType })) { entry ->
+                val id = entry.arguments!!.getInt("id")
+                LaunchedEffect(id) { vm.reloadClaim(id) }
+                val claim = claims?.firstOrNull { it.id == id }
+                if (claim == null) {
+                    LoadingScreen("Loading your claim…")
+                } else {
+                    ClaimScreen(
+                        claim = claim,
+                        onVerifyIdentity = { nav.navigate(Routes.identity(id)) },
+                        onSignAgreement = { nav.navigate(Routes.agreement(id)) },
+                        onViewAgreement = { nav.navigate(Routes.agreement(id)) },
+                    )
+                }
+            }
+            composable(Routes.IDENTITY, arguments = listOf(navArgument("id") { type = NavType.IntType })) { entry ->
+                val id = entry.arguments!!.getInt("id")
+                IdentityScreen(
+                    profile = session.profile, form = form,
+                    onSubmit = { body ->
+                        vm.submitIdentity(body) {
+                            // Straight on to signing, then back to the claim's timeline.
+                            nav.navigate(Routes.agreement(id)) { popUpTo(Routes.IDENTITY) { inclusive = true } }
+                        }
+                    },
+                )
+            }
+            composable(Routes.AGREEMENT, arguments = listOf(navArgument("id") { type = NavType.IntType })) { entry ->
+                val id = entry.arguments!!.getInt("id")
+                LaunchedEffect(id) { vm.loadAgreement(id) }
+                AgreementScreen(
+                    agreement = agreement, expectedName = session.profile.fullName, form = form,
+                    onSign = { name -> vm.signAgreement(id, name) { nav.popBackStack(Routes.CLAIM, inclusive = false) } },
+                )
             }
         }
     }

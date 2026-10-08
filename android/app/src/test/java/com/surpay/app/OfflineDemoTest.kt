@@ -1,6 +1,8 @@
 package com.surpay.app
 
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.CompositionLocalProvider
+import com.surpay.app.ui.LocalPhotoSource
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -55,7 +57,9 @@ class OfflineDemoTest {
         val tokens = TokenStore(context).also { runBlocking { it.clear() } }
         val store = ServerStore(context, server.url("/").toString())
         val vm = SurpayViewModel(SurpayRepository(SurpayApi.create({ store.current }, { tokens.cached }), tokens), store)
-        compose.setContent { SurpayTheme { Surface { SurpayApp(vm) } } }
+        compose.setContent {
+            CompositionLocalProvider(LocalPhotoSource provides fakeCamera) { SurpayTheme { Surface { SurpayApp(vm) } } }
+        }
     }
 
     private fun shot(name: String) = compose.onRoot().captureRoboImage("build/outputs/roborazzi/offline_$name.png")
@@ -75,8 +79,10 @@ class OfflineDemoTest {
         compose.onNodeWithText("$28,450.00").performClick()
         compose.waitUntilAtLeastOneExists(hasTestTag("startClaim"), 10_000)
         compose.onNodeWithTag("startClaim").performScrollTo().performClick()
-        compose.waitUntilAtLeastOneExists(hasTestTag("claimStatus"), 10_000)
-        compose.onNodeWithText("Claim requested").assertExists()
+        compose.completeIdentity()
+        compose.signAgreement("Jordan Testwell")
+        compose.waitUntilAtLeastOneExists(hasTestTag("eta"), 10_000)
+        compose.onNodeWithText("Agreement signed: ID under review").assertExists()
     }
 
     @Test fun signUpExplainsThereIsNoServer() {

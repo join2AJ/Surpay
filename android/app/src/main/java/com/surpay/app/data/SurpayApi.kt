@@ -13,6 +13,8 @@ import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.POST
 import retrofit2.http.PUT
+import retrofit2.http.Path
+import retrofit2.http.Query
 import java.util.concurrent.TimeUnit
 
 // Mirrors backend/surpay/schemas.py. Money is always integer cents.
@@ -24,6 +26,7 @@ data class Address(
     val city: String = "",
     val state: String,
     val zip: String = "",
+    val county: String = "",
 )
 
 @Serializable
@@ -86,10 +89,23 @@ data class MatchesResponse(
     @SerialName("total_estimated_net_cents") val totalEstimatedNetCents: Long,
     @SerialName("records_searched") val recordsSearched: Int,
     @SerialName("counties_covered") val countiesCovered: List<String>,
+    val disclaimer: String = "",
 )
 
 @Serializable
 data class ClaimRequest(@SerialName("record_id") val recordId: Int)
+
+@Serializable
+data class TimelineStep(
+    val status: String,
+    val title: String,
+    val description: String,
+    /** done | current | upcoming | stopped */
+    val state: String,
+    @SerialName("completed_at") val completedAt: String? = null,
+    @SerialName("estimate_start") val estimateStart: String? = null,
+    @SerialName("estimate_end") val estimateEnd: String? = null,
+)
 
 @Serializable
 data class Claim(
@@ -100,9 +116,49 @@ data class Claim(
     val state: String,
     val reference: String,
     @SerialName("amount_cents") val amountCents: Long,
+    @SerialName("estimated_net_cents") val estimatedNetCents: Long = 0,
     @SerialName("created_at") val createdAt: String,
     @SerialName("updated_at") val updatedAt: String,
+    /** verify_identity | sign_agreement | null */
+    @SerialName("next_action") val nextAction: String? = null,
+    /** pending | approved | rejected | null (not submitted yet) */
+    @SerialName("identity_status") val identityStatus: String? = null,
+    @SerialName("identity_note") val identityNote: String = "",
+    val timeline: List<TimelineStep> = emptyList(),
+    @SerialName("estimated_completion_start") val estimatedCompletionStart: String? = null,
+    @SerialName("estimated_completion_end") val estimatedCompletionEnd: String? = null,
+    val disclaimer: String = "",
 )
+
+@Serializable
+data class IdentityRequest(
+    @SerialName("legal_name") val legalName: String,
+    @SerialName("date_of_birth") val dateOfBirth: String,
+    @SerialName("ssn_last4") val ssnLast4: String,
+    val phone: String,
+    val street: String,
+    val city: String,
+    val state: String,
+    val zip: String,
+    @SerialName("id_type") val idType: String,
+    @SerialName("id_front_b64") val idFrontB64: String,
+    @SerialName("id_back_b64") val idBackB64: String? = null,
+    @SerialName("selfie_b64") val selfieB64: String,
+    val consent: Boolean,
+)
+
+@Serializable
+data class AgreementDoc(
+    val version: String,
+    val text: String,
+    @SerialName("fee_pct") val feePct: Double,
+    val signed: Boolean,
+    @SerialName("signature_name") val signatureName: String? = null,
+    @SerialName("signed_at") val signedAt: String? = null,
+)
+
+@Serializable
+data class SignRequest(@SerialName("signature_name") val signatureName: String, val agreed: Boolean)
 
 @Serializable
 data class Coverage(
@@ -125,6 +181,11 @@ interface SurpayApi {
     @GET("me/matches") suspend fun matches(): MatchesResponse
     @POST("me/claims") suspend fun startClaim(@Body body: ClaimRequest): Claim
     @GET("me/claims") suspend fun claims(): List<Claim>
+    @GET("me/claims/{id}") suspend fun claim(@Path("id") id: Int): Claim
+    @POST("me/identity") suspend fun submitIdentity(@Body body: IdentityRequest): List<Claim>
+    @GET("me/claims/{id}/agreement") suspend fun agreement(@Path("id") id: Int): AgreementDoc
+    @POST("me/claims/{id}/agreement") suspend fun signAgreement(@Path("id") id: Int, @Body body: SignRequest): Claim
+    @GET("counties") suspend fun counties(@Query("state") state: String): List<String>
 
     companion object {
         val json = Json { ignoreUnknownKeys = true; explicitNulls = false }

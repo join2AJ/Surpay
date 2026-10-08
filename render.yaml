@@ -23,6 +23,12 @@ services:
         sync: false
       - key: SURPAY_SECRET_KEY
         generateValue: true
+      # Encrypts ID photos in the database. Never change it once IDs are stored.
+      - key: SURPAY_ENCRYPTION_KEY
+        generateValue: true
+      # Password for the staff review page at /admin (Render -> Environment shows it).
+      - key: SURPAY_ADMIN_TOKEN
+        generateValue: true
       # Testing only: fictional "Demo County" records plus the one-tap
       # "Try the demo account" sign-in. Set to false before launch.
       - key: SURPAY_SEED_DEMO

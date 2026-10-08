@@ -11,7 +11,8 @@ class Base(DeclarativeBase):
 
 
 def make_engine(url: str = config.DATABASE_URL):
-    kwargs = {"connect_args": {"check_same_thread": False}} if url.startswith("sqlite") else {}
+    # Neon suspends idle databases and drops their connections: check before reusing one.
+    kwargs = {"connect_args": {"check_same_thread": False}} if url.startswith("sqlite") else {"pool_pre_ping": True}
     return create_engine(url, **kwargs)
 
 
@@ -19,10 +20,25 @@ engine = make_engine()
 SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
 
 
+# Columns added after a table first shipped. create_all() makes new tables but never alters
+# existing ones, so these are added in place (works on SQLite and Postgres).
+_ADDED_COLUMNS = [
+    ("previous_addresses", "county", "VARCHAR(64) NOT NULL DEFAULT ''"),
+]
+
+
 def init_db(bind=None) -> None:
+    from sqlalchemy import inspect, text
+
     from . import models  # noqa: F401  (registers tables)
 
-    Base.metadata.create_all(bind or engine)
+    bind = bind or engine
+    Base.metadata.create_all(bind)
+    inspector = inspect(bind)
+    with bind.begin() as conn:
+        for table, column, ddl in _ADDED_COLUMNS:
+            if column not in {c["name"] for c in inspector.get_columns(table)}:
+                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}"))
 
 
 def get_session() -> Iterator[Session]:

@@ -1,6 +1,6 @@
 from datetime import date, datetime, timezone
 
-from sqlalchemy import JSON, BigInteger, Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, BigInteger, Date, DateTime, ForeignKey, Integer, LargeBinary, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .db import Base
@@ -68,6 +68,8 @@ class User(Base):
         back_populates="user", cascade="all, delete-orphan", order_by="PreviousAddress.id"
     )
     claims: Mapped[list["Claim"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    identity: Mapped["IdentityVerification | None"] = relationship(
+        back_populates="user", cascade="all, delete-orphan", uselist=False)
 
 
 class PreviousAddress(Base):
@@ -79,6 +81,7 @@ class PreviousAddress(Base):
     city: Mapped[str] = mapped_column(String(128), default="")
     state: Mapped[str] = mapped_column(String(2))
     zip: Mapped[str] = mapped_column(String(10), default="")
+    county: Mapped[str] = mapped_column(String(64), default="")
 
     user: Mapped[User] = relationship(back_populates="addresses")
 
@@ -92,13 +95,81 @@ class Claim(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     record_id: Mapped[int] = mapped_column(ForeignKey("surplus_records.id"))
-    # requested -> identity_verified -> agreement_signed -> filed -> approved -> paid | denied
+    # See surpay/claims.py for the steps: requested -> identity_submitted -> agreement_signed ->
+    # identity_verified -> filed -> approved -> paid, or denied / withdrawn.
     status: Mapped[str] = mapped_column(String(32), default="requested")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
     user: Mapped[User] = relationship(back_populates="claims")
     record: Mapped[SurplusRecord] = relationship()
+    events: Mapped[list["ClaimEvent"]] = relationship(
+        back_populates="claim", cascade="all, delete-orphan", order_by="ClaimEvent.id")
+    agreement: Mapped["Agreement | None"] = relationship(
+        back_populates="claim", cascade="all, delete-orphan", uselist=False)
+
+
+class ClaimEvent(Base):
+    """Each status a claim reached, and when: the claim's history and timeline."""
+
+    __tablename__ = "claim_events"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    claim_id: Mapped[int] = mapped_column(ForeignKey("claims.id", ondelete="CASCADE"), index=True)
+    status: Mapped[str] = mapped_column(String(32))
+    note: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    claim: Mapped[Claim] = relationship(back_populates="events")
+
+
+class IdentityVerification(Base):
+    """What a claimant submitted to prove who they are. One per user, reused for every claim.
+
+    Document images are encrypted (surpay/crypto.py) before they are stored.
+    """
+
+    __tablename__ = "identity_verifications"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), unique=True)
+    legal_name: Mapped[str] = mapped_column(String(255))
+    date_of_birth: Mapped[date] = mapped_column(Date)
+    ssn_last4: Mapped[str] = mapped_column(String(4))
+    phone: Mapped[str] = mapped_column(String(32))
+    street: Mapped[str] = mapped_column(String(255))
+    city: Mapped[str] = mapped_column(String(128))
+    state: Mapped[str] = mapped_column(String(2))
+    zip: Mapped[str] = mapped_column(String(10))
+    id_type: Mapped[str] = mapped_column(String(32))  # drivers_license | state_id | passport
+    id_front: Mapped[bytes] = mapped_column(LargeBinary)
+    id_back: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    selfie: Mapped[bytes] = mapped_column(LargeBinary)
+    submitted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    # pending -> approved | rejected (rejected: the person can submit again)
+    review_status: Mapped[str] = mapped_column(String(16), default="pending")
+    review_note: Mapped[str] = mapped_column(Text, default="")
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    user: Mapped[User] = relationship(back_populates="identity")
+
+
+class Agreement(Base):
+    """The contingency agreement a claimant e-signed for one claim, kept exactly as shown."""
+
+    __tablename__ = "agreements"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    claim_id: Mapped[int] = mapped_column(ForeignKey("claims.id", ondelete="CASCADE"), unique=True)
+    version: Mapped[str] = mapped_column(String(32))
+    text: Mapped[str] = mapped_column(Text)
+    fee_pct: Mapped[float] = mapped_column()
+    signature_name: Mapped[str] = mapped_column(String(255))
+    signed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    ip_address: Mapped[str] = mapped_column(String(64), default="")
+    user_agent: Mapped[str] = mapped_column(String(255), default="")
+
+    claim: Mapped[Claim] = relationship(back_populates="agreement")
 
 
 class CountySource(Base):

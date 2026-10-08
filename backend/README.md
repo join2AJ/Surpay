@@ -9,6 +9,8 @@ FastAPI + SQLAlchemy. SQLite by default; set `SURPAY_DATABASE_URL` for Postgres
 | `SURPAY_SEED_DEMO` | `true` for testing: fictional Demo County records and the one-tap demo sign-in (`POST /auth/demo`) |
 | `SURPAY_SECRET_KEY` | Signs login tokens. **Required in production**: a long random string |
 | `SURPAY_USER_AGENT` | How the scraper identifies itself to county sites |
+| `SURPAY_ADMIN_TOKEN` | Password for the staff review page `/admin`. Admin is off when empty |
+| `SURPAY_ENCRYPTION_KEY` | Encrypts ID photos at rest (falls back to the secret key). Never change it once IDs are stored |
 
 ## Commands
 
@@ -33,7 +35,11 @@ python -m surpay.cli counties           # registry summary
 | POST | `/auth/signup`, `/auth/login` | Returns a bearer token |
 | GET/PUT | `/me` | Profile: name, other names, phone, previous addresses |
 | GET | `/me/matches` | Records matching the signed-in user, with amount, fee and estimated net |
-| POST/GET | `/me/claims` | Start a claim on one of *your* matches; list your claims |
+| POST/GET | `/me/claims`, `/me/claims/{id}` | Start a claim on one of *your* matches; list claims with timeline, next action and estimated dates |
+| POST | `/me/identity` | ID details + photos (base64 JPEG/PNG), encrypted at rest; shared by all of a user's claims |
+| GET/POST | `/me/claims/{id}/agreement` | Read / e-sign the contingency agreement |
+| GET | `/counties?state=OH` | County names for the address form |
+| GET | `/admin` (+ `/admin/...` with `X-Admin-Token`) | Staff review: approve or reject IDs, move claims through filed / approved / paid |
 
 Interactive docs at `/docs` while the server runs.
 
@@ -86,8 +92,8 @@ follow each site's terms. Prefer official downloads over scraping when a county 
 
 - **Fee percentage** in `config.py` is a placeholder (15%). Set it per state from your
   attorney's memo, and never above the legal cap.
-- **Identity verification** is not built yet. Today a claim is a request your team follows up
-  on by hand. Add ID verification (e.g. Stripe Identity) before any money moves.
+- **Identity verification** is reviewed by a person on `/admin`. For automated document and
+  selfie checks, add a provider such as Stripe Identity or Persona.
 - **Rate limiting** on `/auth/*` and `/me/matches` (e.g. at the reverse proxy) to stop people
   using the app to look up other people.
 - Run behind HTTPS. Keep `SURPAY_SECRET_KEY` secret.

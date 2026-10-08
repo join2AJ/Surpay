@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Surpay Review</title>
+<style>
+  :root { --bg:#f5f7fb; --card:#fff; --text:#0f172a; --muted:#5b6474; --line:#e3e8f0; --brand:#0b6e4f; --warn:#8a5a00; --bad:#b42318; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#0b1120; --card:#131c2e; --text:#e6eaf2; --muted:#9aa4b5; --line:#23304a; --brand:#34c38f; --warn:#f2c26b; --bad:#ff8a80; } }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:15px/1.5 system-ui, -apple-system, Segoe UI, sans-serif; }
+  header { padding:16px; display:flex; gap:8px; flex-wrap:wrap; align-items:center; border-bottom:1px solid var(--line); background:var(--card); position:sticky; top:0; }
+  header h1 { font-size:18px; margin:0 auto 0 0; }
+  input, select, button, textarea { font:inherit; padding:8px 10px; border-radius:8px; border:1px solid var(--line); background:var(--bg); color:var(--text); }
+  button { background:var(--brand); color:#fff; border:0; font-weight:600; cursor:pointer; }
+  button.secondary { background:transparent; color:var(--text); border:1px solid var(--line); }
+  button.danger { background:var(--bad); }
+  main { padding:16px; max-width:900px; margin:0 auto; display:grid; gap:16px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .muted { color:var(--muted); font-size:13px; }
+  .pill { display:inline-block; padding:2px 10px; border-radius:999px; font-size:12px; font-weight:600; border:1px solid var(--line); }
+  .pill.pending { color:var(--warn); } .pill.approved { color:var(--brand); } .pill.rejected { color:var(--bad); }
+  .grid { display:grid; grid-template-columns: 1fr 1fr; gap:4px 16px; margin:8px 0; }
+  .grid div:nth-child(odd) { color:var(--muted); font-size:13px; }
+  .docs { display:flex; gap:8px; flex-wrap:wrap; margin:8px 0; }
+  .docs img { width:150px; height:110px; object-fit:cover; border-radius:8px; border:1px solid var(--line); cursor:zoom-in; }
+  h2 { font-size:17px; margin:0; }
+  h3 { font-size:14px; margin:12px 0 4px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
+  ol { margin:4px 0; padding-left:20px; }
+  #msg { padding:0 16px; }
+  @media (max-width: 560px) { .grid { grid-template-columns: 1fr; } .grid div:nth-child(odd) { margin-top:6px; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Surpay claims review</h1>
+  <input id="token" type="password" placeholder="Admin token" autocomplete="off">
+  <button id="load">Load claims</button>
+  <select id="filter">
+    <option value="">All claims</option>
+    <option value="identity_submitted,agreement_signed">Needs ID review</option>
+    <option value="identity_verified,filed,approved">In progress</option>
+    <option value="paid,denied,withdrawn">Closed</option>
+  </select>
+</header>
+<p id="msg" class="muted"></p>
+<main id="list"></main>
+
+<script>
+const STATUSES = ["requested","identity_submitted","agreement_signed","identity_verified","filed","approved","paid","denied","withdrawn"];
+const $ = (s) => document.querySelector(s);
+const tokenInput = $("#token");
+try { tokenInput.value = sessionStorage.getItem("surpay-admin") || ""; } catch {}
+
+function el(tag, attrs = {}, ...children) {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === "class") n.className = v; else if (k.startsWith("on")) n.addEventListener(k.slice(2), v); else n.setAttribute(k, v);
+  }
+  for (const c of children) if (c != null) n.append(c instanceof Node ? c : document.createTextNode(String(c)));
+  return n;
+}
+const money = (c) => "$" + (c / 100).toLocaleString("en-US", { minimumFractionDigits: 2 });
+const when = (s) => s ? new Date(s).toLocaleString() : "";
+
+async function api(path, opts = {}) {
+  const r = await fetch(path, { ...opts, headers: { "X-Admin-Token": tokenInput.value, "Content-Type": "application/json", ...(opts.headers || {}) } });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
+  return r;
+}
+
+async function loadImage(img, userId, kind) {
+  try {
+    const blob = await (await api(`/admin/users/${userId}/documents/${kind}`)).blob();
+    img.src = URL.createObjectURL(blob);
+    img.onclick = () => window.open(img.src, "_blank");
+  } catch (e) { img.alt = "Not available"; }
+}
+
+function render(c) {
+  const id = c.identity;
+  const card = el("section", { class: "card" });
+  card.append(
+    el("div", { class: "row" },
+      el("h2", {}, `#${c.id} · ${c.user.full_name}`),
+      el("span", { class: "pill" }, c.status),
+      id ? el("span", { class: "pill " + id.review_status }, "ID " + id.review_status) : el("span", { class: "pill" }, "no ID yet")),
+    el("div", { class: "muted" }, `${c.user.email} · ${c.user.phone || "no phone"}`),
+    el("h3", {}, "County record"),
+    el("div", { class: "grid" },
+      el("div", {}, "County"), el("div", {}, `${c.county} County, ${c.state} · ${c.reference}`),
+      el("div", {}, "Listed owner"), el("div", {}, c.owner_name),
+      el("div", {}, "Address on record"), el("div", {}, c.owner_address || "—"),
+      el("div", {}, "Amount"), el("div", {}, money(c.amount_cents))),
+    el("h3", {}, "Homes the claimant listed"),
+    el("ol", {}, ...c.user.addresses.map(a => el("li", {}, `${a.street}, ${a.city}, ${a.state} ${a.zip} (${a.county || "county not given"})`))),
+  );
+  if (id) {
+    const docs = el("div", { class: "docs" });
+    for (const kind of ["id_front", ...(id.has_id_back ? ["id_back"] : []), "selfie"]) {
+      const img = el("img", { alt: kind, title: kind });
+      docs.append(img);
+      loadImage(img, c.user.id, kind);
+    }
+    card.append(
+      el("h3", {}, "Identity submitted " + when(id.submitted_at)),
+      el("div", { class: "grid" },
+        el("div", {}, "Legal name"), el("div", {}, id.legal_name),
+        el("div", {}, "Date of birth"), el("div", {}, id.date_of_birth),
+        el("div", {}, "SSN last 4"), el("div", {}, id.ssn_last4),
+        el("div", {}, "Current address"), el("div", {}, id.address),
+        el("div", {}, "ID type"), el("div", {}, id.id_type.replace("_", " "))),
+      docs,
+      el("div", { class: "row" },
+        el("button", { onclick: () => review(c, "approved") }, "Approve ID"),
+        el("button", { class: "danger", onclick: () => review(c, "rejected") }, "Reject ID (ask to resubmit)")),
+    );
+  }
+  if (c.agreement) card.append(el("div", { class: "muted" }, `Agreement signed by "${c.agreement.signature_name}" on ${when(c.agreement.signed_at)} (${c.agreement.version})`));
+
+  const sel = el("select", {}, ...STATUSES.map(s => { const o = el("option", { value: s }, s); if (s === c.status) o.selected = true; return o; }));
+  const note = el("input", { placeholder: "Note (shown in history)" });
+  card.append(
+    el("h3", {}, "Move claim"),
+    el("div", { class: "row" }, sel, note, el("button", { class: "secondary", onclick: () => setStatus(c, sel.value, note.value) }, "Update status")),
+    el("h3", {}, "History"),
+    el("ol", {}, ...c.history.map(h => el("li", {}, `${h.status} · ${when(h.at)}${h.note ? " · " + h.note : ""}`))),
+  );
+  return card;
+}
+
+async function review(c, decision) {
+  const note = decision === "rejected" ? prompt("Why? The claimant sees this note.") : "";
+  if (decision === "rejected" && !note) return;
+  try { await api(`/admin/users/${c.user.id}/identity`, { method: "POST", body: JSON.stringify({ decision, note }) }); load(); }
+  catch (e) { alert(e.message); }
+}
+
+async function setStatus(c, status, note) {
+  if (!confirm(`Set claim #${c.id} to "${status}"?`)) return;
+  try { await api(`/admin/claims/${c.id}/status`, { method: "POST", body: JSON.stringify({ status, note }) }); load(); }
+  catch (e) { alert(e.message); }
+}
+
+async function load() {
+  try { sessionStorage.setItem("surpay-admin", tokenInput.value); } catch {}
+  $("#msg").textContent = "Loading…";
+  try {
+    const all = await (await api("/admin/claims")).json();
+    const f = $("#filter").value;
+    const rows = f ? all.filter(c => f.split(",").includes(c.status)) : all;
+    $("#list").replaceChildren(...rows.map(render));
+    $("#msg").textContent = `${rows.length} of ${all.length} claims`;
+  } catch (e) { $("#msg").textContent = e.message; $("#list").replaceChildren(); }
+}
+$("#load").addEventListener("click", load);
+$("#filter").addEventListener("change", load);
+if (tokenInput.value) load();
+</script>
+</body>
+</html>

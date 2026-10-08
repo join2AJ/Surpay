@@ -4,10 +4,13 @@ from pydantic import BaseModel, EmailStr, Field, field_validator
 
 
 class AddressIn(BaseModel):
+    """A home the person owned. All parts are required so it can be matched to county records."""
+
     street: str = Field(min_length=3, max_length=255)
-    city: str = Field(default="", max_length=128)
+    city: str = Field(min_length=2, max_length=128)
     state: str = Field(min_length=2, max_length=2)
-    zip: str = Field(default="", max_length=10)
+    zip: str = Field(pattern=r"^\d{5}(-\d{4})?$")
+    county: str = Field(min_length=2, max_length=64)
 
     @field_validator("state")
     @classmethod
@@ -15,8 +18,14 @@ class AddressIn(BaseModel):
         return v.upper()
 
 
-class AddressOut(AddressIn):
+class AddressOut(BaseModel):
+    # No input rules here: addresses saved before a rule existed must still load.
     id: int
+    street: str
+    city: str
+    state: str
+    zip: str
+    county: str
 
 
 class SignupIn(BaseModel):
@@ -78,10 +87,21 @@ class MatchesOut(BaseModel):
     total_estimated_net_cents: int
     records_searched: int
     counties_covered: list[str]
+    disclaimer: str = ""
 
 
 class ClaimIn(BaseModel):
     record_id: int
+
+
+class TimelineStep(BaseModel):
+    status: str
+    title: str
+    description: str
+    state: str  # done | current | upcoming | stopped
+    completed_at: datetime | None
+    estimate_start: date | None
+    estimate_end: date | None
 
 
 class ClaimOut(BaseModel):
@@ -92,8 +112,62 @@ class ClaimOut(BaseModel):
     state: str
     reference: str
     amount_cents: int
+    estimated_net_cents: int
     created_at: datetime
     updated_at: datetime
+    next_action: str | None  # verify_identity | sign_agreement | None
+    identity_status: str | None  # pending | approved | rejected | None (not submitted)
+    identity_note: str
+    timeline: list[TimelineStep]
+    estimated_completion_start: date | None
+    estimated_completion_end: date | None
+    disclaimer: str
+
+
+class IdentityIn(BaseModel):
+    legal_name: str = Field(min_length=3, max_length=255)
+    date_of_birth: date
+    ssn_last4: str = Field(pattern=r"^\d{4}$")
+    phone: str = Field(min_length=7, max_length=32)
+    street: str = Field(min_length=3, max_length=255)
+    city: str = Field(min_length=2, max_length=128)
+    state: str = Field(min_length=2, max_length=2)
+    zip: str = Field(pattern=r"^\d{5}(-\d{4})?$")
+    id_type: str = Field(pattern=r"^(drivers_license|state_id|passport)$")
+    # Base64-encoded JPEG or PNG photos.
+    id_front_b64: str = Field(min_length=100)
+    id_back_b64: str | None = None
+    selfie_b64: str = Field(min_length=100)
+    consent: bool
+
+    @field_validator("state")
+    @classmethod
+    def upper_state(cls, v: str) -> str:
+        return v.upper()
+
+
+class AgreementOut(BaseModel):
+    version: str
+    text: str
+    fee_pct: float
+    signed: bool
+    signature_name: str | None
+    signed_at: datetime | None
+
+
+class SignIn(BaseModel):
+    signature_name: str = Field(min_length=3, max_length=255)
+    agreed: bool
+
+
+class AdminStatusIn(BaseModel):
+    status: str
+    note: str = ""
+
+
+class AdminIdentityIn(BaseModel):
+    decision: str = Field(pattern=r"^(approved|rejected)$")
+    note: str = ""
 
 
 class CoverageOut(BaseModel):

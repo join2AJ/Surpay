@@ -21,6 +21,13 @@ if not SECRET_KEY:
 # Testing only: fictional Demo County records and a one-tap demo account. Off for real users.
 DEMO_ENABLED = os.environ.get("SURPAY_SEED_DEMO", "false").lower() == "true"
 
+# Key for encrypting ID documents at rest. Falls back to SECRET_KEY; never change it once
+# documents are stored, or they can no longer be read.
+ENCRYPTION_KEY = os.environ.get("SURPAY_ENCRYPTION_KEY", "") or SECRET_KEY
+
+# Token for the staff review page (/admin). Admin endpoints are off when it's empty.
+ADMIN_TOKEN = os.environ.get("SURPAY_ADMIN_TOKEN", "")
+
 TOKEN_TTL_DAYS = int(os.environ.get("SURPAY_TOKEN_TTL_DAYS", "30"))
 
 # Identify the scraper honestly to county webmasters.

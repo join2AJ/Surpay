@@ -20,6 +20,8 @@ import com.surpay.app.ui.SurpayApp
 import com.surpay.app.ui.SurpayViewModel
 import com.surpay.app.ui.theme.SurpayTheme
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.CompositionLocalProvider
+import com.surpay.app.ui.LocalPhotoSource
 import kotlinx.coroutines.runBlocking
 import org.junit.Assume.assumeTrue
 import org.junit.Rule
@@ -50,7 +52,9 @@ class EndToEndTest {
         val tokens = TokenStore(context).also { runBlocking { it.clear() } } // start signed out
         val server = ServerStore(context, url!!)
         val vm = SurpayViewModel(SurpayRepository(SurpayApi.create({ server.current }, { tokens.cached }), tokens), server)
-        compose.setContent { SurpayTheme { Surface { SurpayApp(vm) } } }
+        compose.setContent {
+            CompositionLocalProvider(LocalPhotoSource provides fakeCamera) { SurpayTheme { Surface { SurpayApp(vm) } } }
+        }
         val timeout = 15_000L
 
         // Sign up
@@ -65,8 +69,14 @@ class EndToEndTest {
         // First-run setup: add a previous address
         compose.waitUntilAtLeastOneExists(hasText("Where have you owned property?"), timeout)
         compose.onNodeWithTag("street0").performTextInput("412 Maple Ridge Road")
-        compose.onNodeWithTag("state0").performClick()
+        compose.onNodeWithTag("city0").performTextInput("Springfield")
+        compose.onNodeWithTag("state0").performScrollTo().performClick()
         compose.onNodeWithText("OH").performScrollTo().performClick()
+        compose.onNodeWithTag("zip0").performScrollTo().performTextInput("45501")
+        // County list comes from the server's registry of every US county.
+        compose.waitUntilAtLeastOneExists(hasText("Type to search 88 counties in OH"), timeout)
+        compose.onNodeWithTag("county0").performScrollTo().performTextInput("Clark")
+        compose.onNodeWithText("Clark County").performClick()
         shot("2_setup")
         compose.onNodeWithTag("saveProfile").performScrollTo().performClick()
 
@@ -84,9 +94,28 @@ class EndToEndTest {
         compose.onNodeWithText("$24,182.50").assertExists() // after 15% fee
         shot("4_detail")
         compose.onNodeWithTag("startClaim").performScrollTo().performClick()
-        compose.waitUntilAtLeastOneExists(hasTestTag("claimStatus"), timeout)
-        compose.onNodeWithText("Claim requested").assertExists()
-        shot("5_claimed")
+
+        // Identity check opens straight away, then the agreement, then the timeline.
+        compose.waitUntilAtLeastOneExists(hasTestTag("dob"), timeout)
+        shot("5_identity")
+        compose.completeIdentity()
+        compose.waitUntilAtLeastOneExists(hasTestTag("agreementText"), timeout)
+        compose.onNodeWithText("Fee: 15%", substring = true).assertExists()
+        shot("6_agreement")
+        compose.signAgreement("Jordan Testwell")
+        compose.waitUntilAtLeastOneExists(hasTestTag("eta"), timeout)
+        compose.onNodeWithText("Agreement signed: ID under review").assertExists()
+        compose.onNodeWithTag("disclaimer").performScrollTo().assertExists()
+        compose.onNodeWithTag("eta").performScrollTo()
+        shot("7_timeline")
+
+        // The claim is listed under My claims for checking later.
+        compose.onNodeWithTag("back").performClick()
+        compose.waitUntilAtLeastOneExists(hasTestTag("viewClaim"), timeout)
+        compose.onNodeWithTag("back").performClick()
+        compose.onNodeWithTag("claimsTab").performClick()
+        compose.waitUntilAtLeastOneExists(hasText("Agreement signed: ID under review"), timeout)
+        shot("8_my_claims")
     }
 
     @Test fun demoAccountOneTap() {

@@ -39,7 +39,8 @@ def test_full_flow(client, session):
 
     r = client.put("/me", headers=h, json={
         "full_name": "Robert Sample", "other_names": [], "phone": "",
-        "addresses": [{"street": "6063 St Rte 73", "city": "Peebles", "state": "oh", "zip": "45660"}],
+        "addresses": [{"street": "6063 St Rte 73", "city": "Peebles", "state": "oh", "zip": "45660",
+                       "county": "Adams County"}],
     })
     assert r.status_code == 200 and r.json()["addresses"][0]["state"] == "OH"
     m = client.get("/me/matches", headers=h).json()
@@ -48,6 +49,7 @@ def test_full_flow(client, session):
     rid = m["matches"][0]["record_id"]
     c = client.post("/me/claims", headers=h, json={"record_id": rid})
     assert c.status_code == 201 and c.json()["status"] == "requested"
+    assert c.json()["next_action"] == "verify_identity"
     # idempotent
     assert client.post("/me/claims", headers=h, json={"record_id": rid}).json()["id"] == c.json()["id"]
     assert client.get("/me/matches", headers=h).json()["matches"][0]["claim_status"] == "requested"

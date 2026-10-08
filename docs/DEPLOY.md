@@ -64,8 +64,29 @@ If the app can't reach a Surpay server (for example, before you've deployed), th
 falls back to an **offline demo** that runs on the phone with the same made-up data. A yellow
 banner says so. Real sign-up and sign-in always need the server.
 
+## 5. Reviewing claims (staff)
+
+When someone starts a claim, the app takes them straight through:
+1. identity verification: their details, a photo of their ID and a selfie;
+2. e-signing the agreement.
+
+Then it waits for you. Open **`https://<your-service>.onrender.com/admin`** on your phone and
+enter the admin token (Render → surpay-api → **Environment** → `SURPAY_ADMIN_TOKEN`, tap the eye
+icon to reveal it). For each claim you can:
+
+- see the county record next to the homes the person listed and the ID they submitted;
+- **Approve ID**, which moves their signed claims to "Identity verified", or **Reject ID** with a
+  note they'll see in the app, asking them to upload again;
+- move the claim to **filed → approved → paid** (or denied / withdrawn) as the attorney reports
+  progress. Each change updates the timeline and estimated dates the person sees in the app.
+
+ID photos are encrypted in the database with `SURPAY_ENCRYPTION_KEY`. **Never change or delete
+that key** once IDs are stored, or they can't be opened again.
+
 ## Before real users
 
 - Set `SURPAY_SEED_DEMO=false` in Render. The fake Demo County disappears and the demo sign-in is switched off.
 - Free Render sleeps. Upgrade to the $7/month Starter plan when people depend on it.
 - Read "Before real users" in `backend/README.md`: fees, ID verification, rate limits.
+- Have an attorney replace the agreement template in `backend/surpay/claims.py` (`agreement_text`)
+  for each state you operate in. The current text is marked "pending attorney review".

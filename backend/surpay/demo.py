@@ -17,7 +17,8 @@ from .scrapers.base import RecordIn
 
 DEMO_EMAIL = "demo@surpay.test"
 DEMO_NAME = "Jordan Testwell"
-DEMO_ADDRESS = {"street": "412 Maple Ridge Rd", "city": "Springfield", "state": "OH", "zip": "45501"}
+DEMO_ADDRESS = {"street": "412 Maple Ridge Rd", "city": "Springfield", "state": "OH", "zip": "45501",
+                "county": "Clark County"}
 
 
 def demo_records() -> list[RecordIn]:
@@ -37,7 +38,7 @@ def demo_records() -> list[RecordIn]:
 
 
 def reset_demo_user(session: Session) -> User:
-    """Get the shared demo account in its starting state: profile filled in, no claims.
+    """Get the shared demo account in its starting state: profile filled in, no claims, no ID.
 
     Testers share this account, so each demo sign-in starts fresh.
     """
@@ -56,6 +57,7 @@ def reset_demo_user(session: Session) -> User:
     user.phone = ""
     user.addresses = [PreviousAddress(**DEMO_ADDRESS)]
     user.claims = []
+    user.identity = None
     session.commit()
     session.refresh(user)
     return user

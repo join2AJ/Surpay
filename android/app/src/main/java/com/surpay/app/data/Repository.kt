@@ -105,6 +105,12 @@ class SurpayRepository(private val remote: SurpayApi, private val tokens: TokenS
     suspend fun updateProfile(update: ProfileUpdate): Profile = api.updateMe(update)
     suspend fun matches(): MatchesResponse = api.matches()
     suspend fun startClaim(recordId: Int): Claim = api.startClaim(ClaimRequest(recordId))
+    suspend fun claims(): List<Claim> = api.claims()
+    suspend fun claim(id: Int): Claim = api.claim(id)
+    suspend fun submitIdentity(body: IdentityRequest): List<Claim> = api.submitIdentity(body)
+    suspend fun agreement(claimId: Int): AgreementDoc = api.agreement(claimId)
+    suspend fun signAgreement(claimId: Int, name: String): Claim = api.signAgreement(claimId, SignRequest(name, true))
+    suspend fun counties(state: String): List<String> = api.counties(state)
     suspend fun coverage(): Coverage = remote.coverage()
 }
 

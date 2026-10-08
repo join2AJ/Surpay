@@ -70,8 +70,10 @@ fun MatchesScreen(
                 items(data.matches, key = { it.recordId }) { MatchCard(it, onClick = { onOpen(it) }) }
                 item {
                     Text(
-                        "Amounts are what the county currently reports holding. Other lienholders " +
-                            "may also have a right to part of these funds.",
+                        data.disclaimer.ifBlank {
+                            "Amounts are approximate estimates, not a promise or guarantee. Other lienholders " +
+                                "may also have a right to part of these funds."
+                        },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

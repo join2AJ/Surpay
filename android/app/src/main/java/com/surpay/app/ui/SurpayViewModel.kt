@@ -2,7 +2,10 @@ package com.surpay.app.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.surpay.app.data.AgreementDoc
+import com.surpay.app.data.Claim
 import com.surpay.app.data.Coverage
+import com.surpay.app.data.IdentityRequest
 import com.surpay.app.data.MatchesResponse
 import com.surpay.app.data.Profile
 import com.surpay.app.data.ProfileUpdate
@@ -33,7 +36,6 @@ data class MatchesState(
     val loading: Boolean = false,
     val data: MatchesResponse? = null,
     val error: String? = null,
-    val claimingRecordId: Int? = null,
 )
 
 class SurpayViewModel(private val repo: SurpayRepository, private val server: ServerStore) : ViewModel() {
@@ -83,6 +85,7 @@ class SurpayViewModel(private val repo: SurpayRepository, private val server: Se
             _serverUrl.value = server.current
             repo.logout()
             _matches.value = MatchesState()
+            _claims.value = null
             _coverage.value = null
             _form.value = FormState()
             _session.value = SessionState.SignedOut
@@ -130,6 +133,7 @@ class SurpayViewModel(private val repo: SurpayRepository, private val server: Se
         viewModelScope.launch {
             repo.logout()
             _matches.value = MatchesState()
+            _claims.value = null
             _session.value = SessionState.SignedOut
         }
     }
@@ -146,22 +150,78 @@ class SurpayViewModel(private val repo: SurpayRepository, private val server: Se
         }
     }
 
-    fun startClaim(recordId: Int) {
-        if (_matches.value.claimingRecordId != null) return
-        _matches.update { it.copy(claimingRecordId = recordId, error = null) }
+    // --- Claims ------------------------------------------------------------------------------
+
+    private val _claims = MutableStateFlow<List<Claim>?>(null)
+    /** The signed-in person's claims, newest first; null until loaded. */
+    val claims: StateFlow<List<Claim>?> = _claims.asStateFlow()
+
+    private val _agreement = MutableStateFlow<AgreementDoc?>(null)
+    val agreement: StateFlow<AgreementDoc?> = _agreement.asStateFlow()
+
+    fun refreshClaims() {
+        viewModelScope.launch {
+            runCatching { repo.claims() }.onSuccess { _claims.value = it }
+        }
+    }
+
+    private fun upsertClaims(updated: List<Claim>) {
+        val byId = (_claims.value ?: emptyList()).associateBy { it.id }.toMutableMap()
+        updated.forEach { byId[it.id] = it }
+        _claims.value = byId.values.sortedByDescending { it.createdAt }
+        // Match cards show the claim status too.
+        _matches.update { s ->
+            s.copy(data = s.data?.copy(matches = s.data.matches.map { m ->
+                updated.firstOrNull { it.recordId == m.recordId }?.let { m.copy(claimStatus = it.status) } ?: m
+            }))
+        }
+    }
+
+    /** Start (or reopen) the claim for a match and hand it to [onReady] to continue the flow. */
+    fun startClaim(recordId: Int, onReady: (Claim) -> Unit) = submit {
+        val claim = repo.startClaim(recordId)
+        upsertClaims(listOf(claim))
+        onReady(claim)
+    }
+
+    fun reloadClaim(id: Int) {
+        viewModelScope.launch {
+            runCatching { repo.claim(id) }.onSuccess { upsertClaims(listOf(it)) }
+        }
+    }
+
+    fun submitIdentity(body: IdentityRequest, onDone: () -> Unit) = submit {
+        upsertClaims(repo.submitIdentity(body))
+        onDone()
+    }
+
+    fun loadAgreement(claimId: Int) {
+        _agreement.value = null
         viewModelScope.launch {
             try {
-                val claim = repo.startClaim(recordId)
-                _matches.update { s ->
-                    s.copy(
-                        claimingRecordId = null,
-                        data = s.data?.copy(matches = s.data.matches.map {
-                            if (it.recordId == recordId) it.copy(claimStatus = claim.status) else it
-                        }),
-                    )
-                }
+                _agreement.value = repo.agreement(claimId)
             } catch (e: Exception) {
-                _matches.update { it.copy(claimingRecordId = null, error = e.userMessage()) }
+                _form.value = FormState(error = e.userMessage())
+            }
+        }
+    }
+
+    fun signAgreement(claimId: Int, name: String, onDone: () -> Unit) = submit {
+        upsertClaims(listOf(repo.signAgreement(claimId, name)))
+        onDone()
+    }
+
+    // --- Counties for the address form ------------------------------------------------------
+
+    private val _counties = MutableStateFlow<Map<String, List<String>>>(emptyMap())
+    /** State code -> county names. A state missing here hasn't loaded (or failed to). */
+    val counties: StateFlow<Map<String, List<String>>> = _counties.asStateFlow()
+
+    fun loadCounties(state: String) {
+        if (state.isBlank() || _counties.value[state]?.isNotEmpty() == true) return
+        viewModelScope.launch {
+            runCatching { repo.counties(state) }.onSuccess { list ->
+                if (list.isNotEmpty()) _counties.update { it + (state to list) }
             }
         }
     }

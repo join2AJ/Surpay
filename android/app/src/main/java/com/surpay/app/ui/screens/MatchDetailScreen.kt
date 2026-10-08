@@ -36,6 +36,7 @@ fun MatchDetailScreen(
     claiming: Boolean,
     error: String?,
     onStartClaim: () -> Unit,
+    onViewClaim: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val uri = LocalUriHandler.current
@@ -92,10 +93,10 @@ fun MatchDetailScreen(
             Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp)) {
                     Text(claimStatusLabel(match.claimStatus), fontWeight = FontWeight.Bold, modifier = Modifier.testTag("claimStatus"))
-                    Text(
-                        "We’ll contact you within 2 business days to verify your identity and send the agreement to sign.",
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
+                    Spacer(Modifier.height(8.dp))
+                    Button(onClick = onViewClaim, modifier = Modifier.fillMaxWidth().testTag("viewClaim")) {
+                        Text("View my claim and timeline")
+                    }
                 }
             }
         } else {
@@ -112,11 +113,20 @@ fun MatchDetailScreen(
             }
             Spacer(Modifier.height(6.dp))
             Text(
-                "Starting a claim is free and doesn’t commit you to anything.",
+                "Next you’ll verify your identity and e-sign the agreement in the app (about 5 minutes). " +
+                    "Starting is free and you pay nothing unless money is recovered.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+        Spacer(Modifier.height(16.dp))
+        Text(
+            "The amounts above are approximate estimates, not a promise or guarantee. The final amount " +
+                "depends on the county or court, other lienholders and fees.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.testTag("disclaimer"),
+        )
     }
 }
 

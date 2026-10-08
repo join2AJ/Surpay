@@ -21,14 +21,30 @@ fun saleTypeLabel(type: String): String = when (type) {
 }
 
 fun claimStatusLabel(status: String): String = when (status) {
-    "requested" -> "Claim requested"
-    "identity_verified" -> "Identity verified"
-    "agreement_signed" -> "Agreement signed"
-    "filed" -> "Filed with the court"
-    "approved" -> "Approved"
+    "requested" -> "Claim started: verify your identity"
+    "identity_submitted" -> "ID submitted: sign the agreement"
+    "agreement_signed" -> "Agreement signed: ID under review"
+    "identity_verified" -> "Identity verified: preparing filing"
+    "filed" -> "Filed with the county or court"
+    "approved" -> "Approved: funds being released"
     "paid" -> "Paid"
-    "denied" -> "Denied"
+    "denied" -> "Claim denied"
+    "withdrawn" -> "Withdrawn"
     else -> status
+}
+
+private val SHORT = DateTimeFormatter.ofPattern("MMM d", Locale.US)
+private val LONG = DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.US)
+
+/** "Oct 10 – Nov 2, 2026", or one date when both ends match. */
+fun dateRange(start: String?, end: String?): String {
+    val a = start?.let { runCatching { LocalDate.parse(it.take(10)) }.getOrNull() } ?: return ""
+    val b = end?.let { runCatching { LocalDate.parse(it.take(10)) }.getOrNull() } ?: a
+    return when {
+        a == b -> a.format(LONG)
+        a.year == b.year -> "${a.format(SHORT)} – ${b.format(LONG)}"
+        else -> "${a.format(LONG)} – ${b.format(LONG)}"
+    }
 }
 
 val US_STATES = listOf(
