@@ -24,7 +24,12 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.Chat
 import androidx.compose.material.icons.outlined.Badge
+import androidx.compose.material.icons.outlined.Checklist
+import androidx.compose.material.icons.outlined.Print
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material.icons.outlined.HourglassTop
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
@@ -281,15 +286,11 @@ fun CasesScreen(profile: AttorneyProfile, cases: List<AttorneyCase>?, onOpen: (A
     val earned = closed.sumOf { it.feeCents }
     LazyColumn(modifier.fillMaxSize().testTag("cases"), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item {
-            Surface(color = MaterialTheme.colorScheme.primary, shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(18.dp)) {
-                    Text("${profile.fullName} · ${profile.barState} Bar #${profile.barNumber}", color = MaterialTheme.colorScheme.onPrimary,
-                        style = MaterialTheme.typography.labelLarge)
-                    Text("${active.size} active · ${offered.size} new", color = MaterialTheme.colorScheme.onPrimary,
-                        style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                    Text("${dollars(profile.feePerCaseCents)} per case · ${dollars(earned)} from closed cases",
-                        color = MaterialTheme.colorScheme.onPrimary, style = MaterialTheme.typography.bodyMedium)
-                }
+            HeroCard {
+                Text("${profile.fullName} · ${profile.barState} Bar #${profile.barNumber}", style = MaterialTheme.typography.labelLarge)
+                Text("${active.size} active · ${offered.size} new", style = MaterialTheme.typography.headlineSmall)
+                Text("${dollars(profile.feePerCaseCents)} per case · ${dollars(earned)} from closed cases",
+                    style = MaterialTheme.typography.bodyMedium)
             }
         }
         if (cases.isEmpty()) {
@@ -315,8 +316,8 @@ private fun androidx.compose.foundation.lazy.LazyListScope.section(title: String
 
 @Composable
 private fun CaseCard(c: AttorneyCase, onClick: () -> Unit) {
-    OutlinedCard(Modifier.fillMaxWidth().clickable(onClick = onClick).testTag("case${c.id}")) {
-        Column(Modifier.padding(14.dp)) {
+    SectionCard(onClick = onClick, modifier = Modifier.testTag("case${c.id}")) {
+        Column {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(dollars(c.amountCents), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                 if (c.assignmentStatus == "offered") {
@@ -326,6 +327,10 @@ private fun CaseCard(c: AttorneyCase, onClick: () -> Unit) {
                 }
             }
             Text("${c.county} County, ${c.state} · ${c.reference}")
+            if (c.unreadMessages > 0) {
+                Text("${c.unreadMessages} new message(s)", style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+            }
             Text(
                 if (c.assignmentStatus == "offered") "Fee ${dollars(c.feeCents)} · respond within 2 business days"
                 else "${claimStatusLabel(c.status)} · fee ${dollars(c.feeCents)}${payoutLabel(c.payoutStatus)}",
@@ -341,6 +346,7 @@ private fun payoutLabel(p: String) = when (p) {
     else -> ""
 }
 
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun CaseDetailScreen(
     case: AttorneyCase,
@@ -350,6 +356,8 @@ fun CaseDetailScreen(
     onDecline: (String) -> Unit,
     onStatus: (String, String) -> Unit,
     onLoadDocument: (String) -> Unit,
+    onPacket: () -> Unit = {},
+    onMessages: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val uri = LocalUriHandler.current
@@ -374,15 +382,31 @@ fun CaseDetailScreen(
             OutlinedButton(onClick = { dialog = "decline" }, enabled = !form.busy, modifier = Modifier.fillMaxWidth()) { Text("Decline") }
             dialog?.let { a -> ConfirmPanel(a, form.busy, onConfirm = { note -> onDecline(note); dialog = null }, onCancel = { dialog = null }) }
             Spacer(Modifier.height(12.dp))
+            FilingGuideCard(case)
+            Spacer(Modifier.height(12.dp))
             LegalCard(case.legal)
         } else {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                Button(onClick = onMessages, enabled = case.chatOpen, modifier = Modifier.weight(1f).testTag("caseChat")) {
+                    BadgedBox(badge = { if (case.unreadMessages > 0) Badge { Text("${case.unreadMessages}") } }) {
+                        Icon(Icons.AutoMirrored.Outlined.Chat, null)
+                    }
+                    Text("  Message client")
+                }
+                OutlinedButton(onClick = onPacket, enabled = !form.busy, modifier = Modifier.weight(1f).testTag("casePacket")) {
+                    Icon(Icons.Outlined.Print, null)
+                    Text("  Claim packet")
+                }
+            }
+            Text("Contact details aren’t shared: keep all client communication in the app.",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             case.claimant?.let { cl ->
                 Heading("Client")
-                OutlinedCard(Modifier.fillMaxWidth().testTag("client")) {
-                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                SectionCard(modifier = Modifier.testTag("client")) {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(cl.name, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
-                        if (cl.phone.isNotBlank()) TextButton(onClick = { uri.openUri("tel:${cl.phone}") }) { Text("Call ${cl.phone}") }
-                        Detail2("Email", cl.email)
+                        case.onBehalfOf?.let { Text("Claiming for $it", color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.SemiBold) }
                         Detail2("Date of birth", prettyDate(cl.dateOfBirth))
                         Detail2("Lives at", cl.currentAddress)
                         Detail2("SSN (last 4)", cl.ssnLast4)
@@ -390,9 +414,12 @@ fun CaseDetailScreen(
                         Detail2("Homes they owned", cl.homes.joinToString("\n"))
                     }
                 }
-                Heading("ID documents")
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOfNotNull("id_front", "id_back".takeIf { cl.hasIdBack }, "selfie").forEach { kind ->
+                Heading("Documents")
+                val kinds = listOfNotNull("id_front", "id_back".takeIf { cl.hasIdBack }, "selfie") +
+                    cl.relative?.documents.orEmpty() + listOfNotNull("signature".takeIf { case.agreement?.hasSignatureImage == true })
+                androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    kinds.forEach { kind ->
                         LaunchedEffect(kind) { onLoadDocument(kind) }
                         val bytes = documents["${case.id}/$kind"]
                         val bmp = remember(bytes) { bytes?.let { BitmapFactory.decodeByteArray(it, 0, it.size)?.asImageBitmap() } }
@@ -414,19 +441,26 @@ fun CaseDetailScreen(
             case.agreement?.let { a ->
                 Heading("Signed agreement")
                 Text("Signed by ${a.signatureName} on ${prettyDate(a.signedAt)}", style = MaterialTheme.typography.bodyMedium)
+                if (a.documentSha256.isNotBlank()) {
+                    Text("Fingerprint ${a.documentSha256.take(16)}… · ${a.device.ifBlank { "device recorded" }}",
+                        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
                 var showText by remember { mutableStateOf(false) }
                 TextButton(onClick = { showText = !showText }) { Text(if (showText) "Hide agreement" else "Read agreement") }
                 if (showText) Text(a.text, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Serif)
             }
-            Spacer(Modifier.height(8.dp))
-            LegalCard(case.legal)
+            Spacer(Modifier.height(12.dp))
+            FilingGuideCard(case)
+            Spacer(Modifier.height(12.dp))
+            LegalCard(case.legal, familyBasis = case.claimant?.relative?.basis)
 
             Heading("Update the client")
             Text("Each update appears on your client’s timeline.", style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
             val next = when (case.status) {
-                "identity_verified" -> listOf("filed")
-                "filed" -> listOf("approved", "denied")
+                "identity_verified", "attorney_assigned" -> listOf("filed")
+                "filed" -> listOf("hearing_pending", "approved", "denied")
+                "hearing_pending" -> listOf("approved", "denied")
                 "approved" -> listOf("paid", "denied")
                 else -> emptyList()
             }
@@ -436,13 +470,20 @@ fun CaseDetailScreen(
             next.forEach { s ->
                 val label = when (s) {
                     "filed" -> "I’ve filed the claim"
-                    "approved" -> "The county or court approved it"
-                    "paid" -> "Funds released to the client"
+                    "hearing_pending" -> "Waiting for the county or court (hearing set / under review)"
+                    "approved" -> "Hearing held: the claim was approved"
+                    "paid" -> "Money released to the client"
                     else -> "Claim was denied"
                 }
                 OutlinedButton(onClick = { dialog = s }, enabled = !form.busy, modifier = Modifier.fillMaxWidth().testTag("status_$s")) { Text(label) }
             }
-            dialog?.let { a -> ConfirmPanel(a, form.busy, onConfirm = { note -> onStatus(a, note); dialog = null }, onCancel = { dialog = null }) }
+            if (case.status in setOf("identity_verified", "attorney_assigned")) {
+                TextButton(onClick = { dialog = "decline" }, enabled = !form.busy) { Text("Hand this case back") }
+            }
+            dialog?.let { a ->
+                ConfirmPanel(a, form.busy, onConfirm = { note -> if (a == "decline") onDecline(note) else onStatus(a, note); dialog = null },
+                    onCancel = { dialog = null })
+            }
             if (case.history.isNotEmpty()) {
                 Heading("History")
                 case.history.forEach { h ->
@@ -455,6 +496,40 @@ fun CaseDetailScreen(
 
 }
 
+/** Where and how to file in this state, step by step, and what to print. */
+@Composable
+private fun FilingGuideCard(case: AttorneyCase) {
+    val g = case.filingGuide
+    if (g.steps.isEmpty()) return
+    var open by rememberSaveable { mutableStateOf(case.assignmentStatus == "accepted") }
+    SectionCard(modifier = Modifier.testTag("filingGuide"), onClick = { open = !open }) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconCircle(Icons.Outlined.Checklist)
+            Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                Text("How to file in ${case.state}", fontWeight = FontWeight.Bold)
+                Text(g.online, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+            }
+        }
+        if (open) {
+            Text("Where: ${g.where}", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 10.dp))
+            g.steps.forEachIndexed { i, step ->
+                Row(Modifier.padding(top = 8.dp)) {
+                    Text("${i + 1}.", fontWeight = FontWeight.Bold, modifier = Modifier.padding(end = 8.dp))
+                    Text(step, style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+            if (g.print.isNotEmpty()) {
+                Text("PRINT AND SIGN", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 12.dp))
+                g.print.forEach { Text("☐  $it", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 4.dp)) }
+                Text("The claim packet (PDF) has a cover sheet, a draft affidavit with a notary block, the signed agreement and " +
+                    "the documents, ready to print.", style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
+            }
+        }
+    }
+}
+
 /** Inline confirm step (instead of a pop-up) with an optional note. */
 @Composable
 private fun ConfirmPanel(action: String, busy: Boolean, onConfirm: (String) -> Unit, onCancel: () -> Unit) {
@@ -462,7 +537,11 @@ private fun ConfirmPanel(action: String, busy: Boolean, onConfirm: (String) -> U
     Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = MaterialTheme.shapes.medium,
         modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp).testTag("confirmPanel")) {
         Column(Modifier.padding(14.dp)) {
-            Text(if (action == "decline") "Decline this case?" else "Update to “${claimStatusLabel(action)}”?", fontWeight = FontWeight.Bold)
+            Text(if (action == "decline") "Decline or hand back this case?" else "Update to “${claimStatusLabel(action)}”?",
+                fontWeight = FontWeight.Bold)
+            if (action != "decline") {
+                Text("Your client gets a notification with this update.", style = MaterialTheme.typography.bodySmall)
+            }
             OutlinedTextField(
                 value = note, onValueChange = { note = it.take(500) },
                 label = { Text(if (action == "decline") "Reason (optional)" else "Note for the client (e.g. court case number)") },

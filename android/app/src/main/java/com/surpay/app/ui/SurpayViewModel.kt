@@ -3,6 +3,12 @@ package com.surpay.app.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.surpay.app.data.AgreementDoc
+import com.surpay.app.data.AppNotification
+import com.surpay.app.data.AppPrefs
+import com.surpay.app.data.Chat
+import com.surpay.app.data.Policies
+import com.surpay.app.data.Relative
+import com.surpay.app.data.RelativeRequest
 import com.surpay.app.data.AttorneyApplication
 import com.surpay.app.data.AttorneyCase
 import com.surpay.app.data.AttorneyProfile
@@ -43,7 +49,21 @@ data class MatchesState(
     val error: String? = null,
 )
 
-class SurpayViewModel(private val repo: SurpayRepository, private val server: ServerStore) : ViewModel() {
+/** First-run intro and "what's new" after an update. */
+data class AppStart(val loaded: Boolean = false, val showIntro: Boolean = false, val whatsNewFrom: Int? = null,
+                    val developer: Boolean = false)
+
+class SurpayViewModel(
+    private val repo: SurpayRepository,
+    private val server: ServerStore,
+    /** null in tests that don't exercise the intro: treated as already seen. */
+    private val prefs: AppPrefs? = null,
+    private val versionCode: Int = 0,
+    /** Installed over an older version (not a fresh install): show "what's new". */
+    private val isUpdate: Boolean = false,
+) : ViewModel() {
+    private val _start = MutableStateFlow(AppStart(loaded = prefs == null))
+    val start: StateFlow<AppStart> = _start.asStateFlow()
     private val _session = MutableStateFlow<SessionState>(SessionState.Loading)
     val session: StateFlow<SessionState> = _session.asStateFlow()
 
@@ -61,10 +81,37 @@ class SurpayViewModel(private val repo: SurpayRepository, private val server: Se
 
     init {
         viewModelScope.launch {
+            prefs?.let { p ->
+                val introSeen = p.introSeen()
+                val seenVersion = p.whatsNewSeen()
+                val showWhatsNew = (introSeen || isUpdate) && seenVersion < versionCode
+                if (!showWhatsNew) p.setWhatsNewSeen(versionCode)  // a fresh install gets the intro instead
+                _start.value = AppStart(
+                    loaded = true, showIntro = !introSeen,
+                    whatsNewFrom = seenVersion.takeIf { showWhatsNew },
+                    developer = p.developer(),
+                )
+            }
             _serverUrl.value = server.load()
             loadCoverage()
             restoreSession()
         }
+    }
+
+    fun finishIntro() {
+        _start.update { it.copy(showIntro = false) }
+        viewModelScope.launch { prefs?.setIntroSeen() }
+    }
+
+    fun dismissWhatsNew() {
+        _start.update { it.copy(whatsNewFrom = null) }
+        viewModelScope.launch { prefs?.setWhatsNewSeen(versionCode) }
+    }
+
+    /** Tester options (server address): tap the logo 7 times. */
+    fun unlockDeveloper() {
+        _start.update { it.copy(developer = true) }
+        viewModelScope.launch { prefs?.setDeveloper(true) }
     }
 
     private fun loadCoverage() {
@@ -113,8 +160,8 @@ class SurpayViewModel(private val repo: SurpayRepository, private val server: Se
 
     fun clearFormError() = _form.update { it.copy(error = null) }
 
-    fun signup(email: String, password: String, fullName: String, role: String = "claimant") = submit {
-        val profile = repo.signup(email, password, fullName, role)
+    fun signup(email: String, password: String, fullName: String, role: String = "claimant", acceptTerms: Boolean = true) = submit {
+        val profile = repo.signup(email, password, fullName, role, acceptTerms)
         _session.value = SessionState.SignedIn(profile, isNewUser = true)
     }
 
@@ -142,6 +189,9 @@ class SurpayViewModel(private val repo: SurpayRepository, private val server: Se
             _attorney.value = AttorneyState()
             _cases.value = null
             _documents.value = emptyMap()
+            _chats.value = emptyMap()
+            _notifications.value = null
+            _relatives.value = null
             _session.value = SessionState.SignedOut
         }
     }
@@ -234,9 +284,96 @@ class SurpayViewModel(private val repo: SurpayRepository, private val server: Se
         }
     }
 
-    fun signAgreement(claimId: Int, name: String, onDone: () -> Unit) = submit {
-        upsertClaims(listOf(repo.signAgreement(claimId, name)))
+    fun signAgreement(claimId: Int, name: String, signaturePng: ByteArray, onDone: () -> Unit) = submit {
+        upsertClaims(listOf(repo.signAgreement(claimId, name, signaturePng)))
         onDone()
+    }
+
+    fun withdrawClaim(claimId: Int) = submit { upsertClaims(listOf(repo.withdrawClaim(claimId))) }
+
+    // --- Messages with the attorney (claimant side and attorney side) ---------------------------
+
+    private val _chats = MutableStateFlow<Map<Int, Chat>>(emptyMap())
+    /** claim/case id -> conversation. */
+    val chats: StateFlow<Map<Int, Chat>> = _chats.asStateFlow()
+
+    private fun isAttorney() = (_session.value as? SessionState.SignedIn)?.profile?.role == "attorney"
+
+    fun loadChat(id: Int) {
+        viewModelScope.launch {
+            runCatching { if (isAttorney()) repo.caseMessages(id) else repo.messages(id) }
+                .onSuccess { c -> _chats.update { it + (id to c) } }
+        }
+    }
+
+    fun sendMessage(id: Int, body: String, onSent: () -> Unit) = submit {
+        val chat = if (isAttorney()) repo.sendCaseMessage(id, body) else repo.sendMessage(id, body)
+        _chats.update { it + (id to chat) }
+        onSent()
+    }
+
+    // --- Notifications ----------------------------------------------------------------------------
+
+    private val _notifications = MutableStateFlow<List<AppNotification>?>(null)
+    val notifications: StateFlow<List<AppNotification>?> = _notifications.asStateFlow()
+
+    fun loadNotifications() {
+        viewModelScope.launch { runCatching { repo.notifications() }.onSuccess { _notifications.value = it.items } }
+    }
+
+    fun markNotificationsRead() {
+        viewModelScope.launch {
+            runCatching { repo.markNotificationsRead() }
+            _notifications.update { list -> list?.map { it.copy(read = true) } }
+            runCatching { refreshProfileNow() }
+        }
+    }
+
+    // --- Policies, family members, privacy rights ------------------------------------------------
+
+    private val _policies = MutableStateFlow<Policies?>(null)
+    val policies: StateFlow<Policies?> = _policies.asStateFlow()
+
+    fun loadPolicies() {
+        if (_policies.value != null) return
+        viewModelScope.launch { runCatching { repo.policies() }.onSuccess { _policies.value = it } }
+    }
+
+    fun acceptCurrentTerms() = submit {
+        repo.acceptCurrentTerms()
+        refreshProfileNow()
+    }
+
+    private val _relatives = MutableStateFlow<List<Relative>?>(null)
+    val relatives: StateFlow<List<Relative>?> = _relatives.asStateFlow()
+
+    fun loadRelatives() {
+        viewModelScope.launch { runCatching { repo.relatives() }.onSuccess { _relatives.value = it } }
+    }
+
+    fun addRelative(body: RelativeRequest, onDone: () -> Unit) = submit {
+        val r = repo.addRelative(body)
+        _relatives.update { (it ?: emptyList()) + r }
+        onDone()
+    }
+
+    fun removeRelative(id: Int) = submit {
+        repo.removeRelative(id)
+        _relatives.update { list -> list?.filterNot { it.id == id } }
+    }
+
+    /** Everything Surpay holds about the person, as JSON, for [onReady] to save or share. */
+    fun exportData(onReady: (ByteArray) -> Unit) = submit { onReady(repo.exportData()) }
+
+    fun deleteAccount(onDone: (String) -> Unit) = submit {
+        val r = repo.deleteAccount()
+        onDone(r.message)
+        logout()
+    }
+
+    fun logoutEverywhere() = submit {
+        repo.logoutEverywhere()
+        logout()
     }
 
     // --- Counties for the address form ------------------------------------------------------
@@ -317,6 +454,9 @@ class SurpayViewModel(private val repo: SurpayRepository, private val server: Se
     }
 
     fun updateCase(id: Int, status: String, note: String) = submit { replaceCase(repo.updateCase(id, status, note)) }
+
+    /** The printable claim packet (PDF) for an accepted case. */
+    fun downloadPacket(caseId: Int, onReady: (ByteArray) -> Unit) = submit { onReady(repo.casePacket(caseId)) }
 
     fun loadDocument(caseId: Int, kind: String) {
         val key = "$caseId/$kind"

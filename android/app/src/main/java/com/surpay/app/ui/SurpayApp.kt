@@ -1,41 +1,53 @@
 package com.surpay.app.ui
 
-import androidx.compose.foundation.layout.Box
+import android.Manifest
+import android.os.Build
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.systemBarsPadding
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AttachMoney
 import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.Person
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material.icons.outlined.Notifications
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
+import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -44,71 +56,107 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.surpay.app.data.AppNotification
+import com.surpay.app.notify.NotificationWorker
+import com.surpay.app.ui.screens.AccountScreen
+import com.surpay.app.ui.screens.AddRelativeScreen
 import com.surpay.app.ui.screens.AgreementScreen
 import com.surpay.app.ui.screens.AttorneyApplyScreen
 import com.surpay.app.ui.screens.AttorneyPendingScreen
+import com.surpay.app.ui.screens.AuthScreen
 import com.surpay.app.ui.screens.CaseDetailScreen
 import com.surpay.app.ui.screens.CasesScreen
-import com.surpay.app.ui.screens.AuthScreen
+import com.surpay.app.ui.screens.ChatScreen
 import com.surpay.app.ui.screens.ClaimScreen
 import com.surpay.app.ui.screens.ClaimsScreen
+import com.surpay.app.ui.screens.FamilyScreen
 import com.surpay.app.ui.screens.IdentityScreen
+import com.surpay.app.ui.screens.IntroScreen
 import com.surpay.app.ui.screens.LoadingScreen
-import com.surpay.app.ui.screens.OnboardingHeader
-import com.surpay.app.ui.screens.VerifyingScreen
-import com.surpay.app.ui.screens.ServerSettingsDialog
-import com.surpay.app.ui.screens.UnreachableScreen
 import com.surpay.app.ui.screens.MatchDetailScreen
 import com.surpay.app.ui.screens.MatchesScreen
+import com.surpay.app.ui.screens.NotificationsScreen
+import com.surpay.app.ui.screens.OnboardingHeader
+import com.surpay.app.ui.screens.PolicyDialog
+import com.surpay.app.ui.screens.PrivacyScreen
 import com.surpay.app.ui.screens.ProfileScreen
+import com.surpay.app.ui.screens.ServerSettingsDialog
+import com.surpay.app.ui.screens.UnreachableScreen
+import com.surpay.app.ui.screens.VerifyingScreen
+import com.surpay.app.ui.screens.WhatsNewDialog
 
 private object Routes {
     const val SETUP = "setup"
     const val MATCHES = "matches"
     const val CLAIMS = "claims"
     const val PROFILE = "profile"
+    const val DETAILS = "details"
+    const val FAMILY = "family"
+    const val ADD_RELATIVE = "family/add"
+    const val NOTIFICATIONS = "notifications"
+    const val PRIVACY = "privacy"
     const val DETAIL = "match/{id}"
     const val CLAIM = "claim/{id}"
     const val IDENTITY = "claim/{id}/identity"
     const val AGREEMENT = "claim/{id}/agreement"
+    const val CHAT = "claim/{id}/chat"
     fun detail(id: Int) = "match/$id"
     fun claim(id: Int) = "claim/$id"
     fun identity(id: Int) = "claim/$id/identity"
     fun agreement(id: Int) = "claim/$id/agreement"
+    fun chat(id: Int) = "claim/$id/chat"
     val TABS = setOf(MATCHES, CLAIMS, PROFILE)
 }
 
 @Composable
 fun SurpayApp(vm: SurpayViewModel) {
+    val start by vm.start.collectAsStateWithLifecycle()
     val session by vm.session.collectAsStateWithLifecycle()
     val form by vm.form.collectAsStateWithLifecycle()
     val coverage by vm.coverage.collectAsStateWithLifecycle()
     val serverUrl by vm.serverUrl.collectAsStateWithLifecycle()
+    val policies by vm.policies.collectAsStateWithLifecycle()
     var showServer by rememberSaveable { mutableStateOf(false) }
 
-    when (val s = session) {
-        SessionState.Loading -> LoadingScreen()
-        is SessionState.Unreachable -> UnreachableScreen(
-            message = s.message,
-            serverUrl = serverUrl,
-            onRetry = vm::restoreSession,
-            onServerSettings = { showServer = true },
-        )
-        SessionState.SignedOut -> AuthScreen(
-            form = form,
-            coverage = coverage,
-            onSignup = vm::signup,
-            onLogin = vm::login,
-            onDemoLogin = vm::demoLogin,
-            onClearError = vm::clearFormError,
-            onServerSettings = { showServer = true },
-        )
-        // Attorneys get their own app; verified claimants get theirs; everyone else finishes onboarding.
-        is SessionState.SignedIn -> when {
-            s.profile.role == "attorney" -> AttorneyApp(vm, s)
-            s.profile.identityStatus == "approved" -> SignedInApp(vm, s)
-            else -> OnboardingFlow(vm, s)
+    when {
+        !start.loaded -> LoadingScreen()
+        start.showIntro -> IntroScreen(onDone = vm::finishIntro)
+        else -> when (val s = session) {
+            SessionState.Loading -> LoadingScreen()
+            is SessionState.Unreachable -> UnreachableScreen(
+                message = s.message,
+                serverUrl = if (start.developer) serverUrl else "",
+                onRetry = vm::restoreSession,
+                onServerSettings = { showServer = true },
+                showServerSettings = start.developer,
+            )
+            SessionState.SignedOut -> AuthScreen(
+                form = form,
+                coverage = coverage,
+                onSignup = { e, p, n, r -> vm.signup(e, p, n, r, acceptTerms = true) },
+                onLogin = vm::login,
+                onDemoLogin = vm::demoLogin,
+                onClearError = vm::clearFormError,
+                onServerSettings = { showServer = true },
+                policies = policies,
+                onLoadPolicies = vm::loadPolicies,
+                developer = start.developer,
+                onUnlockDeveloper = vm::unlockDeveloper,
+            )
+            is SessionState.SignedIn -> {
+                BackgroundNotifications(s.offlineDemo)
+                when {
+                    !s.profile.termsCurrent -> UpdatedTermsScreen(form, policies, vm::loadPolicies, vm::acceptCurrentTerms, vm::logout)
+                    // Attorneys get their own app; verified claimants get theirs; everyone else finishes onboarding.
+                    s.profile.role == "attorney" -> AttorneyApp(vm, s)
+                    s.profile.identityStatus == "approved" -> SignedInApp(vm, s)
+                    else -> OnboardingFlow(vm, s)
+                }
+            }
         }
+    }
+    if (start.loaded && !start.showIntro) {
+        start.whatsNewFrom?.let { WhatsNewDialog(it, vm::dismissWhatsNew) }
     }
     if (showServer) {
         ServerSettingsDialog(
@@ -119,15 +167,67 @@ fun SurpayApp(vm: SurpayViewModel) {
     }
 }
 
+/** Ask for notification permission (Android 13+) and start checking for updates in the background. */
+@Composable
+private fun BackgroundNotifications(offline: Boolean) {
+    if (LocalInspectionMode.current || offline) return
+    val context = LocalContext.current
+    val ask = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    LaunchedEffect(Unit) {
+        runCatching { NotificationWorker.schedule(context) }
+        if (Build.VERSION.SDK_INT >= 33) runCatching { ask.launch(Manifest.permission.POST_NOTIFICATIONS) }
+    }
+}
+
+/** The Terms or Privacy Notice changed since the person last accepted: ask again before continuing. */
+@Composable
+private fun UpdatedTermsScreen(
+    form: FormState,
+    policies: com.surpay.app.data.Policies?,
+    onLoad: () -> Unit,
+    onAccept: () -> Unit,
+    onLogout: () -> Unit,
+) {
+    var reading by rememberSaveable { mutableStateOf<String?>(null) }
+    Column(Modifier.fillMaxSize().systemBarsPadding().verticalScroll(rememberScrollState()).padding(24.dp)) {
+        Text("We’ve updated our terms", style = MaterialTheme.typography.headlineSmall)
+        Spacer(Modifier.height(8.dp))
+        Text("Please review the updated Terms of Use and Privacy Notice to keep using Surpay.",
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        TextButton(onClick = { onLoad(); reading = "terms" }) { Text("Read Terms of Use") }
+        TextButton(onClick = { onLoad(); reading = "privacy" }) { Text("Read Privacy Notice") }
+        form.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        Button(onClick = onAccept, enabled = !form.busy, modifier = Modifier.fillMaxWidth().testTag("acceptUpdatedTerms")) {
+            Text("I agree")
+        }
+        TextButton(onClick = onLogout) { Text("Sign out") }
+    }
+    reading?.let { PolicyDialog(it, policies) { reading = null } }
+}
+
+@Composable
+private fun NotificationBell(count: Int, onClick: () -> Unit) {
+    IconButton(onClick = onClick, modifier = Modifier.testTag("bell")) {
+        BadgedBox(badge = { if (count > 0) Badge { Text("$count") } }) {
+            Icon(Icons.Outlined.Notifications, contentDescription = "Notifications")
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SignedInApp(vm: SurpayViewModel, session: SessionState.SignedIn) {
+    val context = LocalContext.current
     val nav = rememberNavController()
     val form by vm.form.collectAsStateWithLifecycle()
     val matches by vm.matches.collectAsStateWithLifecycle()
     val claims by vm.claims.collectAsStateWithLifecycle()
     val agreement by vm.agreement.collectAsStateWithLifecycle()
     val counties by vm.counties.collectAsStateWithLifecycle()
+    val chats by vm.chats.collectAsStateWithLifecycle()
+    val notifications by vm.notifications.collectAsStateWithLifecycle()
+    val relatives by vm.relatives.collectAsStateWithLifecycle()
+    val policies by vm.policies.collectAsStateWithLifecycle()
     val backStack by nav.currentBackStackEntryAsState()
     val route = backStack?.destination?.route
     // Onboarding (ID approved, at least one home) is done by the time we get here.
@@ -137,7 +237,7 @@ private fun SignedInApp(vm: SurpayViewModel, session: SessionState.SignedIn) {
         vm.refreshMatches()
         vm.refreshClaims()
     }
-    LaunchedEffect(route) { vm.clearFormError() }
+    LaunchedEffect(route) { vm.clearFormError(); vm.refreshProfile() }
 
     /** After starting a claim, go straight to whatever the person has to do next. */
     fun continueClaim(claim: com.surpay.app.data.Claim) {
@@ -148,6 +248,11 @@ private fun SignedInApp(vm: SurpayViewModel, session: SessionState.SignedIn) {
         }
     }
 
+    fun openNotification(n: AppNotification) {
+        val id = n.claimId ?: return
+        nav.navigate(if (n.kind == "message") Routes.chat(id) else Routes.claim(id))
+    }
+
     Scaffold(
         topBar = {
             Column {
@@ -156,10 +261,16 @@ private fun SignedInApp(vm: SurpayViewModel, session: SessionState.SignedIn) {
                         Text(
                             when (route) {
                                 Routes.SETUP -> "Set up your search"
-                                Routes.PROFILE -> "Profile"
+                                Routes.PROFILE -> "Account"
+                                Routes.DETAILS -> "Your details"
+                                Routes.FAMILY -> "Family members"
+                                Routes.ADD_RELATIVE -> "Add a family member"
+                                Routes.NOTIFICATIONS -> "Notifications"
+                                Routes.PRIVACY -> "Privacy and data"
                                 Routes.DETAIL -> "Surplus details"
                                 Routes.CLAIMS -> "My claims"
                                 Routes.CLAIM -> "Claim status"
+                                Routes.CHAT -> "Messages"
                                 Routes.IDENTITY -> "Identity check"
                                 Routes.AGREEMENT -> "Agreement"
                                 else -> "Your money"
@@ -173,11 +284,17 @@ private fun SignedInApp(vm: SurpayViewModel, session: SessionState.SignedIn) {
                             }
                         }
                     },
+                    actions = {
+                        if (route != Routes.NOTIFICATIONS && !session.offlineDemo) {
+                            NotificationBell(session.profile.unreadNotifications) { nav.navigate(Routes.NOTIFICATIONS) }
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
                 )
                 if (session.offlineDemo) {
                     Surface(color = Color(0xFFFFF1D6), contentColor = Color(0xFF6B4A00), modifier = Modifier.fillMaxWidth()) {
                         Text(
-                            "Offline demo: made-up data on this phone. No Surpay server is connected yet.",
+                            "Offline demo: made-up data on this phone. No Surpay server is connected.",
                             Modifier.padding(horizontal = 16.dp, vertical = 8.dp).testTag("offlineBanner"),
                             style = MaterialTheme.typography.bodySmall,
                         )
@@ -197,7 +314,12 @@ private fun SignedInApp(vm: SurpayViewModel, session: SessionState.SignedIn) {
                     NavigationBarItem(
                         selected = route == Routes.CLAIMS,
                         onClick = { nav.switchTab(Routes.CLAIMS) },
-                        icon = { Icon(Icons.Filled.Checklist, contentDescription = null) },
+                        icon = {
+                            val unread = claims?.sumOf { it.unreadMessages } ?: 0
+                            BadgedBox(badge = { if (unread > 0) Badge { Text("$unread") } }) {
+                                Icon(Icons.Filled.Checklist, contentDescription = null)
+                            }
+                        },
                         label = { Text("My claims") },
                         modifier = Modifier.testTag("claimsTab"),
                     )
@@ -205,7 +327,8 @@ private fun SignedInApp(vm: SurpayViewModel, session: SessionState.SignedIn) {
                         selected = route == Routes.PROFILE,
                         onClick = { nav.switchTab(Routes.PROFILE) },
                         icon = { Icon(Icons.Filled.Person, contentDescription = null) },
-                        label = { Text("Profile") },
+                        label = { Text("Account") },
+                        modifier = Modifier.testTag("accountTab"),
                     )
                 }
             }
@@ -229,7 +352,7 @@ private fun SignedInApp(vm: SurpayViewModel, session: SessionState.SignedIn) {
                     state = matches,
                     onRefresh = vm::refreshMatches,
                     onOpen = { nav.navigate(Routes.detail(it.recordId)) },
-                    onEditProfile = { nav.switchTab(Routes.PROFILE) },
+                    onEditProfile = { nav.navigate(Routes.DETAILS) },
                 )
             }
             composable(Routes.CLAIMS) {
@@ -241,11 +364,41 @@ private fun SignedInApp(vm: SurpayViewModel, session: SessionState.SignedIn) {
                 )
             }
             composable(Routes.PROFILE) {
+                AccountScreen(
+                    profile = session.profile,
+                    onDetails = { nav.navigate(Routes.DETAILS) },
+                    onFamily = { nav.navigate(Routes.FAMILY) },
+                    onNotifications = { nav.navigate(Routes.NOTIFICATIONS) },
+                    onPrivacy = { nav.navigate(Routes.PRIVACY) },
+                    onLogout = vm::logout,
+                )
+            }
+            composable(Routes.DETAILS) {
                 ProfileScreen(
                     profile = session.profile, form = form, firstRun = false,
                     onSave = { update -> vm.saveProfile(update) { nav.switchTab(Routes.MATCHES) } },
                     onLogout = vm::logout,
                     counties = counties, onStateChosen = vm::loadCounties,
+                )
+            }
+            composable(Routes.FAMILY) {
+                FamilyScreen(relatives, form, onLoad = vm::loadRelatives, onAdd = { nav.navigate(Routes.ADD_RELATIVE) },
+                    onRemove = vm::removeRelative)
+            }
+            composable(Routes.ADD_RELATIVE) {
+                AddRelativeScreen(form, counties, onStateChosen = vm::loadCounties,
+                    onSubmit = { body -> vm.addRelative(body) { nav.popBackStack() } })
+            }
+            composable(Routes.NOTIFICATIONS) {
+                NotificationsScreen(notifications, onLoad = vm::loadNotifications, onMarkRead = vm::markNotificationsRead,
+                    onOpen = ::openNotification)
+            }
+            composable(Routes.PRIVACY) {
+                PrivacyScreen(
+                    form = form, policies = policies, onLoadPolicies = vm::loadPolicies,
+                    onExport = { vm.exportData { openOrShare(context, it, "surpay-my-data.json", "application/json") } },
+                    onLogoutEverywhere = vm::logoutEverywhere,
+                    onDelete = { vm.deleteAccount { msg -> Toast.makeText(context, msg, Toast.LENGTH_LONG).show() } },
                 )
             }
             composable(Routes.DETAIL, arguments = listOf(navArgument("id") { type = NavType.IntType })) { entry ->
@@ -278,8 +431,16 @@ private fun SignedInApp(vm: SurpayViewModel, session: SessionState.SignedIn) {
                         onVerifyIdentity = { nav.navigate(Routes.identity(id)) },
                         onSignAgreement = { nav.navigate(Routes.agreement(id)) },
                         onViewAgreement = { nav.navigate(Routes.agreement(id)) },
+                        onMessages = { nav.navigate(Routes.chat(id)) },
+                        onWithdraw = { vm.withdrawClaim(id) },
+                        busy = form.busy,
                     )
                 }
+            }
+            composable(Routes.CHAT, arguments = listOf(navArgument("id") { type = NavType.IntType })) { entry ->
+                val id = entry.arguments!!.getInt("id")
+                ChatScreen(chats[id], me = "claimant", form = form, onRefresh = { vm.loadChat(id) },
+                    onSend = { body, done -> vm.sendMessage(id, body, done) })
             }
             composable(Routes.IDENTITY, arguments = listOf(navArgument("id") { type = NavType.IntType })) { entry ->
                 val id = entry.arguments!!.getInt("id")
@@ -298,7 +459,7 @@ private fun SignedInApp(vm: SurpayViewModel, session: SessionState.SignedIn) {
                 LaunchedEffect(id) { vm.loadAgreement(id) }
                 AgreementScreen(
                     agreement = agreement, expectedName = session.profile.fullName, form = form,
-                    onSign = { name -> vm.signAgreement(id, name) { nav.popBackStack(Routes.CLAIM, inclusive = false) } },
+                    onSign = { name, png -> vm.signAgreement(id, name, png) { nav.popBackStack(Routes.CLAIM, inclusive = false) } },
                 )
             }
         }
@@ -358,13 +519,18 @@ private fun OnboardingFlow(vm: SurpayViewModel, session: SessionState.SignedIn) 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AttorneyApp(vm: SurpayViewModel, session: SessionState.SignedIn) {
+    val context = LocalContext.current
     val state by vm.attorney.collectAsStateWithLifecycle()
     val form by vm.form.collectAsStateWithLifecycle()
     val counties by vm.counties.collectAsStateWithLifecycle()
     val terms by vm.terms.collectAsStateWithLifecycle()
     val cases by vm.cases.collectAsStateWithLifecycle()
     val documents by vm.documents.collectAsStateWithLifecycle()
+    val chats by vm.chats.collectAsStateWithLifecycle()
+    val notifications by vm.notifications.collectAsStateWithLifecycle()
     var openCase by rememberSaveable { mutableStateOf<Int?>(null) }
+    // "case" | "chat" | "notifications"
+    var screen by rememberSaveable { mutableStateOf("case") }
     LaunchedEffect(Unit) { vm.loadAttorney() }
 
     val profile = state.profile
@@ -383,31 +549,63 @@ private fun AttorneyApp(vm: SurpayViewModel, session: SessionState.SignedIn) {
             else -> {
                 LaunchedEffect(Unit) { vm.loadCases() }
                 val current = openCase?.let { id -> cases?.firstOrNull { it.id == id } }
+                val showingNotifications = screen == "notifications"
                 Scaffold(
                     topBar = {
                         TopAppBar(
-                            title = { Text(if (current != null) "Case #${current.id}" else "Your cases") },
+                            title = {
+                                Text(when {
+                                    showingNotifications -> "Notifications"
+                                    current != null && screen == "chat" -> "Messages · case #${current.id}"
+                                    current != null -> "Case #${current.id}"
+                                    else -> "Your cases"
+                                })
+                            },
                             navigationIcon = {
-                                if (current != null) {
-                                    IconButton(onClick = { openCase = null }, modifier = Modifier.testTag("back")) {
+                                if (current != null || showingNotifications) {
+                                    IconButton(onClick = {
+                                        when {
+                                            showingNotifications -> screen = "case"
+                                            screen == "chat" -> { screen = "case"; current?.let { vm.reloadCase(it.id) } }
+                                            else -> openCase = null
+                                        }
+                                    }, modifier = Modifier.testTag("back")) {
                                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                                     }
                                 }
                             },
-                            actions = { if (current == null) TextButton(onClick = vm::logout) { Text("Sign out") } },
+                            actions = {
+                                if (!showingNotifications) {
+                                    NotificationBell(session.profile.unreadNotifications) { screen = "notifications" }
+                                }
+                                if (current == null && !showingNotifications) TextButton(onClick = vm::logout) { Text("Sign out") }
+                            },
+                            colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
                         )
                     },
                 ) { padding ->
-                    if (current == null) {
-                        CasesScreen(profile, cases, onOpen = { openCase = it.id; vm.reloadCase(it.id) }, onRefresh = vm::loadCases,
+                    when {
+                        showingNotifications -> NotificationsScreen(
+                            notifications, onLoad = vm::loadNotifications, onMarkRead = vm::markNotificationsRead,
+                            onOpen = { n -> n.claimId?.let { id -> openCase = id; vm.reloadCase(id); screen = if (n.kind == "message") "chat" else "case" } },
+                            modifier = Modifier.padding(padding),
+                        )
+                        current == null -> CasesScreen(profile, cases, onOpen = { openCase = it.id; screen = "case"; vm.reloadCase(it.id) },
+                            onRefresh = vm::loadCases, modifier = Modifier.padding(padding))
+                        screen == "chat" -> ChatScreen(chats[current.id], me = "attorney", form = form,
+                            onRefresh = { vm.loadChat(current.id) },
+                            onSend = { body, done -> vm.sendMessage(current.id, body, done) },
                             modifier = Modifier.padding(padding))
-                    } else {
-                        CaseDetailScreen(
+                        else -> CaseDetailScreen(
                             case = current, form = form, documents = documents,
                             onAccept = { vm.acceptCase(current.id) },
                             onDecline = { reason -> vm.declineCase(current.id, reason) { openCase = null } },
                             onStatus = { s, note -> vm.updateCase(current.id, s, note) },
                             onLoadDocument = { kind -> vm.loadDocument(current.id, kind) },
+                            onPacket = {
+                                vm.downloadPacket(current.id) { openOrShare(context, it, "surpay-case-${current.id}.pdf", "application/pdf") }
+                            },
+                            onMessages = { screen = "chat" },
                             modifier = Modifier.padding(padding),
                         )
                     }

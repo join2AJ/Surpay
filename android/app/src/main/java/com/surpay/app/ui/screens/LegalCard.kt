@@ -16,7 +16,6 @@ import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.outlined.Gavel
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -34,12 +33,19 @@ import com.surpay.app.data.Legal
 
 /** "Your legal right to this money": the law, what must be proven, and the deadline. */
 @Composable
-fun LegalCard(legal: Legal, modifier: Modifier = Modifier, startExpanded: Boolean = false) {
+fun LegalCard(
+    legal: Legal,
+    modifier: Modifier = Modifier,
+    startExpanded: Boolean = false,
+    deadlineDate: String? = null,
+    /** Show what a family member must also prove (heir, power_of_attorney or guardian). */
+    familyBasis: String? = null,
+) {
     if (legal.law.isBlank()) return
     var expanded by rememberSaveable { mutableStateOf(startExpanded) }
     val uri = LocalUriHandler.current
-    OutlinedCard(modifier.fillMaxWidth().animateContentSize().testTag("legalCard")) {
-        Column(Modifier.padding(16.dp)) {
+    SectionCard(modifier.animateContentSize().testTag("legalCard"), padding = 16.dp) {
+        Column {
             Row(Modifier.fillMaxWidth().clickable { expanded = !expanded }, verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Outlined.Gavel, null, tint = MaterialTheme.colorScheme.primary)
                 Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
@@ -58,13 +64,34 @@ fun LegalCard(legal: Legal, modifier: Modifier = Modifier, startExpanded: Boolea
                 Label("How it’s claimed")
                 Text(legal.process, style = MaterialTheme.typography.bodyMedium)
                 Label("Deadline")
+                com.surpay.app.ui.deadlineText(deadlineDate)?.let {
+                    Text(it, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary, modifier = Modifier.testTag("deadline"))
+                }
                 Text(legal.deadline, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                if (legal.ifMissed.isNotBlank()) {
+                    Label("If nobody claims it in time")
+                    Text(legal.ifMissed, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.testTag("ifMissed"))
+                }
                 Label("What you’ll need to prove it’s yours")
                 legal.proof.forEach { item ->
                     Row(Modifier.padding(vertical = 3.dp), verticalAlignment = Alignment.Top) {
                         Icon(Icons.Filled.CheckCircle, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
                         Text(item, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(start = 8.dp))
                     }
+                }
+                legal.familyProof[familyBasis]?.let { extra ->
+                    Label("Also needed because you’re claiming for a family member")
+                    extra.forEach { item ->
+                        Row(Modifier.padding(vertical = 3.dp), verticalAlignment = Alignment.Top) {
+                            Icon(Icons.Filled.CheckCircle, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                            Text(item, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(start = 8.dp))
+                        }
+                    }
+                }
+                if (legal.facilitator.isNotBlank()) {
+                    Label("Who makes the claim")
+                    Text(legal.facilitator, style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("facilitator"))
                 }
                 Spacer(Modifier.height(8.dp))
                 Text(legal.note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

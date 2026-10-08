@@ -12,6 +12,10 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.test.swipe
 import com.surpay.app.ui.PhotoSource
 import java.io.ByteArrayOutputStream
 
@@ -41,11 +45,33 @@ fun ComposeContentTestRule.completeIdentity(timeout: Long = 15_000) {
     onNodeWithTag("submitIdentity").performScrollTo().performClick()
 }
 
-/** Tick, type the name, sign. Leaves the app on the claim's timeline. */
+/** Type the name, draw a signature, tick, sign. Leaves the app on the claim's timeline. */
 @OptIn(ExperimentalTestApi::class)
 fun ComposeContentTestRule.signAgreement(name: String, timeout: Long = 15_000) {
     waitUntilAtLeastOneExists(hasTestTag("agreementText"), timeout)
-    onNodeWithTag("agree").performScrollTo().performClick()
     onNodeWithTag("signature").performScrollTo().performTextInput(name)
-    onNodeWithTag("sign").performScrollTo().performClick()
+    onNodeWithText("Matches your verified ID").assertExists()
+    onNodeWithTag("signaturePad").performScrollTo().performTouchInput {
+        swipe(Offset(width * 0.15f, height * 0.6f), Offset(width * 0.45f, height * 0.3f), 200)
+        swipe(Offset(width * 0.45f, height * 0.3f), Offset(width * 0.8f, height * 0.65f), 200)
+    }
+    onNodeWithTag("agree").performScrollTo().performClick()
+    onNodeWithTag("sign").performScrollTo().assertIsEnabled().performClick()
+}
+
+/** Welcome screen: pick "Find money owed to me" (or attorney), fill the form, accept the terms, submit. */
+fun ComposeContentTestRule.createAccount(role: String, name: String, email: String) {
+    onNodeWithTag(if (role == "attorney") "roleAttorney" else "roleClaimant").performScrollTo().performClick()
+    onNodeWithTag("name").performTextInput(name)
+    onNodeWithTag("email").performTextInput(email)
+    onNodeWithTag("password").performTextInput("correct horse battery")
+    onNodeWithTag("agreeTerms").performScrollTo().performClick()
+    onNodeWithTag("submit").performScrollTo().performClick()
+}
+
+/** A small real PNG, standing in for a signature drawn on screen. */
+val SIGNATURE_PNG_B64: String by lazy {
+    val bmp = Bitmap.createBitmap(300, 120, Bitmap.Config.ARGB_8888)
+    Canvas(bmp).drawColor(Color.WHITE)
+    java.util.Base64.getEncoder().encodeToString(ByteArrayOutputStream().also { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }.toByteArray())
 }

@@ -90,22 +90,30 @@ fun LoadingScreen(message: String = "Connecting…") {
 }
 
 @Composable
-fun UnreachableScreen(message: String, serverUrl: String, onRetry: () -> Unit, onServerSettings: () -> Unit) {
+fun UnreachableScreen(
+    message: String,
+    serverUrl: String,
+    onRetry: () -> Unit,
+    onServerSettings: () -> Unit,
+    showServerSettings: Boolean = false,
+) {
     Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text("Can’t reach Surpay", style = MaterialTheme.typography.titleLarge)
             Spacer(Modifier.height(8.dp))
             Text(message, textAlign = TextAlign.Center)
-            Spacer(Modifier.height(4.dp))
-            Text(
-                serverUrl,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-            )
+            if (serverUrl.isNotBlank()) {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    serverUrl,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                )
+            }
             Spacer(Modifier.height(16.dp))
             Button(onClick = onRetry) { Text("Try again") }
-            TextButton(onClick = onServerSettings) { Text("Server settings") }
+            if (showServerSettings) TextButton(onClick = onServerSettings) { Text("Server settings") }
         }
     }
 }

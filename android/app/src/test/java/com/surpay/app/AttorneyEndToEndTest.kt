@@ -13,6 +13,7 @@ import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTextClearance
 import androidx.test.core.app.ApplicationProvider
 import com.github.takahirom.roborazzi.captureRoboImage
 import com.surpay.app.data.ServerStore
@@ -86,13 +87,9 @@ class AttorneyEndToEndTest {
             CompositionLocalProvider(LocalPhotoSource provides fakeCamera) { SurpayTheme { Surface { SurpayApp(vm) } } }
         }
 
-        // 1. Attorney account
-        compose.waitUntilAtLeastOneExists(hasTestTag("attorneyToggle"), timeout)
-        compose.onNodeWithTag("attorneyToggle").performScrollTo().performClick()
-        compose.onNodeWithTag("name").performTextInput("Alex Counsel")
-        compose.onNodeWithTag("email").performTextInput("alex+${System.currentTimeMillis()}@law.example")
-        compose.onNodeWithTag("password").performTextInput("correct horse battery")
-        compose.onNodeWithTag("submit").performScrollTo().performClick()
+        // 1. Attorney account: "I'm an attorney" on the welcome screen
+        compose.waitUntilAtLeastOneExists(hasTestTag("roleAttorney"), timeout)
+        compose.createAccount("attorney", "Alex Counsel", "alex+${System.currentTimeMillis()}@law.example")
 
         // 2. Application: license, counties, bar card, terms
         compose.waitUntilAtLeastOneExists(hasTestTag("barNumber"), timeout)
@@ -123,7 +120,8 @@ class AttorneyEndToEndTest {
         val claimant = mapOf("Authorization" to "Bearer $demo")
         val recordId = call("${url}me/matches", headers = claimant).jsonObject["matches"]!!.jsonArray[0].jsonObject["record_id"]!!.jsonPrimitive.int
         val claimId = call("${url}me/claims", "POST", """{"record_id":$recordId}""", claimant).jsonObject["id"]!!.jsonPrimitive.int
-        call("${url}me/claims/$claimId/agreement", "POST", """{"signature_name":"Jordan Testwell","agreed":true}""", claimant)
+        call("${url}me/claims/$claimId/agreement", "POST",
+            """{"signature_name":"Jordan Testwell","agreed":true,"signature_png_b64":"$SIGNATURE_PNG_B64"}""", claimant)
 
         compose.onNodeWithText("Check status now").performClick()
         compose.waitUntilAtLeastOneExists(hasTestTag("case$claimId"), timeout)
@@ -137,9 +135,25 @@ class AttorneyEndToEndTest {
         compose.onNodeWithTag("acceptCase").performClick()
         compose.waitUntilAtLeastOneExists(hasTestTag("client"), timeout)
         compose.onNode(hasTestTag("client")).assert(androidx.compose.ui.test.hasAnyDescendant(hasText("Jordan Testwell")))
+        compose.onNodeWithTag("filingGuide").performScrollTo().assertExists()
         shot("4_case")
+        assertEquals("\"attorney_assigned\"", call("${url}me/claims/$claimId", headers = claimant).jsonObject["status"].toString())
 
-        // 6. Mark filed; the client's timeline shows it and names the attorney
+        // 6. The attorney writes first; contact details are blocked; the client can then reply
+        compose.onNodeWithTag("caseChat").performScrollTo().performClick()
+        compose.waitUntilAtLeastOneExists(hasTestTag("chatInput"), timeout)
+        compose.onNodeWithTag("chatInput").performTextInput("Call me at 614-555-0100")
+        compose.onNodeWithTag("chatWarning").assertExists()
+        compose.onNodeWithTag("chatInput").performTextClearance()
+        compose.onNodeWithTag("chatInput").performTextInput("Hello Jordan, I'm handling your claim. I'll file this week.")
+        compose.onNodeWithTag("chatSend").performClick()
+        compose.waitUntilAtLeastOneExists(hasText("Hello Jordan", substring = true), timeout)
+        shot("4b_chat")
+        call("${url}me/claims/$claimId/messages", "POST", """{"body":"Thank you!"}""", claimant)
+        compose.onNodeWithTag("back").performClick()
+        compose.waitUntilAtLeastOneExists(hasTestTag("status_filed"), timeout)
+
+        // 7. Mark filed; the client's timeline shows it and names the attorney
         compose.onNodeWithTag("status_filed").performScrollTo().performClick()
         compose.onNodeWithTag("dialogNote").performScrollTo().performTextInput("Filed with Demo County, case 2026-CV-123")
         compose.onNodeWithTag("dialogConfirm").performScrollTo().performClick()
@@ -148,5 +162,19 @@ class AttorneyEndToEndTest {
         val mine = call("${url}me/claims/$claimId", headers = claimant).jsonObject
         assertEquals("\"filed\"", mine["status"].toString())
         assertEquals("\"Alex Counsel\"", mine["attorney"]!!.jsonObject["name"].toString())
+
+        // 8. Waiting for the court, approved, money released: the client is notified at each step
+        for (s in listOf("hearing_pending", "approved", "paid")) {
+            compose.waitUntil(timeout) {
+                compose.onAllNodes(hasTestTag("status_$s") and androidx.compose.ui.test.isEnabled()).fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithTag("status_$s").performScrollTo().performClick()
+            compose.waitUntilAtLeastOneExists(hasTestTag("dialogConfirm"), timeout)
+            compose.onNodeWithTag("dialogConfirm").performScrollTo().performClick()
+        }
+        compose.waitUntilAtLeastOneExists(hasText("Case closed", substring = true), timeout)
+        val kinds = call("${url}me/notifications", headers = claimant).jsonObject["items"]!!.jsonArray
+            .map { it.jsonObject["kind"]!!.jsonPrimitive.content }
+        assertEquals("money_released", kinds.first())
     }
 }

@@ -24,13 +24,28 @@ fun claimStatusLabel(status: String): String = when (status) {
     "requested" -> "Claim started: verify your identity"
     "identity_submitted" -> "ID submitted: sign the agreement"
     "agreement_signed" -> "Agreement signed: ID under review"
-    "identity_verified" -> "Identity verified: preparing filing"
+    "identity_verified" -> "Identity verified: finding your attorney"
+    "attorney_assigned" -> "Attorney assigned: preparing your filing"
     "filed" -> "Filed with the county or court"
+    "hearing_pending" -> "Waiting for the county or court"
     "approved" -> "Approved: funds being released"
-    "paid" -> "Paid"
+    "paid" -> "Money released"
     "denied" -> "Claim denied"
     "withdrawn" -> "Withdrawn"
     else -> status
+}
+
+/** "Claim by Jun 17, 2027 · about 8 months left", or that the usual deadline has passed. */
+fun deadlineText(iso: String?): String? {
+    val d = iso?.let { runCatching { LocalDate.parse(it.take(10)) }.getOrNull() } ?: return null
+    val today = LocalDate.now()
+    if (d.isBefore(today)) return "The usual deadline (${d.format(LONG)}) has passed. An attorney can check if it can still be claimed."
+    val months = java.time.temporal.ChronoUnit.MONTHS.between(today, d)
+    val left = when {
+        months >= 2 -> "about $months months left"
+        else -> "${java.time.temporal.ChronoUnit.DAYS.between(today, d)} days left"
+    }
+    return "Claim by about ${d.format(LONG)} · $left"
 }
 
 private val SHORT = DateTimeFormatter.ofPattern("MMM d", Locale.US)

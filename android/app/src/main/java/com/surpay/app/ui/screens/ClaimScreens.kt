@@ -23,6 +23,15 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.automirrored.outlined.Chat
+import androidx.compose.material.icons.outlined.Gavel
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -42,65 +51,107 @@ import com.surpay.app.data.Claim
 import com.surpay.app.data.TimelineStep
 import com.surpay.app.ui.claimStatusLabel
 import com.surpay.app.ui.dateRange
+import com.surpay.app.ui.deadlineText
+import com.surpay.app.ui.theme.Gold
 import com.surpay.app.ui.dollars
 import com.surpay.app.ui.prettyDate
 
-/** One claim: what to do next, every step with dates, and the estimate disclaimer. */
+/** One claim: what to do next, every step with dates, the attorney, and the estimate disclaimer. */
 @Composable
 fun ClaimScreen(
     claim: Claim,
     onVerifyIdentity: () -> Unit,
     onSignAgreement: () -> Unit,
     onViewAgreement: () -> Unit,
+    onMessages: () -> Unit = {},
+    onWithdraw: () -> Unit = {},
+    busy: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
+    var confirmWithdraw by rememberSaveable { mutableStateOf(false) }
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp)) {
-        Text("${claim.county} County, ${claim.state} · ${claim.reference}", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(dollars(claim.amountCents), style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.ExtraBold)
-        Text(
-            "About ${dollars(claim.estimatedNetCents)} to you after our fee (estimate)",
-            style = MaterialTheme.typography.bodyMedium,
-        )
+        HeroCard {
+            Text("${claim.county} County, ${claim.state} · ${claim.reference}", style = MaterialTheme.typography.bodyMedium)
+            Text(dollars(claim.amountCents), style = MaterialTheme.typography.displaySmall)
+            Text("About ${dollars(claim.estimatedNetCents)} to you after the ${pct(claim.feePct)} fee (estimate)",
+                style = MaterialTheme.typography.bodyMedium)
+            claim.onBehalfOf?.let {
+                Spacer(Modifier.height(8.dp))
+                Pill("For $it", Color.White.copy(alpha = 0.18f), Color.White)
+            }
+            if (claim.status == "paid") {
+                Spacer(Modifier.height(8.dp))
+                Pill("🎉 Money released", Gold, Color(0xFF3A2C0B))
+            }
+        }
         Spacer(Modifier.height(16.dp))
 
         NextActionCard(claim, onVerifyIdentity, onSignAgreement)
 
-        if (claim.estimatedCompletionEnd != null) {
-            Spacer(Modifier.height(16.dp))
-            Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = MaterialTheme.shapes.medium,
-                modifier = Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(14.dp)) {
-                    Text("Estimated time to receive your money", style = MaterialTheme.typography.labelLarge)
-                    Text(
-                        dateRange(claim.estimatedCompletionStart, claim.estimatedCompletionEnd),
-                        style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold,
-                        modifier = Modifier.testTag("eta"),
-                    )
-                    Text("Typically 2–6 months in total. Some counties take longer.", style = MaterialTheme.typography.bodySmall)
+        if (claim.estimatedCompletionEnd != null && claim.status !in setOf("paid", "denied", "withdrawn")) {
+            Spacer(Modifier.height(12.dp))
+            SectionCard {
+                Text("Estimated time to receive your money", style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    dateRange(claim.estimatedCompletionStart, claim.estimatedCompletionEnd),
+                    style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.testTag("eta"),
+                )
+                Text("Typically 2 to 6 months in total. Some counties take longer.", style = MaterialTheme.typography.bodySmall)
+                deadlineText(claim.deadlineDate)?.let {
+                    Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 4.dp))
                 }
             }
         }
 
         claim.attorney?.let { a ->
-            Spacer(Modifier.height(16.dp))
-            OutlinedCard(Modifier.fillMaxWidth().testTag("yourAttorney")) {
-                Column(Modifier.padding(14.dp)) {
-                    Text("Your attorney", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(a.name, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
-                    Text(listOf(a.firm, a.bar).filter { it.isNotBlank() }.joinToString(" · "), style = MaterialTheme.typography.bodySmall)
-                    if (a.phone.isNotBlank()) Text(a.phone, style = MaterialTheme.typography.bodyMedium)
+            Spacer(Modifier.height(12.dp))
+            SectionCard(modifier = Modifier.testTag("yourAttorney")) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconCircle(Icons.Outlined.Gavel)
+                    Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                        Text("Your attorney", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(a.name, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                        Text(listOf(a.firm, a.bar).filter { it.isNotBlank() }.joinToString(" · "), style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+                if (claim.chatOpen) {
+                    Spacer(Modifier.height(10.dp))
+                    Button(onClick = onMessages, modifier = Modifier.fillMaxWidth().testTag("openChat")) {
+                        BadgedBox(badge = { if (claim.unreadMessages > 0) Badge { Text("${claim.unreadMessages}") } }) {
+                            Icon(Icons.AutoMirrored.Outlined.Chat, null)
+                        }
+                        Text("   Messages with your attorney")
+                    }
                 }
             }
         }
         Spacer(Modifier.height(20.dp))
-        Text("Your claim, step by step", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-        Spacer(Modifier.height(8.dp))
+        Text("Your claim, step by step", style = MaterialTheme.typography.titleMedium)
+        Spacer(Modifier.height(10.dp))
         claim.timeline.forEachIndexed { i, step -> TimelineRow(step, isLast = i == claim.timeline.lastIndex) }
 
-        LegalCard(claim.legal)
+        LegalCard(claim.legal, deadlineDate = claim.deadlineDate,
+            familyBasis = familyBasisOf(claim.onBehalfOf))
         Spacer(Modifier.height(12.dp))
-        if (claim.status in setOf("agreement_signed", "identity_verified", "filed", "approved", "paid")) {
-            OutlinedButton(onClick = onViewAgreement) { Text("View signed agreement") }
+        if (claim.status !in setOf("requested", "identity_submitted")) {
+            OutlinedButton(onClick = onViewAgreement, modifier = Modifier.fillMaxWidth()) { Text("View signed agreement") }
+        }
+        if (claim.status in setOf("requested", "identity_submitted", "agreement_signed", "identity_verified", "attorney_assigned")) {
+            if (!confirmWithdraw) {
+                TextButton(onClick = { confirmWithdraw = true }, modifier = Modifier.testTag("withdraw")) {
+                    Text("Cancel this claim", color = MaterialTheme.colorScheme.error)
+                }
+            } else {
+                NoteBox("Cancel this claim? You won’t owe anything. You can still claim the money yourself from the county.")
+                Row {
+                    TextButton(onClick = { onWithdraw(); confirmWithdraw = false }, enabled = !busy,
+                        modifier = Modifier.testTag("confirmWithdraw")) { Text("Yes, cancel it", color = MaterialTheme.colorScheme.error) }
+                    TextButton(onClick = { confirmWithdraw = false }) { Text("Keep my claim") }
+                }
+            }
         }
 
         Spacer(Modifier.height(16.dp))
@@ -112,12 +163,20 @@ fun ClaimScreen(
         )
         Spacer(Modifier.height(4.dp))
         Text(
-            "Open this screen any time from “My claims” to see where things stand.",
+            "Surpay is a technology platform, not a law firm. Your claim is made by you through your independent " +
+                "attorney, who is responsible for the legal work.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
+
+/** "Mary Parent (your parent, as heir)" -> "heir"; the server writes on_behalf_of in that form. */
+fun familyBasisOf(onBehalfOf: String?): String? = onBehalfOf?.let { b ->
+    listOf("heir", "power_of_attorney", "guardian").firstOrNull { b.contains(it.replace('_', ' ')) }
+}
+
+private fun pct(p: Double) = if (p % 1.0 == 0.0) "${p.toInt()}%" else "$p%"
 
 @Composable
 private fun NextActionCard(claim: Claim, onVerifyIdentity: () -> Unit, onSignAgreement: () -> Unit) {
@@ -169,6 +228,7 @@ private fun TimelineRow(step: TimelineStep, isLast: Boolean) {
     val done = step.state == "done"
     val current = step.state == "current"
     val dot = when {
+        done && step.status == "paid" -> Gold
         done -> MaterialTheme.colorScheme.primary
         current -> Color(0xFFE6A700)
         else -> MaterialTheme.colorScheme.outline
@@ -219,8 +279,8 @@ fun ClaimsScreen(claims: List<Claim>?, onOpen: (Claim) -> Unit, onFindMoney: () 
         }
         else -> LazyColumn(modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             items(claims, key = { it.id }) { c ->
-                OutlinedCard(Modifier.fillMaxWidth().clickable { onOpen(c) }.testTag("claim${c.id}")) {
-                    Column(Modifier.padding(16.dp)) {
+                SectionCard(onClick = { onOpen(c) }, modifier = Modifier.testTag("claim${c.id}")) {
+                    Column {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(dollars(c.amountCents), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold,
                                 modifier = Modifier.weight(1f))
@@ -231,6 +291,11 @@ fun ClaimsScreen(claims: List<Claim>?, onOpen: (Claim) -> Unit, onFindMoney: () 
                             }
                         }
                         Text("${c.county} County, ${c.state} · ${c.reference}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        c.onBehalfOf?.let { Text("For $it", style = MaterialTheme.typography.bodySmall) }
+                        if (c.unreadMessages > 0) {
+                            Text("${c.unreadMessages} new message(s) from your attorney", style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                        }
                         Spacer(Modifier.height(4.dp))
                         Text(claimStatusLabel(c.status), fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
                         if (c.estimatedCompletionEnd != null) {

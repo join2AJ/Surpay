@@ -20,7 +20,16 @@ class OfflineDemoApi : SurpayApi {
         DemoRecord(9004, "Case D-1004", "Morgan & Riley Example", "7 Birch Ct, Springfield, OH 45504", "7 birch", 4_390_075, "2024-09-09"),
         DemoRecord(9005, "Case D-1005", "Avery Sampleton", "230 Lake Shore Blvd, Springfield, OH 45505", "230 lake shore", 98_013, "2025-01-21"),
     )
-    private val feePct = 15.0
+    /** Mirrors backend/surpay/fees.py defaults: average of 15% and the amount band, to the nearest 0.5%. */
+    private fun feePct(cents: Long): Double {
+        val band = when {
+            cents <= 1_000_000 -> 25.0
+            cents <= 5_000_000 -> 20.0
+            cents <= 10_000_000 -> 15.0
+            else -> 12.0
+        }
+        return Math.round((15.0 + band) / 2 * 2) / 2.0
+    }
     private val now = Instant.now().toString()
 
     private var profile = freshProfile()
@@ -83,6 +92,7 @@ class OfflineDemoApi : SurpayApi {
     override suspend fun matches(): MatchesResponse {
         val matches = records.filter { nameMatches(it.owner) }.map { r ->
             // Same rounding as the server (Python round(): halves go to the even number).
+            val feePct = feePct(r.cents)
             val fee = java.math.BigDecimal(r.cents * feePct / 100).setScale(0, java.math.RoundingMode.HALF_EVEN).toLong()
             Match(
                 recordId = r.id, confidence = if (addressMatches(r)) "strong" else "likely",
@@ -90,7 +100,7 @@ class OfflineDemoApi : SurpayApi {
                 reference = r.ref, ownerName = r.owner, ownerAddress = r.address, amountCents = r.cents,
                 feePct = feePct, estimatedFeeCents = fee, estimatedNetCents = r.cents - fee,
                 saleDate = r.sold, sourceUrl = "", lastSeen = now, claimStatus = claims[r.id]?.keys?.last(),
-                legal = OHIO_LEGAL,
+                legal = OHIO_LEGAL, deadlineDate = java.time.LocalDate.parse(r.sold).plusYears(3).toString(),
             )
         }.sortedWith(compareBy<Match> { if (it.confidence == "strong") 0 else 1 }.thenByDescending { it.amountCents })
         return MatchesResponse(
@@ -110,6 +120,7 @@ class OfflineDemoApi : SurpayApi {
         val r = records.first { it.id == recordId }
         val reached = claims.getValue(recordId)
         val status = reached.keys.last()
+        val feePct = feePct(r.cents)
         val fee = java.math.BigDecimal(r.cents * feePct / 100).setScale(0, java.math.RoundingMode.HALF_EVEN).toLong()
         val timeline = demoTimeline(reached)
         val last = timeline.lastOrNull { it.estimateEnd != null }
@@ -127,6 +138,8 @@ class OfflineDemoApi : SurpayApi {
             estimatedCompletionStart = last?.estimateStart, estimatedCompletionEnd = last?.estimateEnd,
             disclaimer = DISCLAIMER,
             legal = OHIO_LEGAL,
+            feePct = feePct,
+            deadlineDate = java.time.LocalDate.parse(r.sold).plusYears(3).toString(),
         )
     }
 
@@ -153,18 +166,22 @@ class OfflineDemoApi : SurpayApi {
 
     override suspend fun agreement(id: Int): AgreementDoc {
         val r = records.first { it.id == id }
+        val pct = feePct(r.cents)
         return AgreementDoc(
             version = "offline-demo",
-            text = "SURPLUS FUNDS RECOVERY — CONTINGENCY FEE AGREEMENT (offline demo)\n\n" +
+            text = "SURPLUS FUNDS RECOVERY AGREEMENT (offline demo)\n\n" +
                 "Claimant: ${profile.fullName}\nFunds: ${r.ref}, Demo County, OH\n\n" +
                 "This is a demonstration only. On a real server this screen shows the full agreement: " +
-                "${feePct.toInt()}% fee only if funds are recovered, nothing upfront, your right to claim the " +
-                "funds yourself for free, and a 3-business-day cancellation window.",
-            feePct = feePct, signed = id in signed, signatureName = signed[id],
+                "a ${pct}% fee only if funds are recovered, nothing upfront, your right to claim the " +
+                "funds yourself for free, Surpay's role as a facilitator, and a 3-business-day cancellation window.",
+            feePct = pct, signed = id in signed, signatureName = signed[id], expectedName = profile.fullName,
         )
     }
 
     override suspend fun signAgreement(id: Int, body: SignRequest): Claim {
+        if (!body.signatureName.trim().equals(profile.fullName, ignoreCase = true)) {
+            throw IllegalStateException("Type your full legal name exactly as it appears on your ID: ${profile.fullName}")
+        }
         signed[id] = body.signatureName
         reach(id, "agreement_signed")
         reach(id, "identity_verified")  // ID already approved
@@ -173,6 +190,30 @@ class OfflineDemoApi : SurpayApi {
 
     override suspend fun counties(state: String): List<String> =
         if (state.equals("OH", ignoreCase = true)) listOf("Adams County", "Clark County", "Franklin County") else emptyList()
+
+    override suspend fun withdrawClaim(id: Int): Claim {
+        reach(id, "withdrawn")
+        return toClaim(id)
+    }
+
+    override suspend fun messages(id: Int) = Chat(
+        canSend = false, waitingReason = "Messages open once an attorney accepts your case.",
+        counterpart = "Your attorney",
+    )
+    override suspend fun sendMessage(id: Int, body: MessageRequest): Chat = offline()
+    override suspend fun notifications(afterId: Int) = Notifications()
+    override suspend fun markNotificationsRead() = kotlinx.serialization.json.JsonObject(emptyMap())
+    override suspend fun policies(): Policies = offline()
+    override suspend fun acceptCurrentTerms() = kotlinx.serialization.json.JsonObject(emptyMap())
+    override suspend fun relatives(): List<Relative> = emptyList()
+    override suspend fun addRelative(body: RelativeRequest): Relative = offline()
+    override suspend fun removeRelative(id: Int): kotlinx.serialization.json.JsonObject = offline()
+    override suspend fun exportData(): okhttp3.ResponseBody = offline()
+    override suspend fun deleteAccount(): DeleteResult = offline()
+    override suspend fun logoutEverywhere() = kotlinx.serialization.json.JsonObject(emptyMap())
+    override suspend fun casePacket(id: Int): okhttp3.ResponseBody = offline()
+    override suspend fun caseMessages(id: Int): Chat = offline()
+    override suspend fun sendCaseMessage(id: Int, body: MessageRequest): Chat = offline()
 
     override suspend fun attorneyTerms(state: String): AttorneyTerms = offline()
     override suspend fun attorneyApply(body: AttorneyApplication): AttorneyProfile = offline()
@@ -200,7 +241,13 @@ class OfflineDemoApi : SurpayApi {
             right = "Money left after a tax foreclosure sale pays the taxes, costs and liens belongs to the former owner. " +
                 "The county holds it in the owner’s name.",
             process = "A signed, notarized application is sent to the county auditor or treasurer with supporting documents.",
-            deadline = "The county pays the owner on demand within 3 years of receiving the funds.",
+            deadline = "The county pays the owner on request within 3 years of receiving the funds.",
+            ifMissed = "After 3 years the county moves the money into its own funds (in some counties, the land bank). " +
+                "It is then usually no longer recoverable.",
+            facilitator = "Surpay is a technology platform, not a law firm. It connects you with an independent licensed " +
+                "attorney and tracks your case. The claim is made by you, through the attorney you choose, who is " +
+                "responsible for the legal work. Surpay does not give legal advice and is not responsible for the " +
+                "outcome of any claim.",
             proof = listOf(
                 "A government photo ID (driver’s license, state ID or passport)",
                 "Proof you owned the property when it was sold: the deed, a property tax bill, or the county record showing your name",
@@ -218,8 +265,10 @@ class OfflineDemoApi : SurpayApi {
             Triple("identity_submitted", "Identity submitted", 0 to 0),
             Triple("agreement_signed", "Agreement signed", 0 to 0),
             Triple("identity_verified", "Identity verified", 1 to 3),
+            Triple("attorney_assigned", "Attorney assigned", 1 to 7),
             Triple("filed", "Claim filed", 7 to 21),
-            Triple("approved", "Approved by the county or court", 30 to 120),
+            Triple("hearing_pending", "Waiting for the county or court", 3 to 30),
+            Triple("approved", "Hearing held and claim approved", 30 to 120),
             Triple("paid", "Money released", 14 to 42),
         )
 

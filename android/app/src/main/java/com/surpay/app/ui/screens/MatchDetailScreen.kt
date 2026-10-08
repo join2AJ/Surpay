@@ -26,6 +26,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.surpay.app.data.Match
 import com.surpay.app.ui.claimStatusLabel
+import com.surpay.app.ui.deadlineText
 import com.surpay.app.ui.dollars
 import com.surpay.app.ui.prettyDate
 import com.surpay.app.ui.saleTypeLabel
@@ -48,17 +49,25 @@ fun MatchDetailScreen(
     ) {
         ConfidenceChip(match.confidence)
         Spacer(Modifier.height(10.dp))
-        Text("Surplus held by ${match.county} County, ${match.state}", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(dollars(match.amountCents), style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.ExtraBold)
-        Spacer(Modifier.height(16.dp))
-
-        OutlinedCard(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp)) {
-                Line("Surplus amount", dollars(match.amountCents))
-                Line("Surpay fee (${formatPct(match.feePct)}, only if recovered)", "− ${dollars(match.estimatedFeeCents)}")
-                HorizontalDivider(Modifier.padding(vertical = 8.dp))
-                Line("Estimated to you", dollars(match.estimatedNetCents), bold = true)
+        HeroCard {
+            Text("Surplus held by ${match.county} County, ${match.state}", style = MaterialTheme.typography.bodyMedium)
+            Text(dollars(match.amountCents), style = MaterialTheme.typography.displaySmall)
+            match.onBehalfOf?.let {
+                Spacer(Modifier.height(6.dp))
+                Text("For $it", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
             }
+        }
+        deadlineText(match.deadlineDate)?.let {
+            Spacer(Modifier.height(10.dp))
+            NoteBox(it + ". " + match.legal.ifMissed.ifBlank { "" })
+        }
+        Spacer(Modifier.height(12.dp))
+
+        SectionCard {
+            Line("Surplus amount", dollars(match.amountCents))
+            Line("Fee (${formatPct(match.feePct)}, only if recovered)", "− ${dollars(match.estimatedFeeCents)}")
+            HorizontalDivider(Modifier.padding(vertical = 8.dp))
+            Line("Estimated to you", dollars(match.estimatedNetCents), bold = true)
         }
         Spacer(Modifier.height(16.dp))
 
@@ -74,13 +83,14 @@ fun MatchDetailScreen(
         }
 
         Spacer(Modifier.height(12.dp))
-        LegalCard(match.legal)
+        LegalCard(match.legal, deadlineDate = match.deadlineDate, familyBasis = familyBasisOf(match.onBehalfOf))
         Spacer(Modifier.height(12.dp))
         Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = MaterialTheme.shapes.medium) {
             Text(
                 "You can claim this money yourself, for free, by contacting the ${match.county} County " +
-                    "office that holds it. If you’d rather we handle it, a licensed attorney files the claim and " +
-                    "you pay nothing unless it succeeds. Other lienholders may have a claim to part of the funds.",
+                    "office that holds it. If you’d rather not, an independent licensed attorney files the claim for you " +
+                    "and you pay nothing unless it succeeds. Surpay is a technology platform, not a law firm. Other " +
+                    "lienholders may have a claim to part of the funds.",
                 Modifier.padding(14.dp),
                 style = MaterialTheme.typography.bodySmall,
             )
@@ -110,7 +120,8 @@ fun MatchDetailScreen(
                 if (claiming) {
                     CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
                 } else {
-                    Text("This is me — start my claim", fontWeight = FontWeight.Bold)
+                    Text(if (match.onBehalfOf != null) "Start the claim for my family member" else "This is me: start my claim",
+                        fontWeight = FontWeight.Bold)
                 }
             }
             Spacer(Modifier.height(6.dp))

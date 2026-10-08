@@ -40,6 +40,17 @@ class ApiContractTest {
         assertEquals("Bearer abc", server.takeRequest().getHeader("Authorization"))
     }
 
+    @Test fun sendsDeviceHeadersForTheAuditTrail() = runTest {
+        server.enqueue(MockResponse().setBody("""{"records":0,"total_amount_cents":0,"counties":[]}"""))
+        val withDevice = SurpayApi.create({ server.url("/").toString() }, { null },
+            com.surpay.app.data.DeviceInfo("dev-1", "inst-1", "Pixel 8", "Android 15", "0.2.0"))
+        withDevice.coverage()
+        val r = server.takeRequest()
+        assertEquals("dev-1", r.getHeader("X-Device-Id"))
+        assertEquals("inst-1", r.getHeader("X-Install-Id"))
+        assertEquals("Pixel 8", r.getHeader("X-Device-Model"))
+    }
+
     @Test fun omitsAuthHeaderWhenSignedOut() = runTest {
         token = null
         server.enqueue(MockResponse().setBody("""{"records":0,"total_amount_cents":0,"counties":[]}"""))

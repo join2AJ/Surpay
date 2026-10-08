@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths>
     <cache-path name="photos" path="photos/" />
+    <!-- Data exports and claim packets, opened or shared with another app. -->
+    <cache-path name="shared" path="shared/" />
 </paths>

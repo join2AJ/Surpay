@@ -52,7 +52,7 @@ import com.surpay.app.data.ProfileUpdate
 import com.surpay.app.ui.FormState
 import com.surpay.app.ui.US_STATES
 
-private data class AddressDraft(
+internal data class AddressDraft(
     val street: String = "",
     val city: String = "",
     val state: String = "",
@@ -205,7 +205,7 @@ fun ProfileScreen(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun AddressCard(
+internal fun AddressCard(
     draft: AddressDraft,
     index: Int,
     counties: List<String>,

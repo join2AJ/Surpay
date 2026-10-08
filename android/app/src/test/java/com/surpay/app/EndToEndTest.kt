@@ -63,14 +63,12 @@ class EndToEndTest {
         }
         val timeout = 15_000L
 
-        // Sign up
-        compose.waitUntilAtLeastOneExists(hasText("Create your free account"), timeout)
+        // Welcome: choose "Find money owed to me", create the account, accept the terms
+        compose.waitUntilAtLeastOneExists(hasTestTag("roleClaimant"), timeout)
         compose.waitUntilAtLeastOneExists(hasText("Tracking", substring = true), timeout)
-        compose.onNodeWithTag("name").performTextInput("Jordan Testwell")
-        compose.onNodeWithTag("email").performTextInput("jordan+${System.currentTimeMillis()}@example.com")
-        compose.onNodeWithTag("password").performTextInput("correct horse battery")
+        shot("0_welcome")
+        compose.createAccount("claimant", "Jordan Testwell", "jordan+${System.currentTimeMillis()}@example.com")
         shot("1_signup")
-        compose.onNodeWithTag("submit").performScrollTo().performClick()
 
         // Step 2: verify identity before anything else
         compose.waitUntilAtLeastOneExists(hasText("Step 2 of 4 · Verify ID"), timeout)
@@ -115,10 +113,11 @@ class EndToEndTest {
         shot("6_legal")
         compose.onNodeWithTag("startClaim").performScrollTo().performClick()
         compose.waitUntilAtLeastOneExists(hasTestTag("agreementText"), timeout)
-        compose.onNodeWithText("Fee: 15%", substring = true).assertExists()
+        compose.onNodeWithText("Fee: 17.5%", substring = true).assertExists()
+        shot("6b_agreement")
         compose.signAgreement("Jordan Testwell")
         compose.waitUntilAtLeastOneExists(hasTestTag("eta"), timeout)
-        compose.onNodeWithText("Identity verified: preparing filing").assertExists()
+        compose.onNodeWithText("Identity verified: finding your attorney").assertExists()
         compose.onNodeWithTag("eta").performScrollTo()
         shot("7_timeline")
 
@@ -127,8 +126,16 @@ class EndToEndTest {
         compose.waitUntilAtLeastOneExists(hasTestTag("viewClaim"), timeout)
         compose.onNodeWithTag("back").performClick()
         compose.onNodeWithTag("claimsTab").performClick()
-        compose.waitUntilAtLeastOneExists(hasText("Identity verified: preparing filing"), timeout)
+        compose.waitUntilAtLeastOneExists(hasText("Identity verified: finding your attorney"), timeout)
         shot("8_my_claims")
+
+        // Account tab: family members, notifications, privacy
+        compose.onNodeWithTag("accountTab").performClick()
+        compose.waitUntilAtLeastOneExists(hasTestTag("navPrivacy"), timeout)
+        shot("9_account")
+        compose.onNodeWithTag("navPrivacy").performClick()
+        compose.waitUntilAtLeastOneExists(hasTestTag("exportData"), timeout)
+        shot("10_privacy")
     }
 
     /** What staff do on /admin: approve the newest pending ID. */
@@ -153,6 +160,7 @@ class EndToEndTest {
         compose.setContent { SurpayTheme { Surface { SurpayApp(vm) } } }
 
         compose.waitUntilAtLeastOneExists(hasTestTag("demoLogin"), 15_000)
+        compose.onNodeWithTag("demoLogin").performScrollTo()
         shot("6_demo_button")
         compose.onNodeWithTag("demoLogin").performClick()
         // Straight to matches: the demo profile already has an address, so the strong match shows.

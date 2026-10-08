@@ -106,8 +106,27 @@ How cases flow:
 5. When the case closes (paid or denied), the per-case fee shows **due**. Pay the attorney, then
    press **Mark attorney paid**.
 
+6. After accepting, the attorney writes to the client first in the app's messages. Phone numbers, emails and
+   links are blocked so the conversation stays in the app. The case screen shows a step-by-step filing guide
+   for the state and a printable claim packet (PDF: cover sheet, draft affidavit with notary block, signed
+   agreement, documents). The attorney reports **filed → waiting for county/court → approved → money released**;
+   the client gets a phone notification at each step.
+
 The fee per case is `SURPAY_ATTORNEY_FEE_CENTS` (default 50000 = $500), a placeholder you set
 from your attorney agreements. Per-state amounts can be set in `backend/surpay/config.py`.
+
+### Fees, family claims, audit (the dropdown at the top of `/admin`)
+
+- **Fee rules**: the client's fee is the average of the county's usual rate and the rate for the amount
+  (bands), capped at the legal maximum you enter for the state or county. Users only see the result. You can
+  set a different fee for one case before the client signs.
+- **Reviews** also lists **family claims**: someone claiming for a relative who died (as heir) or under a
+  power of attorney. Check the death certificate and the documents linking them before approving; only then
+  do that relative's records appear.
+- **Audit trail**: every action with time, IP and device, and a check that no record was altered. Each
+  signed claim has an evidence certificate (typed name vs ID, drawn signature, document fingerprint).
+
+See `docs/COMPLIANCE.md` for security and privacy (DPDP, ISO 27001, NIST CSF).
 
 ID photos are encrypted in the database with `SURPAY_ENCRYPTION_KEY`. **Never change or delete
 that key** once IDs are stored, or they can't be opened again.

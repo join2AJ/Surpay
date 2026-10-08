@@ -14,6 +14,7 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.test.core.app.ApplicationProvider
 import com.github.takahirom.roborazzi.captureRoboImage
+import com.surpay.app.data.AppPrefs
 import com.surpay.app.data.ServerStore
 import com.surpay.app.data.SurpayApi
 import com.surpay.app.data.SurpayRepository
@@ -52,11 +53,12 @@ class OfflineDemoTest {
 
     @After fun tearDown() = server.shutdown()
 
-    private fun launch() {
+    private fun launch(prefs: AppPrefs? = null) {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
         val tokens = TokenStore(context).also { runBlocking { it.clear() } }
         val store = ServerStore(context, server.url("/").toString())
-        val vm = SurpayViewModel(SurpayRepository(SurpayApi.create({ store.current }, { tokens.cached }), tokens), store)
+        val vm = SurpayViewModel(SurpayRepository(SurpayApi.create({ store.current }, { tokens.cached }), tokens), store,
+            prefs, versionCode = 2)
         compose.setContent {
             CompositionLocalProvider(LocalPhotoSource provides fakeCamera) { SurpayTheme { Surface { SurpayApp(vm) } } }
         }
@@ -64,16 +66,31 @@ class OfflineDemoTest {
 
     private fun shot(name: String) = compose.onRoot().captureRoboImage("build/outputs/roborazzi/offline_$name.png")
 
+    @Test fun firstLaunchShowsIntroThenWelcome() {
+        launch(AppPrefs(ApplicationProvider.getApplicationContext()))
+        compose.waitUntilAtLeastOneExists(hasTestTag("intro"), 10_000)
+        compose.onNodeWithText("Money from a home sale may be waiting for you").assertExists()
+        shot("0_intro")
+        repeat(3) { compose.onNodeWithTag("introNext").performClick(); compose.waitForIdle() }
+        compose.onNodeWithText("Get started").assertExists()
+        shot("0b_intro_last")
+        compose.onNodeWithTag("introNext").performClick()
+        compose.waitUntilAtLeastOneExists(hasTestTag("roleClaimant"), 10_000)
+        compose.onNodeWithTag("roleAttorney").assertExists()
+        compose.onNodeWithTag("serverSettings").assertDoesNotExist()  // hidden from normal users
+        shot("0c_welcome")
+    }
+
     @Test fun demoButtonWorksWithoutAServer() {
         launch()
         compose.waitUntilAtLeastOneExists(hasTestTag("demoLogin"), 10_000)
-        compose.onNodeWithTag("demoLogin").performClick()
+        compose.onNodeWithTag("demoLogin").performScrollTo().performClick()
 
         compose.waitUntilAtLeastOneExists(hasTestTag("totalAmount"), 10_000)
         compose.onNodeWithTag("offlineBanner").assertExists()
         compose.onNodeWithText("$34,575.50").assertExists()
         compose.onNodeWithText("Name & address match").assertExists()
-        compose.onNodeWithText("$29,389.18", substring = true).assertExists() // same net as the server
+        compose.onNodeWithText("$28,371.65", substring = true).assertExists() // same net as the server
         shot("1_matches")
 
         compose.onNodeWithText("$28,450.00").performClick()
@@ -83,18 +100,16 @@ class OfflineDemoTest {
         // The demo person is pre-verified: straight to signing
         compose.signAgreement("Jordan Testwell")
         compose.waitUntilAtLeastOneExists(hasTestTag("eta"), 10_000)
-        compose.onNodeWithText("Identity verified: preparing filing").assertExists()
+        compose.onNodeWithText("Identity verified: finding your attorney").assertExists()
+        shot("2_timeline")
     }
 
     @Test fun signUpExplainsThereIsNoServer() {
         launch()
-        compose.waitUntilAtLeastOneExists(hasTestTag("name"), 10_000)
-        compose.onNodeWithTag("name").performTextInput("Real Person")
-        compose.onNodeWithTag("email").performTextInput("real@example.com")
-        compose.onNodeWithTag("password").performTextInput("correct horse battery")
-        compose.onNodeWithTag("submit").performScrollTo().performClick()
+        compose.waitUntilAtLeastOneExists(hasTestTag("roleClaimant"), 10_000)
+        compose.createAccount("claimant", "Real Person", "real@example.com")
         compose.waitUntilAtLeastOneExists(hasTestTag("error"), 10_000)
-        compose.onNodeWithText("No Surpay server found at this address", substring = true).assertExists()
+        compose.onNodeWithText("Surpay isn't available right now", substring = true).assertExists()
         shot("2_no_server_error")
     }
 }

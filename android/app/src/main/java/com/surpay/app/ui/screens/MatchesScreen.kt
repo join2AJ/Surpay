@@ -33,6 +33,7 @@ import com.surpay.app.data.Match
 import com.surpay.app.data.MatchesResponse
 import com.surpay.app.ui.MatchesState
 import com.surpay.app.ui.claimStatusLabel
+import com.surpay.app.ui.deadlineText
 import com.surpay.app.ui.dollars
 import com.surpay.app.ui.prettyDate
 import com.surpay.app.ui.saleTypeLabel
@@ -91,38 +92,32 @@ fun MatchesScreen(
 @Composable
 private fun SummaryCard(data: MatchesResponse) {
     val found = data.matches.isNotEmpty()
-    Card(
-        colors = CardDefaults.cardColors(
-            containerColor = if (found) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-            contentColor = if (found) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
-        ),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Column(Modifier.padding(20.dp)) {
-            if (found) {
-                Text("You may be owed", style = MaterialTheme.typography.titleSmall)
-                Text(
-                    dollars(data.totalAmountCents),
-                    style = MaterialTheme.typography.displaySmall,
-                    fontWeight = FontWeight.ExtraBold,
-                    modifier = Modifier.testTag("totalAmount"),
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    "About ${dollars(data.totalEstimatedNetCents)} to you after our fee · " +
-                        "${data.matches.size} possible ${if (data.matches.size == 1) "record" else "records"}",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-            } else {
-                Text("No surplus found under your name yet", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            }
-            Spacer(Modifier.height(8.dp))
+    if (!found) {
+        SectionCard {
+            Text("No surplus found yet", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Text(
                 "Searched ${"%,d".format(data.recordsSearched)} records in ${data.countiesCovered.size} " +
                     if (data.countiesCovered.size == 1) "county" else "counties",
                 style = MaterialTheme.typography.bodySmall,
             )
         }
+        return
+    }
+    HeroCard {
+        Text("You may be owed", style = MaterialTheme.typography.titleSmall)
+        Text(dollars(data.totalAmountCents), style = MaterialTheme.typography.displaySmall, modifier = Modifier.testTag("totalAmount"))
+        Spacer(Modifier.height(4.dp))
+        Text(
+            "About ${dollars(data.totalEstimatedNetCents)} to you after fees · " +
+                "${data.matches.size} possible ${if (data.matches.size == 1) "record" else "records"}",
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        Spacer(Modifier.height(10.dp))
+        Text(
+            "Searched ${"%,d".format(data.recordsSearched)} records in ${data.countiesCovered.size} " +
+                if (data.countiesCovered.size == 1) "county" else "counties",
+            style = MaterialTheme.typography.bodySmall,
+        )
     }
 }
 
@@ -158,33 +153,31 @@ fun ConfidenceChip(confidence: String) {
 
 @Composable
 private fun MatchCard(match: Match, onClick: () -> Unit) {
-    OutlinedCard(Modifier.fillMaxWidth().clickable(onClick = onClick).testTag("match${match.recordId}")) {
-        Column(Modifier.padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    dollars(match.amountCents),
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.weight(1f),
-                )
-                ConfidenceChip(match.confidence)
-            }
+    SectionCard(onClick = onClick, modifier = Modifier.testTag("match${match.recordId}")) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(dollars(match.amountCents), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold,
+                modifier = Modifier.weight(1f))
+            ConfidenceChip(match.confidence)
+        }
+        Spacer(Modifier.height(6.dp))
+        match.onBehalfOf?.let {
+            Pill("For $it", MaterialTheme.colorScheme.secondaryContainer, MaterialTheme.colorScheme.onSurface)
             Spacer(Modifier.height(6.dp))
-            Text("${match.county} County, ${match.state} · ${saleTypeLabel(match.saleType)}", fontWeight = FontWeight.SemiBold)
-            Text(
-                "Listed owner: ${match.ownerName}",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Text(
-                "Sold ${prettyDate(match.saleDate)} · ${match.reference}",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            match.claimStatus?.let {
-                Spacer(Modifier.height(8.dp))
-                Text(claimStatusLabel(it), color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
+        }
+        Text("${match.county} County, ${match.state} · ${saleTypeLabel(match.saleType)}", fontWeight = FontWeight.SemiBold)
+        Text("Listed owner: ${match.ownerName}", style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("Sold ${prettyDate(match.saleDate)} · ${match.reference}", style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (match.claimStatus == null) {
+            deadlineText(match.deadlineDate)?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 4.dp))
             }
+        }
+        match.claimStatus?.let {
+            Spacer(Modifier.height(8.dp))
+            Text(claimStatusLabel(it), color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
         }
     }
 }

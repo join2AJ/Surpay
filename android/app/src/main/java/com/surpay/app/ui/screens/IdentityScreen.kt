@@ -67,7 +67,7 @@ fun parseDob(text: String): String? {
 }
 
 /** Formats digits as MM/DD/YYYY while typing. */
-private fun formatDob(input: String): String {
+internal fun formatDob(input: String): String {
     val digits = input.filter { it.isDigit() }.take(8)
     return buildString {
         digits.forEachIndexed { i, c ->
@@ -268,7 +268,7 @@ private fun Field(value: String, onChange: (String) -> Unit, label: String, tag:
 }
 
 @Composable
-private fun PhotoSlot(title: String, hint: String, bytes: ByteArray?, tag: String, onCamera: () -> Unit, onGallery: () -> Unit) {
+internal fun PhotoSlot(title: String, hint: String, bytes: ByteArray?, tag: String, onCamera: () -> Unit, onGallery: () -> Unit) {
     OutlinedCard(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
         Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
             val bitmap = remember(bytes) { bytes?.let { BitmapFactory.decodeByteArray(it, 0, it.size)?.asImageBitmap() } }

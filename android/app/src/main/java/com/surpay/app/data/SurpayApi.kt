@@ -37,6 +37,7 @@ data class SignupRequest(
     val phone: String = "",
     /** claimant | attorney */
     val role: String = "claimant",
+    @SerialName("accept_terms") val acceptTerms: Boolean = false,
 )
 
 @Serializable
@@ -56,6 +57,10 @@ data class Profile(
     @SerialName("name_locked") val nameLocked: Boolean = false,
     /** claimant | attorney */
     val role: String = "claimant",
+    /** False when the Terms or Privacy Notice changed since they accepted: ask again. */
+    @SerialName("terms_current") val termsCurrent: Boolean = true,
+    @SerialName("unread_notifications") val unreadNotifications: Int = 0,
+    @SerialName("deletion_requested") val deletionRequested: Boolean = false,
 )
 
 @Serializable
@@ -71,8 +76,14 @@ data class Legal(
     val right: String = "",
     val process: String = "",
     val deadline: String = "",
+    /** What happens to the money if nobody claims it in time. */
+    @SerialName("if_missed") val ifMissed: String = "",
     val proof: List<String> = emptyList(),
+    /** Extra proof when claiming for a family member: heir | power_of_attorney | guardian -> items. */
+    @SerialName("family_proof") val familyProof: Map<String, List<String>> = emptyMap(),
     val note: String = "",
+    /** Surpay is a platform, not a law firm; the claimant and their attorney make the claim. */
+    val facilitator: String = "",
     val constitutional: String = "",
     val sources: List<String> = emptyList(),
 )
@@ -108,6 +119,11 @@ data class Match(
     @SerialName("last_seen") val lastSeen: String,
     @SerialName("claim_status") val claimStatus: String? = null,
     val legal: Legal = Legal(),
+    /** Approximate last day to claim. */
+    @SerialName("deadline_date") val deadlineDate: String? = null,
+    @SerialName("relative_id") val relativeId: Int? = null,
+    /** Family claims: "Mary Parent (your parent, as heir)". */
+    @SerialName("on_behalf_of") val onBehalfOf: String? = null,
 )
 
 @Serializable
@@ -159,6 +175,12 @@ data class Claim(
     val legal: Legal = Legal(),
     /** The partner attorney, once they've accepted the case. */
     val attorney: AttorneyPublic? = null,
+    @SerialName("fee_pct") val feePct: Double = 0.0,
+    @SerialName("deadline_date") val deadlineDate: String? = null,
+    @SerialName("on_behalf_of") val onBehalfOf: String? = null,
+    /** Messages with the attorney: open once they accept the case. */
+    @SerialName("chat_open") val chatOpen: Boolean = false,
+    @SerialName("unread_messages") val unreadMessages: Int = 0,
 )
 
 @Serializable
@@ -201,10 +223,17 @@ data class AttorneyTerms(
 )
 
 @Serializable
+data class CaseRelative(
+    val name: String,
+    val relationship: String = "",
+    val basis: String = "",
+    @SerialName("date_of_death") val dateOfDeath: String? = null,
+    val documents: List<String> = emptyList(),
+)
+
+@Serializable
 data class CaseClaimant(
     val name: String,
-    val email: String = "",
-    val phone: String = "",
     @SerialName("date_of_birth") val dateOfBirth: String? = null,
     @SerialName("current_address") val currentAddress: String = "",
     @SerialName("other_names") val otherNames: List<String> = emptyList(),
@@ -212,6 +241,8 @@ data class CaseClaimant(
     @SerialName("id_type") val idType: String = "",
     @SerialName("has_id_back") val hasIdBack: Boolean = false,
     val homes: List<String> = emptyList(),
+    /** Set when the client claims as a family member's heir or under their authority. */
+    val relative: CaseRelative? = null,
 )
 
 @Serializable
@@ -220,6 +251,19 @@ data class CaseAgreement(
     @SerialName("signature_name") val signatureName: String,
     @SerialName("signed_at") val signedAt: String,
     @SerialName("fee_pct") val feePct: Double = 0.0,
+    @SerialName("document_sha256") val documentSha256: String = "",
+    @SerialName("ip_address") val ipAddress: String = "",
+    val device: String = "",
+    @SerialName("has_signature_image") val hasSignatureImage: Boolean = false,
+)
+
+/** How claims are filed in a state, step by step, and what must be printed. */
+@Serializable
+data class FilingGuide(
+    val where: String = "",
+    val online: String = "",
+    val steps: List<String> = emptyList(),
+    val print: List<String> = emptyList(),
 )
 
 @Serializable
@@ -251,6 +295,10 @@ data class AttorneyCase(
     @SerialName("accepted_at") val acceptedAt: String? = null,
     @SerialName("source_url") val sourceUrl: String = "",
     val legal: Legal = Legal(),
+    @SerialName("on_behalf_of") val onBehalfOf: String? = null,
+    @SerialName("filing_guide") val filingGuide: FilingGuide = FilingGuide(),
+    @SerialName("chat_open") val chatOpen: Boolean = false,
+    @SerialName("unread_messages") val unreadMessages: Int = 0,
     val claimant: CaseClaimant? = null,
     val agreement: CaseAgreement? = null,
     val record: CaseRecord? = null,
@@ -289,10 +337,96 @@ data class AgreementDoc(
     val signed: Boolean,
     @SerialName("signature_name") val signatureName: String? = null,
     @SerialName("signed_at") val signedAt: String? = null,
+    /** The typed signature must match this: the name on the verified ID. */
+    @SerialName("expected_name") val expectedName: String = "",
+    @SerialName("document_sha256") val documentSha256: String = "",
 )
 
 @Serializable
-data class SignRequest(@SerialName("signature_name") val signatureName: String, val agreed: Boolean)
+data class SignRequest(
+    @SerialName("signature_name") val signatureName: String,
+    val agreed: Boolean,
+    /** The signature drawn on screen, as a base64 PNG. */
+    @SerialName("signature_png_b64") val signaturePngB64: String,
+)
+
+@Serializable
+data class Message(
+    val id: Int,
+    /** attorney | claimant */
+    @SerialName("sender_role") val senderRole: String,
+    val body: String,
+    @SerialName("created_at") val createdAt: String,
+    val read: Boolean = false,
+)
+
+@Serializable
+data class Chat(
+    val messages: List<Message> = emptyList(),
+    @SerialName("can_send") val canSend: Boolean = false,
+    @SerialName("waiting_reason") val waitingReason: String = "",
+    val counterpart: String = "",
+    @SerialName("code_of_conduct") val codeOfConduct: List<String> = emptyList(),
+)
+
+@Serializable
+data class MessageRequest(val body: String)
+
+@Serializable
+data class AppNotification(
+    val id: Int,
+    /** claim_update | money_released | message | case_offer | identity | relative */
+    val kind: String,
+    val title: String,
+    val body: String = "",
+    @SerialName("claim_id") val claimId: Int? = null,
+    @SerialName("created_at") val createdAt: String,
+    val read: Boolean = false,
+)
+
+@Serializable
+data class Notifications(val items: List<AppNotification> = emptyList(), val unread: Int = 0)
+
+@Serializable
+data class Policies(
+    @SerialName("terms_version") val termsVersion: String,
+    val terms: String,
+    @SerialName("privacy_version") val privacyVersion: String,
+    val privacy: String,
+)
+
+/** A family member whose surplus the user claims as heir, or under a power of attorney / guardianship. */
+@Serializable
+data class Relative(
+    val id: Int,
+    @SerialName("full_name") val fullName: String,
+    @SerialName("other_names") val otherNames: List<String> = emptyList(),
+    val relationship: String,
+    val basis: String,
+    @SerialName("date_of_death") val dateOfDeath: String? = null,
+    /** pending | approved | rejected */
+    @SerialName("review_status") val reviewStatus: String,
+    @SerialName("review_note") val reviewNote: String = "",
+    val addresses: List<Address> = emptyList(),
+    @SerialName("submitted_at") val submittedAt: String = "",
+)
+
+@Serializable
+data class RelativeRequest(
+    @SerialName("full_name") val fullName: String,
+    @SerialName("other_names") val otherNames: List<String> = emptyList(),
+    val relationship: String,
+    val basis: String,
+    @SerialName("date_of_death") val dateOfDeath: String? = null,
+    @SerialName("death_certificate_b64") val deathCertificateB64: String? = null,
+    @SerialName("relationship_proof_b64") val relationshipProofB64: String,
+    @SerialName("authority_document_b64") val authorityDocumentB64: String? = null,
+    val addresses: List<Address>,
+    val consent: Boolean,
+)
+
+@Serializable
+data class DeleteResult(val deleted: Boolean, val message: String)
 
 @Serializable
 data class Coverage(
@@ -301,6 +435,20 @@ data class Coverage(
     val counties: List<String>,
     @SerialName("demo_login") val demoLogin: Boolean = false,
 )
+
+/** Identifies this install and phone in the audit trail. Android doesn't let apps read the IMEI. */
+data class DeviceInfo(
+    val deviceId: String = "",
+    val installId: String = "",
+    val model: String = "",
+    val osVersion: String = "",
+    val appVersion: String = "",
+) {
+    fun headers() = mapOf(
+        "X-Device-Id" to deviceId, "X-Install-Id" to installId, "X-Device-Model" to model,
+        "X-OS-Version" to osVersion, "X-App-Version" to appVersion,
+    )
+}
 
 @Serializable
 data class ApiError(val detail: kotlinx.serialization.json.JsonElement? = null)
@@ -321,6 +469,21 @@ interface SurpayApi {
     @GET("me/claims/{id}/agreement") suspend fun agreement(@Path("id") id: Int): AgreementDoc
     @POST("me/claims/{id}/agreement") suspend fun signAgreement(@Path("id") id: Int, @Body body: SignRequest): Claim
     @GET("counties") suspend fun counties(@Query("state") state: String): List<String>
+    @POST("me/claims/{id}/withdraw") suspend fun withdrawClaim(@Path("id") id: Int): Claim
+    @GET("me/claims/{id}/messages") suspend fun messages(@Path("id") id: Int): Chat
+    @POST("me/claims/{id}/messages") suspend fun sendMessage(@Path("id") id: Int, @Body body: MessageRequest): Chat
+
+    // --- Notifications, family members, privacy ---
+    @GET("me/notifications") suspend fun notifications(@Query("after_id") afterId: Int = 0): Notifications
+    @POST("me/notifications/read") suspend fun markNotificationsRead(): kotlinx.serialization.json.JsonObject
+    @GET("policies") suspend fun policies(): Policies
+    @POST("me/consents/accept-current") suspend fun acceptCurrentTerms(): kotlinx.serialization.json.JsonObject
+    @GET("me/relatives") suspend fun relatives(): List<Relative>
+    @POST("me/relatives") suspend fun addRelative(@Body body: RelativeRequest): Relative
+    @retrofit2.http.DELETE("me/relatives/{id}") suspend fun removeRelative(@Path("id") id: Int): kotlinx.serialization.json.JsonObject
+    @GET("me/export") suspend fun exportData(): okhttp3.ResponseBody
+    @POST("me/delete") suspend fun deleteAccount(): DeleteResult
+    @POST("auth/logout-all") suspend fun logoutEverywhere(): kotlinx.serialization.json.JsonObject
 
     // --- Partner attorneys ---
     @GET("attorney/terms") suspend fun attorneyTerms(@Query("state") state: String): AttorneyTerms
@@ -333,6 +496,9 @@ interface SurpayApi {
     @POST("attorney/cases/{id}/decline") suspend fun declineCase(@Path("id") id: Int, @Body body: DeclineRequest): kotlinx.serialization.json.JsonObject
     @POST("attorney/cases/{id}/status") suspend fun updateCase(@Path("id") id: Int, @Body body: CaseStatusRequest): AttorneyCase
     @GET("attorney/cases/{id}/documents/{kind}") suspend fun caseDocument(@Path("id") id: Int, @Path("kind") kind: String): okhttp3.ResponseBody
+    @GET("attorney/cases/{id}/packet") suspend fun casePacket(@Path("id") id: Int): okhttp3.ResponseBody
+    @GET("attorney/cases/{id}/messages") suspend fun caseMessages(@Path("id") id: Int): Chat
+    @POST("attorney/cases/{id}/messages") suspend fun sendCaseMessage(@Path("id") id: Int, @Body body: MessageRequest): Chat
 
     companion object {
         val json = Json { ignoreUnknownKeys = true; explicitNulls = false }
@@ -345,7 +511,11 @@ interface SurpayApi {
          * effect immediately. Timeouts are long because a free Render instance can take about a
          * minute to wake up.
          */
-        fun create(baseUrlProvider: () -> String, tokenProvider: () -> String?): SurpayApi {
+        fun create(
+            baseUrlProvider: () -> String,
+            tokenProvider: () -> String?,
+            device: DeviceInfo = DeviceInfo(),
+        ): SurpayApi {
             val rewrite = Interceptor { chain ->
                 val original = chain.request()
                 val base = baseUrlProvider().let { if (it.endsWith("/")) it else "$it/" }.toHttpUrl()
@@ -355,6 +525,8 @@ interface SurpayApi {
                     .build()
                 val builder = original.newBuilder().url(url)
                 tokenProvider()?.let { builder.header("Authorization", "Bearer $it") }
+                // Recorded in the server's audit trail with each action (who did what, from which phone).
+                device.headers().forEach { (k, v) -> if (v.isNotBlank()) builder.header(k, v) }
                 chain.proceed(builder.build())
             }
             val client = OkHttpClient.Builder()
