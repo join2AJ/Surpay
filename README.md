@@ -7,7 +7,7 @@ Find and reclaim foreclosure and tax-sale surplus funds. Free search, contingenc
 | Path | What |
 |---|---|
 | `backend/` | Python API, county scrapers, database, name/address matching |
-| `android/` | Android app (Kotlin + Jetpack Compose): sign up, add past addresses, see what you may be owed, start a claim |
+| `android/` | Android app (Kotlin + Jetpack Compose). Claimants: verify ID, list homes, see what they're owed and the law behind it, sign, follow their claim. Attorneys: apply, get verified, accept cases in their counties, report progress |
 | `index.html`, `styles.css`, `app.js` | Marketing landing page with an intake form |
 | `docs/STRATEGY.md` | Market, compliance constraints, and the roadmap |
 | `docs/COUNTIES.md` | Which counties publish surplus lists, in what format, and which are worth tracking |

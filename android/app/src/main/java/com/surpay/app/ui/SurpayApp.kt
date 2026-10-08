@@ -25,6 +25,7 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -44,6 +45,10 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.surpay.app.ui.screens.AgreementScreen
+import com.surpay.app.ui.screens.AttorneyApplyScreen
+import com.surpay.app.ui.screens.AttorneyPendingScreen
+import com.surpay.app.ui.screens.CaseDetailScreen
+import com.surpay.app.ui.screens.CasesScreen
 import com.surpay.app.ui.screens.AuthScreen
 import com.surpay.app.ui.screens.ClaimScreen
 import com.surpay.app.ui.screens.ClaimsScreen
@@ -98,8 +103,12 @@ fun SurpayApp(vm: SurpayViewModel) {
             onClearError = vm::clearFormError,
             onServerSettings = { showServer = true },
         )
-        // Verified people get the app; everyone else finishes onboarding first.
-        is SessionState.SignedIn -> if (s.profile.identityStatus == "approved") SignedInApp(vm, s) else OnboardingFlow(vm, s)
+        // Attorneys get their own app; verified claimants get theirs; everyone else finishes onboarding.
+        is SessionState.SignedIn -> when {
+            s.profile.role == "attorney" -> AttorneyApp(vm, s)
+            s.profile.identityStatus == "approved" -> SignedInApp(vm, s)
+            else -> OnboardingFlow(vm, s)
+        }
     }
     if (showServer) {
         ServerSettingsDialog(
@@ -341,6 +350,69 @@ private fun OnboardingFlow(vm: SurpayViewModel, session: SessionState.SignedIn) 
                 onEditHomes = { editingHomes = true },
                 onLogout = vm::logout,
             )
+        }
+    }
+}
+
+/** Partner attorneys: apply, wait for license verification, then work their cases. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AttorneyApp(vm: SurpayViewModel, session: SessionState.SignedIn) {
+    val state by vm.attorney.collectAsStateWithLifecycle()
+    val form by vm.form.collectAsStateWithLifecycle()
+    val counties by vm.counties.collectAsStateWithLifecycle()
+    val terms by vm.terms.collectAsStateWithLifecycle()
+    val cases by vm.cases.collectAsStateWithLifecycle()
+    val documents by vm.documents.collectAsStateWithLifecycle()
+    var openCase by rememberSaveable { mutableStateOf<Int?>(null) }
+    LaunchedEffect(Unit) { vm.loadAttorney() }
+
+    val profile = state.profile
+    Surface(Modifier.fillMaxSize()) {
+        when {
+            !state.loaded -> LoadingScreen()
+            state.error != null && profile == null -> UnreachableScreen(state.error!!, "", onRetry = vm::loadAttorney, onServerSettings = {})
+            profile == null || profile.status == "rejected" -> AttorneyApplyScreen(
+                name = session.profile.fullName, form = form, counties = counties, terms = terms,
+                rejectedNote = profile?.reviewNote?.ifBlank { "Please re-apply." }.takeIf { profile?.status == "rejected" },
+                onStateChosen = { vm.loadCounties(it); vm.loadTerms(it) },
+                onSubmit = vm::applyAsAttorney, onLogout = vm::logout,
+                modifier = Modifier.systemBarsPadding(),
+            )
+            profile.status == "pending" -> AttorneyPendingScreen(profile, onRefresh = vm::loadAttorney, onLogout = vm::logout)
+            else -> {
+                LaunchedEffect(Unit) { vm.loadCases() }
+                val current = openCase?.let { id -> cases?.firstOrNull { it.id == id } }
+                Scaffold(
+                    topBar = {
+                        TopAppBar(
+                            title = { Text(if (current != null) "Case #${current.id}" else "Your cases") },
+                            navigationIcon = {
+                                if (current != null) {
+                                    IconButton(onClick = { openCase = null }, modifier = Modifier.testTag("back")) {
+                                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                                    }
+                                }
+                            },
+                            actions = { if (current == null) TextButton(onClick = vm::logout) { Text("Sign out") } },
+                        )
+                    },
+                ) { padding ->
+                    if (current == null) {
+                        CasesScreen(profile, cases, onOpen = { openCase = it.id; vm.reloadCase(it.id) }, onRefresh = vm::loadCases,
+                            modifier = Modifier.padding(padding))
+                    } else {
+                        CaseDetailScreen(
+                            case = current, form = form, documents = documents,
+                            onAccept = { vm.acceptCase(current.id) },
+                            onDecline = { reason -> vm.declineCase(current.id, reason) { openCase = null } },
+                            onStatus = { s, note -> vm.updateCase(current.id, s, note) },
+                            onLoadDocument = { kind -> vm.loadDocument(current.id, kind) },
+                            modifier = Modifier.padding(padding),
+                        )
+                    }
+                }
+            }
         }
     }
 }

@@ -35,6 +35,8 @@ data class SignupRequest(
     val password: String,
     @SerialName("full_name") val fullName: String,
     val phone: String = "",
+    /** claimant | attorney */
+    val role: String = "claimant",
 )
 
 @Serializable
@@ -52,6 +54,8 @@ data class Profile(
     @SerialName("identity_status") val identityStatus: String? = null,
     @SerialName("identity_note") val identityNote: String = "",
     @SerialName("name_locked") val nameLocked: Boolean = false,
+    /** claimant | attorney */
+    val role: String = "claimant",
 )
 
 @Serializable
@@ -153,7 +157,111 @@ data class Claim(
     @SerialName("estimated_completion_end") val estimatedCompletionEnd: String? = null,
     val disclaimer: String = "",
     val legal: Legal = Legal(),
+    /** The partner attorney, once they've accepted the case. */
+    val attorney: AttorneyPublic? = null,
 )
+
+@Serializable
+data class AttorneyPublic(val name: String, val firm: String = "", val phone: String = "", val bar: String = "")
+
+@Serializable
+data class AttorneyApplication(
+    @SerialName("full_name") val fullName: String,
+    @SerialName("bar_state") val barState: String,
+    @SerialName("bar_number") val barNumber: String,
+    val firm: String,
+    val phone: String,
+    @SerialName("office_address") val officeAddress: String,
+    val counties: List<String>,
+    @SerialName("bar_card_b64") val barCardB64: String,
+    @SerialName("accept_terms") val acceptTerms: Boolean,
+)
+
+@Serializable
+data class AttorneyProfile(
+    @SerialName("full_name") val fullName: String,
+    @SerialName("bar_state") val barState: String,
+    @SerialName("bar_number") val barNumber: String,
+    val firm: String = "",
+    val phone: String = "",
+    @SerialName("office_address") val officeAddress: String = "",
+    val counties: List<String> = emptyList(),
+    /** pending | approved | rejected */
+    val status: String,
+    @SerialName("review_note") val reviewNote: String = "",
+    @SerialName("fee_per_case_cents") val feePerCaseCents: Long = 0,
+    val terms: String = "",
+)
+
+@Serializable
+data class AttorneyTerms(
+    val version: String,
+    val text: String,
+    @SerialName("fee_per_case_cents") val feePerCaseCents: Long,
+)
+
+@Serializable
+data class CaseClaimant(
+    val name: String,
+    val email: String = "",
+    val phone: String = "",
+    @SerialName("date_of_birth") val dateOfBirth: String? = null,
+    @SerialName("current_address") val currentAddress: String = "",
+    @SerialName("other_names") val otherNames: List<String> = emptyList(),
+    @SerialName("ssn_last4") val ssnLast4: String = "",
+    @SerialName("id_type") val idType: String = "",
+    @SerialName("has_id_back") val hasIdBack: Boolean = false,
+    val homes: List<String> = emptyList(),
+)
+
+@Serializable
+data class CaseAgreement(
+    val text: String,
+    @SerialName("signature_name") val signatureName: String,
+    @SerialName("signed_at") val signedAt: String,
+    @SerialName("fee_pct") val feePct: Double = 0.0,
+)
+
+@Serializable
+data class CaseRecord(
+    @SerialName("owner_name") val ownerName: String = "",
+    @SerialName("owner_address") val ownerAddress: String = "",
+)
+
+@Serializable
+data class CaseEvent(val status: String, val note: String = "", val at: String)
+
+/** A case as the attorney sees it. claimant/agreement/record are filled in only after accepting. */
+@Serializable
+data class AttorneyCase(
+    val id: Int,
+    /** offered | accepted */
+    @SerialName("assignment_status") val assignmentStatus: String,
+    val status: String,
+    val county: String,
+    val state: String,
+    val reference: String,
+    @SerialName("sale_type") val saleType: String,
+    @SerialName("sale_date") val saleDate: String? = null,
+    @SerialName("amount_cents") val amountCents: Long,
+    @SerialName("fee_cents") val feeCents: Long,
+    /** "" | due | paid */
+    @SerialName("payout_status") val payoutStatus: String = "",
+    @SerialName("assigned_at") val assignedAt: String? = null,
+    @SerialName("accepted_at") val acceptedAt: String? = null,
+    @SerialName("source_url") val sourceUrl: String = "",
+    val legal: Legal = Legal(),
+    val claimant: CaseClaimant? = null,
+    val agreement: CaseAgreement? = null,
+    val record: CaseRecord? = null,
+    val history: List<CaseEvent> = emptyList(),
+)
+
+@Serializable
+data class CaseStatusRequest(val status: String, val note: String = "")
+
+@Serializable
+data class DeclineRequest(val reason: String = "")
 
 @Serializable
 data class IdentityRequest(
@@ -213,6 +321,18 @@ interface SurpayApi {
     @GET("me/claims/{id}/agreement") suspend fun agreement(@Path("id") id: Int): AgreementDoc
     @POST("me/claims/{id}/agreement") suspend fun signAgreement(@Path("id") id: Int, @Body body: SignRequest): Claim
     @GET("counties") suspend fun counties(@Query("state") state: String): List<String>
+
+    // --- Partner attorneys ---
+    @GET("attorney/terms") suspend fun attorneyTerms(@Query("state") state: String): AttorneyTerms
+    @POST("attorney/apply") suspend fun attorneyApply(@Body body: AttorneyApplication): AttorneyProfile
+    /** 404 = not applied yet. */
+    @GET("attorney/me") suspend fun attorneyMe(): AttorneyProfile
+    @GET("attorney/cases") suspend fun attorneyCases(): List<AttorneyCase>
+    @GET("attorney/cases/{id}") suspend fun attorneyCase(@Path("id") id: Int): AttorneyCase
+    @POST("attorney/cases/{id}/accept") suspend fun acceptCase(@Path("id") id: Int): AttorneyCase
+    @POST("attorney/cases/{id}/decline") suspend fun declineCase(@Path("id") id: Int, @Body body: DeclineRequest): kotlinx.serialization.json.JsonObject
+    @POST("attorney/cases/{id}/status") suspend fun updateCase(@Path("id") id: Int, @Body body: CaseStatusRequest): AttorneyCase
+    @GET("attorney/cases/{id}/documents/{kind}") suspend fun caseDocument(@Path("id") id: Int, @Path("kind") kind: String): okhttp3.ResponseBody
 
     companion object {
         val json = Json { ignoreUnknownKeys = true; explicitNulls = false }

@@ -80,11 +80,10 @@ def apply(body: AttorneyApplyIn, user: CurrentUser, session: DbSession):
     return _profile_out(user.attorney)
 
 
-@router.get("/me", response_model=AttorneyProfileOut | None)
+@router.get("/me", response_model=AttorneyProfileOut)
 def me(user: CurrentUser):
-    if user.role != "attorney":
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "This is for partner attorneys")
-    return _profile_out(user.attorney) if user.attorney else None
+    """404 means they haven't applied yet."""
+    return _profile_out(_require_attorney(user, approved=False))
 
 
 def case_out(c: Claim, full: bool) -> CaseOut:

@@ -73,8 +73,8 @@ class SurpayRepository(private val remote: SurpayApi, private val tokens: TokenS
         }
     }
 
-    suspend fun signup(email: String, password: String, fullName: String): Profile =
-        api.signup(SignupRequest(email.trim(), password, fullName.trim())).also { tokens.save(it.token) }.user
+    suspend fun signup(email: String, password: String, fullName: String, role: String = "claimant"): Profile =
+        api.signup(SignupRequest(email.trim(), password, fullName.trim(), role = role)).also { tokens.save(it.token) }.user
 
     suspend fun login(email: String, password: String): Profile =
         api.login(LoginRequest(email.trim(), password)).also { tokens.save(it.token) }.user
@@ -113,6 +113,22 @@ class SurpayRepository(private val remote: SurpayApi, private val tokens: TokenS
     suspend fun agreement(claimId: Int): AgreementDoc = api.agreement(claimId)
     suspend fun signAgreement(claimId: Int, name: String): Claim = api.signAgreement(claimId, SignRequest(name, true))
     suspend fun counties(state: String): List<String> = api.counties(state)
+
+    // Attorneys always work against the real server.
+    suspend fun attorneyTerms(state: String): AttorneyTerms = remote.attorneyTerms(state)
+    suspend fun attorneyApply(body: AttorneyApplication): AttorneyProfile = remote.attorneyApply(body)
+    /** null when they haven't applied yet. */
+    suspend fun attorneyMe(): AttorneyProfile? = try {
+        remote.attorneyMe()
+    } catch (e: HttpException) {
+        if (e.code() == 404) null else throw e
+    }
+    suspend fun attorneyCases(): List<AttorneyCase> = remote.attorneyCases()
+    suspend fun attorneyCase(id: Int): AttorneyCase = remote.attorneyCase(id)
+    suspend fun acceptCase(id: Int): AttorneyCase = remote.acceptCase(id)
+    suspend fun declineCase(id: Int, reason: String) { remote.declineCase(id, DeclineRequest(reason)) }
+    suspend fun updateCase(id: Int, status: String, note: String): AttorneyCase = remote.updateCase(id, CaseStatusRequest(status, note))
+    suspend fun caseDocument(id: Int, kind: String): ByteArray = remote.caseDocument(id, kind).use { it.bytes() }
     suspend fun coverage(): Coverage = remote.coverage()
 }
 

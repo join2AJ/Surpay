@@ -83,6 +83,32 @@ icon to reveal it). For each claim you can:
 - move the claim to **filed → approved → paid** (or denied / withdrawn) as the attorney reports
   progress. Each change updates the timeline and estimated dates the person sees in the app.
 
+### Partner attorneys
+
+Attorneys tap **"Lawyer? Join our attorney network"** on the sign-in screen, create an account
+and apply. They give bar state and number, firm, office, the counties they'll take cases in, and
+a photo of their bar card, and accept the partner terms (shown with the per-case fee).
+
+On `/admin`, **Attorney applications** come first. Check the license is active on the state
+bar's official directory (there's a search link), then **Approve attorney**. Any verified client
+claims already waiting in their counties are offered to them immediately.
+
+How cases flow:
+1. A claimant's ID is approved and they sign the agreement, so the claim is ready.
+2. It's offered to the approved attorney licensed in that state who serves that county and has
+   the fewest open cases.
+3. The attorney sees county, amount and reference only, and accepts or declines. A decline passes
+   it to the next attorney; anyone who declined never gets it again. If nobody serves the county,
+   it waits: recruit an attorney there, or use **Offer to attorney** / **Reassign** on the claim.
+4. After accepting, the attorney sees the client's details, ID photos, signed agreement, county
+   record and the legal basis, and reports **filed → approved → paid** (or denied). Each update
+   appears on the client's timeline, and the client sees their attorney's name and firm.
+5. When the case closes (paid or denied), the per-case fee shows **due**. Pay the attorney, then
+   press **Mark attorney paid**.
+
+The fee per case is `SURPAY_ATTORNEY_FEE_CENTS` (default 50000 = $500), a placeholder you set
+from your attorney agreements. Per-state amounts can be set in `backend/surpay/config.py`.
+
 ID photos are encrypted in the database with `SURPAY_ENCRYPTION_KEY`. **Never change or delete
 that key** once IDs are stored, or they can't be opened again.
 
@@ -91,5 +117,10 @@ that key** once IDs are stored, or they can't be opened again.
 - Set `SURPAY_SEED_DEMO=false` in Render. The fake Demo County disappears and the demo sign-in is switched off.
 - Free Render sleeps. Upgrade to the $7/month Starter plan when people depend on it.
 - Read "Before real users" in `backend/README.md`: fees, ID verification, rate limits.
+- **Ethics review of the attorney arrangement.** In most states lawyers may not share fees
+  with non-lawyers or pay for referrals (ABA Model Rules 5.4 and 7.2), and the attorney must
+  keep independent judgment. Have ethics counsel in each state approve how Surpay's contingency
+  fee and the per-case attorney payment are structured, and the partner terms in
+  `backend/surpay/attorney_api.py`, before the first real case.
 - Have an attorney replace the agreement template in `backend/surpay/claims.py` (`agreement_text`)
   for each state you operate in. The current text is marked "pending attorney review".

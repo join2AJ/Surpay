@@ -174,6 +174,16 @@ class OfflineDemoApi : SurpayApi {
     override suspend fun counties(state: String): List<String> =
         if (state.equals("OH", ignoreCase = true)) listOf("Adams County", "Clark County", "Franklin County") else emptyList()
 
+    override suspend fun attorneyTerms(state: String): AttorneyTerms = offline()
+    override suspend fun attorneyApply(body: AttorneyApplication): AttorneyProfile = offline()
+    override suspend fun attorneyMe(): AttorneyProfile = offline()
+    override suspend fun attorneyCases(): List<AttorneyCase> = offline()
+    override suspend fun attorneyCase(id: Int): AttorneyCase = offline()
+    override suspend fun acceptCase(id: Int): AttorneyCase = offline()
+    override suspend fun declineCase(id: Int, body: DeclineRequest): kotlinx.serialization.json.JsonObject = offline()
+    override suspend fun updateCase(id: Int, body: CaseStatusRequest): AttorneyCase = offline()
+    override suspend fun caseDocument(id: Int, kind: String): okhttp3.ResponseBody = offline()
+
     override suspend fun signup(body: SignupRequest): TokenResponse = offline()
     override suspend fun login(body: LoginRequest): TokenResponse = offline()
 

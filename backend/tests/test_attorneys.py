@@ -134,7 +134,7 @@ def test_attorney_guards(client, admin):
     assert client.get("/attorney/cases", headers=claimant).status_code == 403
 
     ah = signup(client, "z@law.com", "Zed Lawyer", role="attorney")
-    assert client.get("/attorney/me", headers=ah).json() is None
+    assert client.get("/attorney/me", headers=ah).status_code == 404  # not applied yet
     bad = apply(client, ah, [])  # must serve at least one county
     assert bad.status_code == 422
     assert apply(client, ah, ["Dallas County"]).status_code == 200

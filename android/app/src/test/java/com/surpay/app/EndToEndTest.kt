@@ -84,7 +84,7 @@ class EndToEndTest {
         compose.onNodeWithTag("state0").performScrollTo().performClick()
         compose.onNodeWithText("OH").performScrollTo().performClick()
         compose.onNodeWithTag("zip0").performScrollTo().performTextInput("45501")
-        compose.waitUntilAtLeastOneExists(hasText("Type to search 88 counties in OH"), timeout)
+        compose.waitUntilAtLeastOneExists(hasText("counties in OH", substring = true), timeout)
         compose.onNodeWithTag("county0").performScrollTo().performTextInput("Clark")
         compose.onNodeWithText("Clark County").performClick()
         shot("3_homes")

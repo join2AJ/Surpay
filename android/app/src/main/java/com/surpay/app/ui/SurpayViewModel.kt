@@ -3,6 +3,10 @@ package com.surpay.app.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.surpay.app.data.AgreementDoc
+import com.surpay.app.data.AttorneyApplication
+import com.surpay.app.data.AttorneyCase
+import com.surpay.app.data.AttorneyProfile
+import com.surpay.app.data.AttorneyTerms
 import com.surpay.app.data.Claim
 import com.surpay.app.data.Coverage
 import com.surpay.app.data.IdentityRequest
@@ -109,8 +113,8 @@ class SurpayViewModel(private val repo: SurpayRepository, private val server: Se
 
     fun clearFormError() = _form.update { it.copy(error = null) }
 
-    fun signup(email: String, password: String, fullName: String) = submit {
-        val profile = repo.signup(email, password, fullName)
+    fun signup(email: String, password: String, fullName: String, role: String = "claimant") = submit {
+        val profile = repo.signup(email, password, fullName, role)
         _session.value = SessionState.SignedIn(profile, isNewUser = true)
     }
 
@@ -135,6 +139,9 @@ class SurpayViewModel(private val repo: SurpayRepository, private val server: Se
             repo.logout()
             _matches.value = MatchesState()
             _claims.value = null
+            _attorney.value = AttorneyState()
+            _cases.value = null
+            _documents.value = emptyMap()
             _session.value = SessionState.SignedOut
         }
     }
@@ -244,6 +251,78 @@ class SurpayViewModel(private val repo: SurpayRepository, private val server: Se
             runCatching { repo.counties(state) }.onSuccess { list ->
                 if (list.isNotEmpty()) _counties.update { it + (state to list) }
             }
+        }
+    }
+
+    // --- Partner attorneys ------------------------------------------------------------------
+
+    /** Loaded = false until first fetched; profile null = hasn't applied yet. */
+    data class AttorneyState(val loaded: Boolean = false, val profile: AttorneyProfile? = null, val error: String? = null)
+
+    private val _attorney = MutableStateFlow(AttorneyState())
+    val attorney: StateFlow<AttorneyState> = _attorney.asStateFlow()
+
+    private val _cases = MutableStateFlow<List<AttorneyCase>?>(null)
+    val cases: StateFlow<List<AttorneyCase>?> = _cases.asStateFlow()
+
+    private val _terms = MutableStateFlow<AttorneyTerms?>(null)
+    val terms: StateFlow<AttorneyTerms?> = _terms.asStateFlow()
+
+    private val _documents = MutableStateFlow<Map<String, ByteArray>>(emptyMap())
+    /** "caseId/kind" -> image bytes, for accepted cases. */
+    val documents: StateFlow<Map<String, ByteArray>> = _documents.asStateFlow()
+
+    fun loadAttorney() {
+        viewModelScope.launch {
+            _attorney.value = try {
+                AttorneyState(loaded = true, profile = repo.attorneyMe())
+            } catch (e: Exception) {
+                _attorney.value.copy(loaded = true, error = e.userMessage())
+            }
+        }
+    }
+
+    fun loadTerms(state: String) {
+        viewModelScope.launch { runCatching { repo.attorneyTerms(state) }.onSuccess { _terms.value = it } }
+    }
+
+    fun applyAsAttorney(body: AttorneyApplication) = submit {
+        _attorney.value = AttorneyState(loaded = true, profile = repo.attorneyApply(body))
+    }
+
+    fun loadCases() {
+        viewModelScope.launch {
+            try {
+                _cases.value = repo.attorneyCases()
+            } catch (e: Exception) {
+                _form.value = FormState(error = e.userMessage())
+            }
+        }
+    }
+
+    private fun replaceCase(c: AttorneyCase) {
+        _cases.update { list -> (list ?: emptyList()).map { if (it.id == c.id) c else it }.let { if (it.none { x -> x.id == c.id }) it + c else it } }
+    }
+
+    fun reloadCase(id: Int) {
+        viewModelScope.launch { runCatching { repo.attorneyCase(id) }.onSuccess { replaceCase(it) } }
+    }
+
+    fun acceptCase(id: Int) = submit { replaceCase(repo.acceptCase(id)) }
+
+    fun declineCase(id: Int, reason: String, onDone: () -> Unit) = submit {
+        repo.declineCase(id, reason)
+        _cases.update { list -> list?.filterNot { it.id == id } }
+        onDone()
+    }
+
+    fun updateCase(id: Int, status: String, note: String) = submit { replaceCase(repo.updateCase(id, status, note)) }
+
+    fun loadDocument(caseId: Int, kind: String) {
+        val key = "$caseId/$kind"
+        if (key in _documents.value) return
+        viewModelScope.launch {
+            runCatching { repo.caseDocument(caseId, kind) }.onSuccess { bytes -> _documents.update { it + (key to bytes) } }
         }
     }
 }

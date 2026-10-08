@@ -81,6 +81,17 @@ fun ClaimScreen(
             }
         }
 
+        claim.attorney?.let { a ->
+            Spacer(Modifier.height(16.dp))
+            OutlinedCard(Modifier.fillMaxWidth().testTag("yourAttorney")) {
+                Column(Modifier.padding(14.dp)) {
+                    Text("Your attorney", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(a.name, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                    Text(listOf(a.firm, a.bar).filter { it.isNotBlank() }.joinToString(" · "), style = MaterialTheme.typography.bodySmall)
+                    if (a.phone.isNotBlank()) Text(a.phone, style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+        }
         Spacer(Modifier.height(20.dp))
         Text("Your claim, step by step", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.height(8.dp))

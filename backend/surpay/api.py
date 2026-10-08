@@ -320,9 +320,12 @@ def sign_agreement(claim_id: int, body: SignIn, request: Request, user: CurrentU
 @app.get("/counties")
 def counties_in_state(state: str, session: DbSession) -> list[str]:
     """County names for one state, for the address form (e.g. ["Adams County", ...])."""
-    return list(session.scalars(
+    names = list(session.scalars(
         select(CountySource.county).where(CountySource.state == state.upper()).order_by(CountySource.county)
     ))
+    if config.DEMO_ENABLED and state.upper() == "OH":
+        names.insert(0, "Demo County")  # so a test attorney can take the fictional demo cases
+    return names
 
 
 # --- Staff review (enabled by SURPAY_ADMIN_TOKEN) -------------------------------------------

@@ -52,7 +52,7 @@ import com.surpay.app.ui.dollars
 fun AuthScreen(
     form: FormState,
     coverage: Coverage?,
-    onSignup: (email: String, password: String, fullName: String) -> Unit,
+    onSignup: (email: String, password: String, fullName: String, role: String) -> Unit,
     onLogin: (email: String, password: String) -> Unit,
     onClearError: () -> Unit,
     onDemoLogin: () -> Unit = {},
@@ -62,6 +62,7 @@ fun AuthScreen(
     val showDemo = BuildConfig.DEBUG || coverage?.demoLogin == true
     val slow = rememberIsSlow(form.busy)
     var signingUp by rememberSaveable { mutableStateOf(true) }
+    var asAttorney by rememberSaveable { mutableStateOf(false) }
     var name by rememberSaveable { mutableStateOf("") }
     var email by rememberSaveable { mutableStateOf("") }
     var password by rememberSaveable { mutableStateOf("") }
@@ -130,7 +131,11 @@ fun AuthScreen(
         }
 
         Text(
-            if (signingUp) "Create your free account" else "Welcome back",
+            when {
+                !signingUp -> "Welcome back"
+                asAttorney -> "Create your attorney account"
+                else -> "Create your free account"
+            },
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
         )
@@ -171,14 +176,21 @@ fun AuthScreen(
         }
         Spacer(Modifier.height(16.dp))
         Button(
-            onClick = { if (signingUp) onSignup(email, password, name) else onLogin(email, password) },
+            onClick = { if (signingUp) onSignup(email, password, name, if (asAttorney) "attorney" else "claimant") else onLogin(email, password) },
             enabled = canSubmit && !form.busy,
             modifier = Modifier.fillMaxWidth().height(52.dp).testTag("submit"),
         ) {
             if (form.busy) {
                 CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
             } else {
-                Text(if (signingUp) "Create account — it’s free" else "Sign in", fontWeight = FontWeight.Bold)
+                Text(
+                    when {
+                        !signingUp -> "Sign in"
+                        asAttorney -> "Continue to attorney application"
+                        else -> "Create account — it’s free"
+                    },
+                    fontWeight = FontWeight.Bold,
+                )
             }
         }
         TextButton(
@@ -186,6 +198,12 @@ fun AuthScreen(
             modifier = Modifier.align(Alignment.CenterHorizontally),
         ) {
             Text(if (signingUp) "Already have an account? Sign in" else "New here? Create an account")
+        }
+        TextButton(
+            onClick = { asAttorney = !asAttorney; signingUp = true; onClearError() },
+            modifier = Modifier.align(Alignment.CenterHorizontally).testTag("attorneyToggle"),
+        ) {
+            Text(if (asAttorney) "I’m looking for my money instead" else "Lawyer? Join our attorney network")
         }
 
         Spacer(Modifier.height(20.dp))
