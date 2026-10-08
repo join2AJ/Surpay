@@ -1,0 +1,27 @@
+import os
+import warnings
+
+DATABASE_URL = os.environ.get("SURPAY_DATABASE_URL", "sqlite:///./surpay.db")
+
+SECRET_KEY = os.environ.get("SURPAY_SECRET_KEY", "")
+if not SECRET_KEY:
+    SECRET_KEY = "dev-only-insecure-secret-change-me"
+    warnings.warn("SURPAY_SECRET_KEY is not set; using an insecure development key.")
+
+TOKEN_TTL_DAYS = int(os.environ.get("SURPAY_TOKEN_TTL_DAYS", "30"))
+
+# Identify the scraper honestly to county webmasters.
+USER_AGENT = os.environ.get(
+    "SURPAY_USER_AGENT",
+    "SurpayBot/0.1 (+https://github.com/join2AJ/Surpay; surplus-funds research)",
+)
+
+# Contingency fee used to estimate what a claimant receives, per state.
+# PLACEHOLDERS: every value must be confirmed by a licensed attorney in that state
+# before launch (see docs/STRATEGY.md section 3). The fee shown must never exceed the cap.
+DEFAULT_FEE_PCT = 15.0
+STATE_FEE_PCT: dict[str, float] = {}
+
+
+def fee_pct_for(state: str) -> float:
+    return STATE_FEE_PCT.get(state.upper(), DEFAULT_FEE_PCT)

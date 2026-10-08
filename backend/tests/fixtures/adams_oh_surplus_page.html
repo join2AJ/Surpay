@@ -1,0 +1,287 @@
+
+
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+
+    <title>Adams County Auditor - Surplus Funds</title>
+    <meta name="description" content="">
+    <meta name="author" content="">
+
+
+
+    <link href="/Content/Menu-Top_Flatly.min.css" rel="stylesheet" />
+
+    <link href="https://fonts.googleapis.com/css?family=Lato:400,700|Pathway+Gothic+One" rel="stylesheet">
+
+    <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.0.9/css/all.css" integrity="sha384-5SOiIsAziJl6AWe0HWRKTXlfcSHKmYV4RBF18PPJ173Kzn7jzMyFuTtk8JA7QQG1" crossorigin="anonymous">
+
+
+    <!-- Font Awesome JS -->
+    <script defer src="https://use.fontawesome.com/releases/v5.0.13/js/solid.js" integrity="sha384-tzzSw1/Vo+0N5UhStP3bvwWPq+uvzCMfrN1fEFe+xBmv1C/AtVX5K0uZtmcHitFZ" crossorigin="anonymous"></script>
+    <script defer src="https://use.fontawesome.com/releases/v5.0.13/js/fontawesome.js" integrity="sha384-6OIrr52G08NpOFSZdxxz1xdNSndlD4vdcf/q2myIUVO0VsqaGHJsB0RaBE01VTOY" crossorigin="anonymous"></script>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.1.0/jquery.min.js"></script>
+
+    
+    <link href="/Content/slick/css/slick.min.css" rel="stylesheet" />
+    
+    <style>
+        .esri-hello-world {
+            font-family: "Helvetica Neue", sans-serif;
+            display: inline-block;
+        }
+
+        .esri-hello-world--emphasis {
+            font-weight: bold;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="loading" class="loading-container">
+    <img id="loading-image" src="/Content/ajax-loader.gif" alt="Loading..." class="loading-image" />
+</div>
+
+    <!-- Header -->
+    <header id="header">
+        <div class=>
+    
+
+            <div>
+                <input type="hidden" id="bannerRefreshRate" value="10000">
+                <div class="row">
+                    <div class="col-sm-12">
+                        <div id="bannerOuterWidth" class="banner-outer-width">
+                            <div class="banner-carousel-container">
+                                <div class="banner-carousel">
+                                            <img class="banner-image-class" style="margin: 0px;" alt="Grass Banner Image" src="/media/1989/grassbanner1800x400.png">
+                                            <img class="banner-image-class" style="margin: 0px;" alt="Flower Banner Inamge" src="/media/1991/flowerbanner1800x400.png">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+    <div id="bannerContainer" class=banner-container-absolute>
+        <div >
+            <div class="banner-logo-text-container">
+                <div id="headerLogoContainer" title="Home Button">
+                    <a href="#" id="redirect_to_home" alt="temp"><img id="logo" src='/media/8938/adamscountyseal90x90.png' alt="temp"></a>
+                </div>
+                
+<div id="headerTextContainer" style="line-height: 1.3">
+    <div id="auditorNameBanner">
+        <div id="auditorName">
+            David Gifford
+        </div>
+        <div id="auditorSubHeading">
+            <div id="auditorTitle">
+                <div id="auditorTitle">ADAMS COUNTY AUDITOR </div>
+                <div id="auditorDivider"> | </div>
+                <div id="auditorLocation">ADAMS COUNTY, OHIO</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+            </div>
+                <div class="banner-search-container">
+        <div class="banner-search">
+            <form style="display:inline-block;width:100%;">
+                <div class="input-group md-form form-sm form-2 pl-0">
+                    <input class="form-control my-0 py-1 quick-search-input" id="quick-search" type="text" placeholder="Property Search: Parcel, Owner, or Address" aria-label="Search" alt="Property Search">
+                    <div class="input-group-append quick-search-button">
+                        <span class="input-group-text" id="quick-search-btn" alt="property search button" data-SearchUrl="https://beacon.schneidercorp.com/Application.aspx?AppID=1135&amp;LayerID=28756&amp;PageTypeID=3&amp;PageID=11961&amp;Search=">
+                            <i class="fas fa-search text-grey"
+                               aria-hidden="true"></i>
+                        </span>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+        </div>
+    </div>
+    <div id="menuContainer" class=menu-container-absolute-with-search>
+<style>
+    .nav > li.dropdown.show .dropdown-menu {
+        width: auto;
+        top: 100%;
+    }
+
+    .nav > li.dropdown.show .dropdown-menu {
+        left: auto;
+        right: auto;
+        text-align: left;
+    }
+
+    @media (min-width: 768px) {
+        .wrap {
+            /* These are technically the same, but use both */
+            overflow-wrap: break-word;
+            word-wrap: break-word;
+            -ms-word-break: break-all;
+            /* This is the dangerous one in WebKit, as it breaks things wherever */
+            word-break: break-all;
+            /* Instead use this non-standard one: */
+            word-break: break-word;
+            /* Adds a hyphen where the word breaks, if supported (No Blink) */
+            -ms-hyphens: auto;
+            -moz-hyphens: auto;
+            -webkit-hyphens: auto;
+            hyphens: auto;
+            white-space: normal;
+        }
+    }
+</style>
+
+<nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+    <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
+        <span class="navbar-toggler-icon"></span>
+    </button>
+
+    <div class="collapse navbar-collapse" id="navbarSupportedContent">
+        <ul class="navbar-nav nav mr-auto">
+                                <li class="nav-item dropdown" style="width: 16%">
+                                         <a href="https://adamscountyauditor.org" class="dropdown-toggle nav-link" aria-haspopup="true" aria-expanded="true">Home</a>
+
+                                </li>
+                                <li class="nav-item dropdown" style="width: 16%">
+                                        <a href="#" class="dropdown-toggle nav-link" data-toggle="dropdown" aria-haspopup="true" aria-expanded="true">Auditor Responsibilities</a>
+
+                                <div class="dropdown-menu" style="width: 16%">
+
+                                                                    <a href="/site-links/board-of-revision/" class='dropdown-item wrap'>Board of Revision</a>
+                                                                    <a href="/site-links/budget-commission/" class='dropdown-item wrap'>Budget Commission</a>
+                                                                    <a href="/site-links/chief-fiscal-officer/" class='dropdown-item wrap'>Chief Fiscal Officer</a>
+                                                                    <a href="/site-links/weights-measures/" class='dropdown-item wrap'>Weights &amp; Measures</a>
+                                </div>
+                                </li>
+                                <li class="nav-item dropdown" style="width: 16%">
+                                         <a href="/forms/" class="dropdown-toggle nav-link" aria-haspopup="true" aria-expanded="true">Forms</a>
+
+                                </li>
+                                <li class="nav-item dropdown" style="width: 16%">
+                                         <a href="/site-links/lodging-excise-tax/" class="dropdown-toggle nav-link" aria-haspopup="true" aria-expanded="true">Lodging Excise Tax</a>
+
+                                </li>
+                                <li class="nav-item dropdown" style="width: 16%">
+                                        <a href="#" class="dropdown-toggle nav-link" data-toggle="dropdown" aria-haspopup="true" aria-expanded="true">Property Search &amp; Maps</a>
+
+                                <div class="dropdown-menu" style="width: 16%">
+
+                                                                    <a href="https://beacon.schneidercorp.com/Application.aspx?AppID=1135&amp;LayerID=28756&amp;PageTypeID=2&amp;PageID=11960" class='dropdown-item wrap'>Advanced Search</a>
+                                                                    <a href="https://beacon.schneidercorp.com/Application.aspx?AppID=1135&amp;LayerID=28756&amp;PageTypeID=2&amp;PageID=11966" class='dropdown-item wrap'>Sales Search</a>
+                                                                    <a href="https://beacon.schneidercorp.com/Application.aspx?AppID=1135&amp;LayerID=28756&amp;PageTypeID=1&amp;PageID=12356" class='dropdown-item wrap'>Map</a>
+                                </div>
+                                </li>
+                                <li class="nav-item dropdown" style="width: 16%">
+                                        <a href="#" class="dropdown-toggle nav-link" data-toggle="dropdown" aria-haspopup="true" aria-expanded="true">Real Estate</a>
+
+                                <div class="dropdown-menu" style="width: 16%">
+
+                                                                    <a href="/site-links/cauv" class='dropdown-item wrap'>CAUV</a>
+                                                                    <a href="/site-links/Conveyance-Fees-and-Forms/" class='dropdown-item wrap'>Conveyance Fees and Forms</a>
+                                                                    <a href="/site-links/homestead-exemption/" class='dropdown-item wrap'>Homestead Exemption</a>
+                                                                    <a href="/site-links/lodging-excise-tax/" class='dropdown-item wrap'>Lodging Excise Tax</a>
+                                                                    <a href="/site-links/manufactured-homes/" class='dropdown-item wrap'>Manufactured Homes</a>
+                                                                    <a href="/site-links/new-building-notifications/" class='dropdown-item wrap'>New Building Notifications</a>
+                                                                    <a href="/site-links/Owner-Occupancy-Tax-Reduction/" class='dropdown-item wrap'>Owner Occupancy Tax Reduction</a>
+                                                                    <a href="/site-links/property-rates-of-taxation/" class='dropdown-item wrap'>Property Rates of Taxation</a>
+                                                                    <a href="/site-links/surplus-funds/" class='dropdown-item wrap'>Surplus Funds List</a>
+                                </div>
+                                </li>
+
+        </ul>
+    </div>
+</nav>
+<script type="text/javascript">
+    $(function () {
+        // hack for responsive view 84380
+        $('.navbar').on('shown.bs.collapse', function () {
+            $("div.dropdown-menu").removeAttr("style");
+            $("a.wrap").css("white-space", "normal");
+        });
+    })
+</script>
+    </div>
+</div>
+    </header>
+
+    <div style="height:100%" class=body-partial-absolute>
+        
+    <div class="row">
+        <div class="col-sm-12">
+            <h2>Surplus Funds</h2>
+        </div>
+    </div>
+<div class="row">
+    <div class="col-sm-12">
+        <h2><span style="font-size: 14pt;">Please find information about surplus funds held in Adams County, Ohio, due to overage from tax sales.</span></h2>
+<ul>
+<li><span style="font-size: 12pt;"><a rel="noopener" data-udi="umb://media/ca0f9735bd164944b9092130d3ef58e4" href="/media/14046/surplus-funds-list.docx" target="_blank" title="SURPLUS FUNDS LIST">Download The Surplus Funds List</a></span></li>
+</ul>
+<ul>
+<li><span style="font-size: 12pt;"><a rel="noopener" data-udi="umb://media/2453c62406ba4c6d87202aea755831a8" href="/media/9032/_surplus-funds-application.pdf" target="_blank" title="_Surplus Funds Application.pdf">Download The Surplus Funds Application</a></span></li>
+</ul>
+<ul>
+<li><a rel="noopener" data-udi="umb://media/5b8b9e7313af40a890599738d50d69ac" href="/media/13898/instructions-surplus-tax-sales-funds.pdf" target="_blank" title="_Surplus Funds Application Instructions.pdf"><span style="font-size: 12pt;">Download The Surplus Funds Application Instructions</span></a></li>
+</ul>
+    </div>
+</div>
+    </div>
+    <!-- Footer -->
+    
+
+<footer class="page-footer font-small blue pt-4">
+    
+        <!-- Footer Links -->
+        <div class="container-fluid text-center text-md-left">
+
+            <!-- Grid row -->
+            <div class="row justify-content-center">
+                        <div class="col-md-12">
+                                <h5 class="text-center">Adams County Ohio</h5>
+<div id="columnContent" class="text-center">
+        <!-- Text Content -->
+<p>Population<span> </span><span>27,698</span><br />Parcels<span> </span><span>21,826</span></p>        </div>
+
+                        </div>
+            </div>
+            <!-- Grid row -->
+        </div>
+    <!-- Copyright -->
+    <div class="footer-copyright text-center py-3">
+        © 2026 Copyright: <a href="https://schneidergis.com"> Schneider Geospatial, LLC</a>
+                <span>|</span>
+                <a href="http://adamsoh-auditor.schneidergis.com/site-links/terms-of-service/"> Terms of Service</a>
+
+    </div>
+    <!-- Copyright -->
+
+    
+    
+        
+    
+    
+</footer>
+    <!-- Footer -->
+    
+    <script src="https://ajax.aspnetcdn.com/ajax/jquery.validate/1.13.1/jquery.validate.min.js"></script>
+    <script src="https://ajax.aspnetcdn.com/ajax/mvc/5.2.3/jquery.validate.unobtrusive.min.js"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.0.0/js/bootstrap.bundle.min.js"></script>
+    <link href="//maxcdn.bootstrapcdn.com/font-awesome/4.1.0/css/font-awesome.min.css" rel="stylesheet">
+    <script src="/scripts/slick/js/slick.min.js"></script>
+    
+    <script src="/scripts/esri-widgets/widgetDojoLoader.js"></script>
+    <script src="https://js.arcgis.com/4.11/"></script>
+    <script src="/scripts/ddti-esri-map.js"></script>
+    <script src="/Scripts/ddti-all-tenants.js?x=2e3dfbe5-6a73-40a4-b317-450b9256ebe0"></script>
+
+</body>
+</html>

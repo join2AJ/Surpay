@@ -1,0 +1,26 @@
+# Example daily scrape. A GitHub runner has no persistent disk, so point
+# SURPAY_DATABASE_URL (repository secret) at your hosted Postgres before enabling.
+name: Daily scrape
+
+on:
+  schedule:
+    - cron: "17 11 * * *"
+  workflow_dispatch:
+
+jobs:
+  scrape:
+    if: ${{ vars.SURPAY_SCRAPE_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install -r requirements.txt
+      - run: python -m surpay.cli scrape --all
+        env:
+          SURPAY_DATABASE_URL: ${{ secrets.SURPAY_DATABASE_URL }}
+          SURPAY_SECRET_KEY: ${{ secrets.SURPAY_SECRET_KEY }}
