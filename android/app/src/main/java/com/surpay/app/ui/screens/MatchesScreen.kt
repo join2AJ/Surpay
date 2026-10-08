@@ -48,11 +48,7 @@ fun MatchesScreen(
     val data = state.data
     when {
         data == null && state.loading -> Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                CircularProgressIndicator()
-                Spacer(Modifier.height(12.dp))
-                Text("Searching county surplus lists…")
-            }
+            LoadingScreen("Searching county surplus lists…")
         }
         data == null -> Box(modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {

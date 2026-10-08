@@ -19,6 +19,9 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -30,6 +33,9 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.surpay.app.ui.screens.AuthScreen
+import com.surpay.app.ui.screens.LoadingScreen
+import com.surpay.app.ui.screens.ServerSettingsDialog
+import com.surpay.app.ui.screens.UnreachableScreen
 import com.surpay.app.ui.screens.MatchDetailScreen
 import com.surpay.app.ui.screens.MatchesScreen
 import com.surpay.app.ui.screens.ProfileScreen
@@ -47,19 +53,33 @@ fun SurpayApp(vm: SurpayViewModel) {
     val session by vm.session.collectAsStateWithLifecycle()
     val form by vm.form.collectAsStateWithLifecycle()
     val coverage by vm.coverage.collectAsStateWithLifecycle()
+    val serverUrl by vm.serverUrl.collectAsStateWithLifecycle()
+    var showServer by rememberSaveable { mutableStateOf(false) }
 
     when (val s = session) {
-        SessionState.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator()
-        }
+        SessionState.Loading -> LoadingScreen()
+        is SessionState.Unreachable -> UnreachableScreen(
+            message = s.message,
+            serverUrl = serverUrl,
+            onRetry = vm::restoreSession,
+            onServerSettings = { showServer = true },
+        )
         SessionState.SignedOut -> AuthScreen(
             form = form,
             coverage = coverage,
             onSignup = vm::signup,
             onLogin = vm::login,
             onClearError = vm::clearFormError,
+            onServerSettings = { showServer = true },
         )
         is SessionState.SignedIn -> SignedInApp(vm, s)
+    }
+    if (showServer) {
+        ServerSettingsDialog(
+            current = serverUrl,
+            onSave = { vm.setServerUrl(it); showServer = false },
+            onDismiss = { showServer = false },
+        )
     }
 }
 

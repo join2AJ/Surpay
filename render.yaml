@@ -1,0 +1,27 @@
+# Render Blueprint: https://render.com/docs/blueprint-spec
+# Deploy: https://render.com/deploy?repo=https://github.com/join2AJ/Surpay
+#
+# Database: Render's free Postgres is deleted after 30 days, so this blueprint expects an
+# external Postgres URL. Create a free project at https://neon.tech and paste its connection
+# string when Render asks for SURPAY_DATABASE_URL.
+services:
+  - type: web
+    name: surpay-api
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: ./start.sh
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.13.5
+      - key: SURPAY_DATABASE_URL
+        sync: false
+      - key: SURPAY_SECRET_KEY
+        generateValue: true
+      # Adds fictional "Demo County" records so you can try the app (sign up as
+      # "Jordan Testwell", address "412 Maple Ridge Rd", OH). Set to false before launch.
+      - key: SURPAY_SEED_DEMO
+        value: "true"

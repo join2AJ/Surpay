@@ -6,7 +6,7 @@ plugins {
     alias(libs.plugins.roborazzi)
 }
 
-val apiUrl = (project.findProperty("surpayApiUrl") as String?) ?: "http://10.0.2.2:8000/"
+val apiUrl = (project.findProperty("surpayApiUrl") as String?) ?: "https://surpay-api.onrender.com/"
 
 android {
     namespace = "com.surpay.app"

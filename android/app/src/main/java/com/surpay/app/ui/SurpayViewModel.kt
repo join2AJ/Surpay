@@ -6,6 +6,7 @@ import com.surpay.app.data.Coverage
 import com.surpay.app.data.MatchesResponse
 import com.surpay.app.data.Profile
 import com.surpay.app.data.ProfileUpdate
+import com.surpay.app.data.ServerStore
 import com.surpay.app.data.SurpayRepository
 import com.surpay.app.data.userMessage
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -17,6 +18,7 @@ import kotlinx.coroutines.launch
 sealed interface SessionState {
     data object Loading : SessionState
     data object SignedOut : SessionState
+    data class Unreachable(val message: String) : SessionState
     data class SignedIn(val profile: Profile, val isNewUser: Boolean = false) : SessionState
 }
 
@@ -29,7 +31,7 @@ data class MatchesState(
     val claimingRecordId: Int? = null,
 )
 
-class SurpayViewModel(private val repo: SurpayRepository) : ViewModel() {
+class SurpayViewModel(private val repo: SurpayRepository, private val server: ServerStore) : ViewModel() {
     private val _session = MutableStateFlow<SessionState>(SessionState.Loading)
     val session: StateFlow<SessionState> = _session.asStateFlow()
 
@@ -42,11 +44,43 @@ class SurpayViewModel(private val repo: SurpayRepository) : ViewModel() {
     private val _coverage = MutableStateFlow<Coverage?>(null)
     val coverage: StateFlow<Coverage?> = _coverage.asStateFlow()
 
+    private val _serverUrl = MutableStateFlow(server.current)
+    val serverUrl: StateFlow<String> = _serverUrl.asStateFlow()
+
     init {
-        viewModelScope.launch { _coverage.value = runCatching { repo.coverage() }.getOrNull() }
         viewModelScope.launch {
-            val profile = runCatching { repo.restoreSession() }.getOrNull()
-            _session.value = profile?.let { SessionState.SignedIn(it) } ?: SessionState.SignedOut
+            _serverUrl.value = server.load()
+            loadCoverage()
+            restoreSession()
+        }
+    }
+
+    private fun loadCoverage() {
+        viewModelScope.launch { _coverage.value = runCatching { repo.coverage() }.getOrNull() }
+    }
+
+    fun restoreSession() {
+        _session.value = SessionState.Loading
+        viewModelScope.launch {
+            _session.value = try {
+                repo.restoreSession()?.let { SessionState.SignedIn(it) } ?: SessionState.SignedOut
+            } catch (e: Exception) {
+                SessionState.Unreachable(e.userMessage())
+            }
+        }
+    }
+
+    /** Point the app at a different server. Accounts don't carry over, so this signs out. */
+    fun setServerUrl(url: String) {
+        viewModelScope.launch {
+            server.save(url)
+            _serverUrl.value = server.current
+            repo.logout()
+            _matches.value = MatchesState()
+            _coverage.value = null
+            _form.value = FormState()
+            _session.value = SessionState.SignedOut
+            loadCoverage()
         }
     }
 

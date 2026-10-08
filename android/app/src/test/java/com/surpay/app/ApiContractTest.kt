@@ -19,7 +19,7 @@ class ApiContractTest {
 
     @Before fun setUp() {
         server.start()
-        api = SurpayApi.create(server.url("/").toString()) { token }
+        api = SurpayApi.create({ server.url("/").toString() }, { token })
     }
 
     @After fun tearDown() = server.shutdown()
@@ -45,6 +45,13 @@ class ApiContractTest {
         server.enqueue(MockResponse().setBody("""{"records":0,"total_amount_cents":0,"counties":[]}"""))
         api.coverage()
         assertNull(server.takeRequest().getHeader("Authorization"))
+    }
+
+    @Test fun requestsGoToCurrentServerIncludingSubPath() = runTest {
+        server.enqueue(MockResponse().setBody("""{"records":0,"total_amount_cents":0,"counties":[]}"""))
+        val sub = SurpayApi.create({ server.url("/api").toString() }, { null })
+        sub.coverage()
+        assertEquals("/api/coverage", server.takeRequest().path)
     }
 
     @Test fun errorMessagesComeFromServerDetail() = runTest {

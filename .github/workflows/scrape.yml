@@ -1,5 +1,8 @@
-# Example daily scrape. A GitHub runner has no persistent disk, so point
-# SURPAY_DATABASE_URL (repository secret) at your hosted Postgres before enabling.
+# Daily scrape into your hosted Postgres (the same one Render uses).
+# Setup: repository Settings -> Secrets and variables -> Actions:
+#   secret   SURPAY_DATABASE_URL   = your Neon connection string
+#   secret   SURPAY_SECRET_KEY     = any long random string
+#   variable SURPAY_SCRAPE_ENABLED = true
 name: Daily scrape
 
 on:
@@ -20,7 +23,13 @@ jobs:
         with:
           python-version: "3.13"
       - run: pip install -r requirements.txt
-      - run: python -m surpay.cli scrape --all
+      - run: python -m surpay.cli sync-counties && python -m surpay.cli scrape --all
+        env:
+          SURPAY_DATABASE_URL: ${{ secrets.SURPAY_DATABASE_URL }}
+          SURPAY_SECRET_KEY: ${{ secrets.SURPAY_SECRET_KEY }}
+      - name: Report county lists that changed
+        if: always()
+        run: python -m surpay.cli check-sources
         env:
           SURPAY_DATABASE_URL: ${{ secrets.SURPAY_DATABASE_URL }}
           SURPAY_SECRET_KEY: ${{ secrets.SURPAY_SECRET_KEY }}

@@ -1,6 +1,6 @@
 from datetime import date, datetime, timezone
 
-from sqlalchemy import JSON, Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, BigInteger, Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .db import Base
@@ -27,7 +27,7 @@ class SurplusRecord(Base):
     owner_name: Mapped[str] = mapped_column(String(255))
     owner_name_norm: Mapped[str] = mapped_column(String(255), index=True)
     owner_address: Mapped[str] = mapped_column(String(255), default="")
-    amount_cents: Mapped[int] = mapped_column(Integer)
+    amount_cents: Mapped[int] = mapped_column(BigInteger)
     sale_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     source_url: Mapped[str] = mapped_column(Text, default="")
     # "listed" while the source still publishes it; "delisted" once it drops off
@@ -99,3 +99,30 @@ class Claim(Base):
 
     user: Mapped[User] = relationship(back_populates="claims")
     record: Mapped[SurplusRecord] = relationship()
+
+
+class CountySource(Base):
+    """Where (and whether) a county publishes its surplus list. Seeded from data/county_sources.csv."""
+
+    __tablename__ = "county_sources"
+
+    fips: Mapped[str] = mapped_column(String(5), primary_key=True)
+    state: Mapped[str] = mapped_column(String(2), index=True)
+    county: Mapped[str] = mapped_column(String(64))
+    # unresearched | scraper_live | list_online | request_only | notices_only |
+    # special_process | closed | do_not_use
+    status: Mapped[str] = mapped_column(String(32), index=True, default="unresearched")
+    difficulty: Mapped[str] = mapped_column(String(16), default="unknown")  # easy | medium | hard | blocked
+    publisher: Mapped[str] = mapped_column(String(128), default="")
+    format: Mapped[str] = mapped_column(String(64), default="")
+    list_url: Mapped[str] = mapped_column(Text, default="")
+    update_frequency: Mapped[str] = mapped_column(String(64), default="")
+    scraper: Mapped[str] = mapped_column(String(64), default="")
+    notes: Mapped[str] = mapped_column(Text, default="")
+    last_verified: Mapped[str] = mapped_column(String(10), default="")
+    # Filled in by `check-sources`.
+    last_checked: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_http_status: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    content_hash: Mapped[str] = mapped_column(String(64), default="")
+    last_changed: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    check_error: Mapped[str] = mapped_column(Text, default="")

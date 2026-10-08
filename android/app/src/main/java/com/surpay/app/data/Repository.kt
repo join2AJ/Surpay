@@ -16,6 +16,21 @@ import java.io.IOException
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "surpay")
 private val TOKEN = stringPreferencesKey("token")
+private val SERVER_URL = stringPreferencesKey("server_url")
+
+/** Which Surpay server the app talks to. Defaults to the URL baked in at build time. */
+class ServerStore(private val context: Context, private val defaultUrl: String) {
+    @Volatile var current: String = defaultUrl
+        private set
+
+    suspend fun load(): String = (context.dataStore.data.first()[SERVER_URL] ?: defaultUrl).also { current = it }
+
+    suspend fun save(url: String) {
+        val clean = url.trim().let { if (it.endsWith("/")) it else "$it/" }
+        context.dataStore.edit { if (clean == defaultUrl) it.remove(SERVER_URL) else it[SERVER_URL] = clean }
+        current = clean
+    }
+}
 
 /** Stores the sign-in token on the device. */
 class TokenStore(private val context: Context) {

@@ -53,7 +53,9 @@ fun AuthScreen(
     onSignup: (email: String, password: String, fullName: String) -> Unit,
     onLogin: (email: String, password: String) -> Unit,
     onClearError: () -> Unit,
+    onServerSettings: () -> Unit = {},
 ) {
+    val slow = rememberIsSlow(form.busy)
     var signingUp by rememberSaveable { mutableStateOf(true) }
     var name by rememberSaveable { mutableStateOf("") }
     var email by rememberSaveable { mutableStateOf("") }
@@ -141,6 +143,10 @@ fun AuthScreen(
             Spacer(Modifier.height(8.dp))
             Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.testTag("error"))
         }
+        if (slow) {
+            Spacer(Modifier.height(8.dp))
+            Text(WAKING_UP_MESSAGE, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
         Spacer(Modifier.height(16.dp))
         Button(
             onClick = { if (signingUp) onSignup(email, password, name) else onLogin(email, password) },
@@ -171,6 +177,9 @@ fun AuthScreen(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        TextButton(onClick = onServerSettings, modifier = Modifier.align(Alignment.CenterHorizontally)) {
+            Text("Server settings", style = MaterialTheme.typography.bodySmall)
+        }
     }
 }
 

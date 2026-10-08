@@ -5,7 +5,7 @@ import re
 _SUFFIXES = {"jr", "sr", "ii", "iii", "iv", "v", "md", "esq"}
 _HONORIFICS = {"mr", "mrs", "ms", "miss", "dr"}
 # Words that appear in owner fields but are not part of a person's name.
-_NOISE = {"et", "al", "etal", "ux", "vir", "aka", "estate", "of", "the", "heirs", "unknown", "deceased", "and"}
+_NOISE = {"et", "al", "etal", "ux", "vir", "aka", "nka", "fka", "estate", "of", "the", "heirs", "unknown", "deceased", "and"}
 
 _STREET_ABBR = {
     "street": "st", "avenue": "ave", "av": "ave", "road": "rd", "lane": "ln", "drive": "dr",

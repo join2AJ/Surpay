@@ -12,6 +12,7 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.test.core.app.ApplicationProvider
 import com.github.takahirom.roborazzi.captureRoboImage
+import com.surpay.app.data.ServerStore
 import com.surpay.app.data.SurpayApi
 import com.surpay.app.data.SurpayRepository
 import com.surpay.app.data.TokenStore
@@ -44,8 +45,10 @@ class EndToEndTest {
         val url = System.getProperty("surpay.e2eUrl")
         assumeTrue("set -Pe2eUrl to run", !url.isNullOrBlank())
 
-        val tokens = TokenStore(ApplicationProvider.getApplicationContext())
-        val vm = SurpayViewModel(SurpayRepository(SurpayApi.create(url!!) { tokens.cached }, tokens))
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val tokens = TokenStore(context)
+        val server = ServerStore(context, url!!)
+        val vm = SurpayViewModel(SurpayRepository(SurpayApi.create({ server.current }, { tokens.cached }), tokens), server)
         compose.setContent { SurpayTheme { Surface { SurpayApp(vm) } } }
         val timeout = 15_000L
 

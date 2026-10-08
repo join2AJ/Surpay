@@ -2,19 +2,25 @@
 
   init-db                       create tables
   sources                       list available scrapers
-  scrape [NAME ...] [--all]     run scrapers (schedule this daily with cron)
+  scrape [NAME ...] [--all] [--if-stale HOURS]
+                                run scrapers (schedule daily); --if-stale skips sources
+                                that succeeded within HOURS
   import-file PATH ...          load a CSV/XLSX list (see scrapers/file_import.py)
   stats                         summary of what's in the database
-  seed-demo                     add fictional records for local development and demos
+  sync-counties                 load data/county_sources.csv into the database
+  check-sources                 fetch every county list URL and report which ones changed
+  counties                      summary of the county registry
+  seed-demo [--remove]          add (or remove) fictional "Demo County" records
 """
 
 import argparse
 import sys
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from sqlalchemy import func, select
 
+from . import counties
 from .db import SessionLocal, init_db
 from .ingest import run_source, upsert
 from .models import ScrapeRun, SurplusRecord
@@ -24,6 +30,18 @@ from .scrapers.file_import import records_from_file
 
 def _dollars(cents: int) -> str:
     return f"${cents / 100:,.2f}"
+
+
+def _recently_ok(session, source: str, hours: float) -> bool:
+    last = session.scalar(
+        select(ScrapeRun.finished_at).where(ScrapeRun.source == source, ScrapeRun.ok.is_(True))
+        .order_by(ScrapeRun.id.desc()).limit(1)
+    )
+    if last is None:
+        return False
+    if last.tzinfo is None:  # SQLite drops the timezone
+        last = last.replace(tzinfo=timezone.utc)
+    return datetime.now(timezone.utc) - last < timedelta(hours=hours)
 
 
 def _demo_records() -> list[RecordIn]:
@@ -51,6 +69,7 @@ def main(argv: list[str] | None = None) -> int:
     s = sub.add_parser("scrape")
     s.add_argument("names", nargs="*")
     s.add_argument("--all", action="store_true")
+    s.add_argument("--if-stale", type=float, metavar="HOURS")
     f = sub.add_parser("import-file")
     f.add_argument("path", type=Path)
     f.add_argument("--state", required=True)
@@ -65,7 +84,11 @@ def main(argv: list[str] | None = None) -> int:
     f.add_argument("--partial", action="store_true",
                    help="file is not the county's complete list; don't delist missing records")
     sub.add_parser("stats")
-    sub.add_parser("seed-demo")
+    sub.add_parser("sync-counties")
+    sub.add_parser("check-sources")
+    sub.add_parser("counties")
+    d = sub.add_parser("seed-demo")
+    d.add_argument("--remove", action="store_true")
     args = p.parse_args(argv)
 
     init_db()
@@ -83,6 +106,9 @@ def main(argv: list[str] | None = None) -> int:
             for name in names:
                 if name not in SOURCES:
                     p.error(f"unknown source {name!r}; see `sources`")
+                if args.if_stale is not None and _recently_ok(session, name, args.if_stale):
+                    print(f"{name}: skipped, scraped within {args.if_stale:g}h")
+                    continue
                 run = run_source(session, name)
                 if run.ok:
                     print(f"{name}: +{run.added} new, {run.updated} updated, {run.delisted} delisted")
@@ -100,9 +126,24 @@ def main(argv: list[str] | None = None) -> int:
             run = upsert(session, source, records, full_snapshot=not args.partial)
             print(f"{source}: read {len(records)} rows; +{run.added} new, {run.updated} updated, "
                   f"{run.delisted} delisted")
+        elif args.cmd == "sync-counties":
+            added, updated = counties.sync_from_csv(session)
+            print(f"county registry: +{added} new, {updated} updated")
+        elif args.cmd == "check-sources":
+            changed = counties.check_sources(session)
+            for c in changed:
+                print(f"CHANGED  {c.county}, {c.state}: {c.list_url}")
+            print(f"{len(changed)} county lists changed since the last check")
+        elif args.cmd == "counties":
+            s = counties.summary(session)
+            print(f"{s['total']} counties in registry")
+            for status, n in s["by_status"].most_common():
+                print(f"  {status:16} {n}")
+            print("researched by difficulty:", dict(s["by_difficulty"]))
+            print("states researched:", ", ".join(s["states_researched"]))
         elif args.cmd == "seed-demo":
-            run = upsert(session, "demo", _demo_records(), full_snapshot=True)
-            print(f"demo: +{run.added} new, {run.updated} updated")
+            run = upsert(session, "demo", [] if args.remove else _demo_records(), full_snapshot=True)
+            print(f"demo: +{run.added} new, {run.updated} updated, {run.delisted} removed")
         elif args.cmd == "stats":
             rows = session.execute(
                 select(SurplusRecord.state, SurplusRecord.county, func.count(), func.sum(SurplusRecord.amount_cents))

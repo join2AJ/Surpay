@@ -10,6 +10,9 @@ Find and reclaim foreclosure and tax-sale surplus funds. Free search, contingenc
 | `android/` | Android app (Kotlin + Jetpack Compose): sign up, add past addresses, see what you may be owed, start a claim |
 | `index.html`, `styles.css`, `app.js` | Marketing landing page with an intake form |
 | `docs/STRATEGY.md` | Market, compliance constraints, and the roadmap |
+| `docs/COUNTIES.md` | Which counties publish surplus lists, in what format, and which are worth tracking |
+| `docs/DEPLOY.md` | Hosting on Render + Neon + GitHub Actions (no local server) |
+| `backend/data/county_sources.csv` | The county database: all 3,143 US counties and their research status |
 
 ## How it fits together
 
@@ -21,14 +24,22 @@ county websites ──(scrapers, daily)──▶ database ◀──(matching)─
 Scraping runs **on the server**, never on the phone. The app only ever sees the records that
 match the signed-in person.
 
-## Quick start
+## Deploy (recommended)
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/join2AJ/Surpay)
+
+Full steps, including the free Neon database and daily scraping, are in [`docs/DEPLOY.md`](docs/DEPLOY.md).
+The app connects to `https://surpay-api.onrender.com/` by default; change it in the app
+under **Server settings**.
+
+## Local development
 
 ```sh
 # 1. Backend
 cd backend
 python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 .venv/bin/python -m surpay.cli seed-demo        # fictional records for development
-.venv/bin/python -m surpay.cli scrape --all     # real county data (Adams County, OH so far)
+.venv/bin/python -m surpay.cli scrape --all     # real data: Adams OH, Dallas TX, Fort Bend TX, Gwinnett GA
 .venv/bin/uvicorn surpay.api:app --host 0.0.0.0 --port 8000
 
 # 2. Android app (needs the Android SDK; Android Studio works too)
@@ -36,9 +47,9 @@ cd android
 ./gradlew assembleDebug                         # app/build/outputs/apk/debug/app-debug.apk
 ```
 
-The debug app talks to `http://10.0.2.2:8000/`, which is your computer as seen from the
-Android emulator. To use a phone or a deployed server, build with
-`./gradlew assembleDebug -PsurpayApiUrl=https://your-server/`. Production must use HTTPS.
+To point the emulator at a local backend, build with
+`./gradlew assembleDebug -PsurpayApiUrl=http://10.0.2.2:8000/` (10.0.2.2 is your computer as
+seen from the emulator), or set it in the app under **Server settings**.
 
 To try it, sign up as **Jordan Testwell** and add the address **412 Maple Ridge Rd, OH**.
 You'll see two demo matches.

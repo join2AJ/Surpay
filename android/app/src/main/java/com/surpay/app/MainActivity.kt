@@ -8,6 +8,7 @@ import androidx.compose.material3.Surface
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.surpay.app.data.ServerStore
 import com.surpay.app.data.SurpayApi
 import com.surpay.app.data.SurpayRepository
 import com.surpay.app.data.TokenStore
@@ -21,8 +22,9 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         val tokens = TokenStore(applicationContext)
-        val api = SurpayApi.create(BuildConfig.API_BASE_URL) { tokens.cached }
-        val factory = viewModelFactory { initializer { SurpayViewModel(SurpayRepository(api, tokens)) } }
+        val server = ServerStore(applicationContext, BuildConfig.API_BASE_URL)
+        val api = SurpayApi.create({ server.current }, { tokens.cached })
+        val factory = viewModelFactory { initializer { SurpayViewModel(SurpayRepository(api, tokens), server) } }
         val vm = ViewModelProvider(this, factory)[SurpayViewModel::class.java]
 
         setContent {

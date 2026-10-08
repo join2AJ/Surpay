@@ -5,7 +5,8 @@ FastAPI + SQLAlchemy. SQLite by default; set `SURPAY_DATABASE_URL` for Postgres
 
 | Env var | Purpose |
 |---|---|
-| `SURPAY_DATABASE_URL` | Database (default `sqlite:///./surpay.db`) |
+| `SURPAY_DATABASE_URL` (or `DATABASE_URL`) | Database (default `sqlite:///./surpay.db`). `postgres://` URLs from Render/Neon work as-is |
+| `SURPAY_SEED_DEMO` | `true` to add the fictional Demo County records on start (`start.sh`) |
 | `SURPAY_SECRET_KEY` | Signs login tokens. **Required in production**: a long random string |
 | `SURPAY_USER_AGENT` | How the scraper identifies itself to county sites |
 
@@ -18,7 +19,10 @@ python -m surpay.cli import-file list.xlsx --state FL --county Lee --sale-type t
     --name "Owner Name" --amount "Surplus" --reference "Case Number" \
     --address "Mailing Address" --sale-date "Sale Date"
 python -m surpay.cli stats
-python -m surpay.cli seed-demo          # fictional "Demo County" records
+python -m surpay.cli seed-demo          # fictional "Demo County" records (--remove to delete)
+python -m surpay.cli sync-counties      # load data/county_sources.csv into the database
+python -m surpay.cli check-sources      # fetch each county's list URL; report the ones that changed
+python -m surpay.cli counties           # registry summary
 ```
 
 ## API
@@ -47,12 +51,26 @@ Interactive docs at `/docs` while the server runs.
 4. Only records still on the county's list (`status = listed`) are shown. When a record drops
    off the list (usually paid out), the next scrape marks it `delisted`.
 
+## Live sources
+
+| Source | County | Format | Records (2026-10-08) |
+|---|---|---|---|
+| `adams_oh` | Adams, OH | Word/PDF linked from auditor page | 3 |
+| `dallas_tx` | Dallas, TX | Monthly PDF table | 157 |
+| `fortbend_tx` | Fort Bend, TX | PDF table, multi-line entries | 134 |
+| `gwinnett_ga` | Gwinnett, GA | PDF table linked from tax commissioner page | 55 |
+
+PDF tables are parsed by word position (`pdf_word_rows` + `columns`). Column bounds are
+anchored to a header word, because counties re-export the same list with different tools and
+the columns shift (Dallas moved 12pt between September and October 2026).
+
 ## Adding a county
 
 1. Write `surpay/scrapers/<county>.py` with a `Source` subclass whose `fetch()` returns
    `RecordIn`s. See `adams_oh.py`: it finds the current document link on the county's page,
    downloads it, and parses PDF or Word.
-2. Register it in `surpay/scrapers/__init__.py`.
+2. Register it in `surpay/scrapers/__init__.py` and mark the county `scraper_live` in
+   `data/county_research.csv` (then `python scripts/build_county_registry.py`).
 3. Add a parser test with **made-up names** in the county's exact layout. Don't commit real
    county files; they contain people's names and home addresses.
 

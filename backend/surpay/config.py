@@ -1,7 +1,17 @@
 import os
 import warnings
 
-DATABASE_URL = os.environ.get("SURPAY_DATABASE_URL", "sqlite:///./surpay.db")
+
+def _database_url() -> str:
+    url = os.environ.get("SURPAY_DATABASE_URL") or os.environ.get("DATABASE_URL") or "sqlite:///./surpay.db"
+    # Render, Neon and Heroku hand out postgres:// URLs; SQLAlchemy needs the driver named.
+    for prefix in ("postgres://", "postgresql://"):
+        if url.startswith(prefix):
+            return "postgresql+psycopg://" + url[len(prefix):]
+    return url
+
+
+DATABASE_URL = _database_url()
 
 SECRET_KEY = os.environ.get("SURPAY_SECRET_KEY", "")
 if not SECRET_KEY:

@@ -4,6 +4,7 @@ import retrofit2.converter.kotlinx.serialization.asConverterFactory
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -126,23 +127,34 @@ interface SurpayApi {
     companion object {
         val json = Json { ignoreUnknownKeys = true; explicitNulls = false }
 
-        fun create(baseUrl: String, tokenProvider: () -> String?): SurpayApi {
-            val auth = Interceptor { chain ->
-                val token = tokenProvider()
-                val req = if (token != null) {
-                    chain.request().newBuilder().header("Authorization", "Bearer $token").build()
-                } else {
-                    chain.request()
-                }
-                chain.proceed(req)
+        /** Retrofit needs a fixed base URL; the real server is swapped in per request. */
+        private const val PLACEHOLDER_BASE = "http://surpay.invalid/"
+
+        /**
+         * [baseUrlProvider] is read on every request, so changing the server in Settings takes
+         * effect immediately. Timeouts are long because a free Render instance can take about a
+         * minute to wake up.
+         */
+        fun create(baseUrlProvider: () -> String, tokenProvider: () -> String?): SurpayApi {
+            val rewrite = Interceptor { chain ->
+                val original = chain.request()
+                val base = baseUrlProvider().let { if (it.endsWith("/")) it else "$it/" }.toHttpUrl()
+                val url = base.newBuilder()
+                    .addEncodedPathSegments(original.url.encodedPath.removePrefix("/"))
+                    .encodedQuery(original.url.encodedQuery)
+                    .build()
+                val builder = original.newBuilder().url(url)
+                tokenProvider()?.let { builder.header("Authorization", "Bearer $it") }
+                chain.proceed(builder.build())
             }
             val client = OkHttpClient.Builder()
-                .addInterceptor(auth)
-                .connectTimeout(15, TimeUnit.SECONDS)
-                .readTimeout(30, TimeUnit.SECONDS)
+                .addInterceptor(rewrite)
+                .connectTimeout(30, TimeUnit.SECONDS)
+                .readTimeout(90, TimeUnit.SECONDS)
+                .callTimeout(120, TimeUnit.SECONDS)
                 .build()
             return Retrofit.Builder()
-                .baseUrl(baseUrl)
+                .baseUrl(PLACEHOLDER_BASE)
                 .client(client)
                 .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
                 .build()
