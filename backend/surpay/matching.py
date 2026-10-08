@@ -1,12 +1,12 @@
 """Find surplus records that plausibly belong to a user."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from rapidfuzz import fuzz
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from .models import SurplusRecord, User
+from .models import PreviousAddress, Relative, SurplusRecord, User
 from .normalize import name_tokens, normalize_street, split_street_number
 
 STRONG, LIKELY, POSSIBLE = "strong", "likely", "possible"
@@ -18,6 +18,8 @@ class Match:
     confidence: str
     name_score: float
     address_matched: bool
+    # Set when this is a family member's record that the user claims as heir / under authority.
+    relative: Relative | None = field(default=None)
 
 
 def _name_score(user_name: str, record_name: str) -> float:
@@ -45,9 +47,9 @@ def _name_score(user_name: str, record_name: str) -> float:
     return round(0.6 * last_score + 0.4 * first_score, 1)
 
 
-def _address_matches(user: User, record: SurplusRecord) -> bool:
+def _address_matches(addresses: list[PreviousAddress], record: SurplusRecord) -> bool:
     rec = normalize_street(record.owner_address)
-    for addr in user.addresses:
+    for addr in addresses:
         if addr.state.upper() != record.state:
             continue
         number, street = split_street_number(addr.street)
@@ -58,11 +60,8 @@ def _address_matches(user: User, record: SurplusRecord) -> bool:
     return False
 
 
-def find_matches(session: Session, user: User) -> list[Match]:
-    # Only the person's own names: the name on their ID once submitted, plus other names they
-    # declared before submitting. This stops anyone searching for someone else.
-    own = user.identity.legal_name if user.identity is not None else user.full_name
-    names = [own, *[n for n in (user.other_names or []) if n]]
+def match_names(session: Session, names: list[str], addresses: list[PreviousAddress]) -> list[Match]:
+    names = [n for n in names if n]
     surnames = {name_tokens(n)[-1] for n in names if len(name_tokens(n)) >= 2}
     if not surnames:
         return []
@@ -81,7 +80,7 @@ def find_matches(session: Session, user: User) -> list[Match]:
         score = max(_name_score(n, rec.owner_name) for n in names)
         if score == 0:
             continue
-        addr = _address_matches(user, rec)
+        addr = _address_matches(addresses, rec)
         if addr and score >= 85:
             conf = STRONG
         elif score >= 95:
@@ -95,3 +94,35 @@ def find_matches(session: Session, user: User) -> list[Match]:
     order = {STRONG: 0, LIKELY: 1, POSSIBLE: 2}
     matches.sort(key=lambda m: (order[m.confidence], -m.record.amount_cents))
     return matches
+
+
+def find_matches(session: Session, user: User) -> list[Match]:
+    """Records in the person's own name.
+
+    Only their own names: the name on their ID once submitted, plus other names they declared
+    before submitting. This stops anyone searching for someone else.
+    """
+    own = user.identity.legal_name if user.identity is not None else user.full_name
+    return match_names(session, [own, *(user.other_names or [])], user.own_addresses)
+
+
+def find_relative_matches(session: Session, user: User, relative: Relative) -> list[Match]:
+    homes = [a for a in user.addresses if a.relative_id == relative.id]
+    found = match_names(session, [relative.full_name, *(relative.other_names or [])], homes)
+    for m in found:
+        m.relative = relative
+    return found
+
+
+def find_all_matches(session: Session, user: User) -> list[Match]:
+    """Own records, then those of family members whose relationship staff have verified."""
+    out = find_matches(session, user)
+    seen = {m.record.id for m in out}
+    for rel in user.relatives:
+        if rel.review_status != "approved":
+            continue
+        for m in find_relative_matches(session, user, rel):
+            if m.record.id not in seen:
+                seen.add(m.record.id)
+                out.append(m)
+    return out

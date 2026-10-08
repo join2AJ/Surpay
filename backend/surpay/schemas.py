@@ -34,6 +34,8 @@ class SignupIn(BaseModel):
     full_name: str = Field(min_length=3, max_length=255)
     phone: str = Field(default="", max_length=32)
     role: str = Field(default="claimant", pattern=r"^(claimant|attorney)$")
+    # Terms of Use and Privacy Notice (current versions) accepted on the sign-up screen.
+    accept_terms: bool = False
 
 
 class LoginIn(BaseModel):
@@ -66,6 +68,10 @@ class ProfileOut(BaseModel):
     # Names can't change once ID is submitted: searches use the verified name only.
     name_locked: bool = False
     role: str = "claimant"
+    # False when the Terms or Privacy Notice changed since they last accepted: ask again.
+    terms_current: bool = True
+    unread_notifications: int = 0
+    deletion_requested: bool = False
 
 
 class MatchPreviewOut(BaseModel):
@@ -78,8 +84,12 @@ class LegalOut(BaseModel):
     right: str
     process: str
     deadline: str
+    if_missed: str = ""
     proof: list[str]
+    # Extra proof when claiming for a family member, by basis (heir, power_of_attorney, guardian).
+    family_proof: dict[str, list[str]] = Field(default_factory=dict)
     note: str
+    facilitator: str = ""
     constitutional: str
     sources: list[str]
 
@@ -103,6 +113,11 @@ class MatchOut(BaseModel):
     last_seen: datetime
     claim_status: str | None
     legal: LegalOut
+    # Approximate last day to claim (from the sale date and state law); None if unknown.
+    deadline_date: date | None = None
+    # Family claims: whose money this is and how the user is related.
+    relative_id: int | None = None
+    on_behalf_of: str | None = None
 
 
 class MatchesOut(BaseModel):
@@ -149,6 +164,12 @@ class ClaimOut(BaseModel):
     legal: LegalOut
     # The partner attorney, once they've accepted the case.
     attorney: "AttorneyPublic | None" = None
+    fee_pct: float = 0
+    deadline_date: date | None = None
+    on_behalf_of: str | None = None
+    # Chat with the attorney: open once they accept; they write first.
+    chat_open: bool = False
+    unread_messages: int = 0
 
 
 class IdentityIn(BaseModel):
@@ -182,11 +203,16 @@ class AgreementOut(BaseModel):
     signed: bool
     signature_name: str | None
     signed_at: datetime | None
+    # The typed signature must match this (the name on their verified ID).
+    expected_name: str = ""
+    document_sha256: str = ""
 
 
 class SignIn(BaseModel):
     signature_name: str = Field(min_length=3, max_length=255)
     agreed: bool
+    # The signature drawn on screen, as a base64 PNG.
+    signature_png_b64: str = Field(min_length=100)
 
 
 class AdminStatusIn(BaseModel):
@@ -209,10 +235,10 @@ class CoverageOut(BaseModel):
 
 
 class AttorneyPublic(BaseModel):
-    """What a claimant sees about their attorney."""
+    """What a claimant sees about their attorney. No contact details: messages go through the app."""
     name: str
     firm: str
-    phone: str
+    phone: str = ""
     bar: str
 
 
@@ -264,6 +290,11 @@ class CaseOut(BaseModel):
     accepted_at: datetime | None
     source_url: str
     legal: LegalOut
+    on_behalf_of: str | None = None
+    # How claims are filed in this state, step by step (and what must be printed).
+    filing_guide: dict = Field(default_factory=dict)
+    chat_open: bool = False
+    unread_messages: int = 0
     # After accepting:
     claimant: dict | None = None
     agreement: dict | None = None
@@ -276,12 +307,105 @@ class CaseDeclineIn(BaseModel):
 
 
 class CaseStatusIn(BaseModel):
-    status: str = Field(pattern=r"^(filed|approved|paid|denied)$")
+    status: str = Field(pattern=r"^(filed|hearing_pending|approved|paid|denied)$")
     note: str = Field(default="", max_length=1000)
 
 
 class AdminAttorneyIn(BaseModel):
     decision: str = Field(pattern=r"^(approved|rejected)$")
+    note: str = ""
+
+
+class MessageIn(BaseModel):
+    body: str = Field(min_length=1, max_length=2000)
+
+
+class MessageOut(BaseModel):
+    id: int
+    sender_role: str  # attorney | claimant
+    body: str
+    created_at: datetime
+    read: bool
+
+
+class ChatOut(BaseModel):
+    messages: list[MessageOut]
+    can_send: bool
+    # Why they can't send yet, e.g. waiting for the attorney's first message.
+    waiting_reason: str = ""
+    counterpart: str
+    code_of_conduct: list[str]
+
+
+class NotificationOut(BaseModel):
+    id: int
+    kind: str
+    title: str
+    body: str
+    claim_id: int | None
+    created_at: datetime
+    read: bool
+
+
+class NotificationsOut(BaseModel):
+    items: list[NotificationOut]
+    unread: int
+
+
+class RelativeIn(BaseModel):
+    full_name: str = Field(min_length=3, max_length=255)
+    other_names: list[str] = Field(default_factory=list, max_length=5)
+    relationship: str = Field(pattern=r"^(spouse|parent|child|sibling|grandparent|grandchild|other)$")
+    basis: str = Field(pattern=r"^(heir|power_of_attorney|guardian)$")
+    date_of_death: date | None = None
+    death_certificate_b64: str | None = None
+    relationship_proof_b64: str = Field(min_length=100)
+    authority_document_b64: str | None = None
+    addresses: list[AddressIn] = Field(min_length=1, max_length=10)
+    consent: bool
+
+
+class RelativeOut(BaseModel):
+    id: int
+    full_name: str
+    other_names: list[str]
+    relationship: str
+    basis: str
+    date_of_death: date | None
+    review_status: str
+    review_note: str
+    addresses: list[AddressOut]
+    submitted_at: datetime
+
+
+class PoliciesOut(BaseModel):
+    terms_version: str
+    terms: str
+    privacy_version: str
+    privacy: str
+
+
+class AdminFeeRuleIn(BaseModel):
+    state: str = Field(min_length=2, max_length=2)
+    county: str = Field(default="", max_length=64)
+    base_pct: float | None = Field(default=None, ge=0, le=50)
+    legal_max_pct: float | None = Field(default=None, ge=0, le=50)
+    legal_source: str = ""
+    note: str = ""
+
+    @field_validator("state")
+    @classmethod
+    def upper_state(cls, v: str) -> str:
+        return v.upper()
+
+
+class AdminFeeBandsIn(BaseModel):
+    # [{"up_to_cents": 1000000, "pct": 25}, ..., {"up_to_cents": null, "pct": 12}]
+    bands: list[dict] = Field(min_length=1, max_length=10)
+
+
+class AdminFeeOverrideIn(BaseModel):
+    fee_pct: float = Field(ge=0, le=50)
     note: str = ""
 
 

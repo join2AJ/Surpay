@@ -1,8 +1,9 @@
 from datetime import date, datetime, timezone
 
-from sqlalchemy import JSON, BigInteger, Date, DateTime, ForeignKey, Integer, LargeBinary, String, Text, UniqueConstraint
+from sqlalchemy import JSON, BigInteger, Date, DateTime, Float, ForeignKey, Integer, LargeBinary, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from .crypto import EncryptedDate, EncryptedText
 from .db import Base
 
 
@@ -65,6 +66,10 @@ class User(Base):
     # claimant (default) | attorney
     role: Mapped[str] = mapped_column(String(16), default="claimant")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    # Bumped on sign-out-everywhere and password change: older tokens stop working.
+    token_version: Mapped[int] = mapped_column(Integer, default=0)
+    # Set when the person asks for their account and data to be erased.
+    deletion_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     addresses: Mapped[list["PreviousAddress"]] = relationship(
         back_populates="user", cascade="all, delete-orphan", order_by="PreviousAddress.id"
@@ -75,6 +80,12 @@ class User(Base):
         back_populates="user", cascade="all, delete-orphan", uselist=False)
     attorney: Mapped["AttorneyProfile | None"] = relationship(
         back_populates="user", cascade="all, delete-orphan", uselist=False)
+    relatives: Mapped[list["Relative"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan", order_by="Relative.id")
+
+    @property
+    def own_addresses(self) -> list["PreviousAddress"]:
+        return [a for a in self.addresses if a.relative_id is None]
 
 
 class PreviousAddress(Base):
@@ -87,6 +98,8 @@ class PreviousAddress(Base):
     state: Mapped[str] = mapped_column(String(2))
     zip: Mapped[str] = mapped_column(String(10), default="")
     county: Mapped[str] = mapped_column(String(64), default="")
+    # Set when this was a family member's home (searching for them as their heir), not the user's.
+    relative_id: Mapped[int | None] = mapped_column(ForeignKey("relatives.id", ondelete="CASCADE"), nullable=True)
 
     user: Mapped[User] = relationship(back_populates="addresses")
 
@@ -117,14 +130,23 @@ class Claim(Base):
     attorney_fee_cents: Mapped[int] = mapped_column(Integer, default=0)
     # "" | due (case finished, attorney to be paid) | paid
     payout_status: Mapped[str] = mapped_column(String(16), default="")
+    # Claiming as a family member's heir (or under a power of attorney) rather than for themself.
+    relative_id: Mapped[int | None] = mapped_column(ForeignKey("relatives.id"), nullable=True)
+    # Contingency fee for this case, fixed when the claim starts (surpay/fees.py) and how it was
+    # worked out. Staff may override it before the agreement is signed.
+    fee_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    fee_basis: Mapped[dict] = mapped_column(JSON, default=dict)
 
     user: Mapped[User] = relationship(back_populates="claims", foreign_keys=[user_id])
     attorney: Mapped["User | None"] = relationship(foreign_keys=[attorney_id])
     record: Mapped[SurplusRecord] = relationship()
+    relative: Mapped["Relative | None"] = relationship()
     events: Mapped[list["ClaimEvent"]] = relationship(
         back_populates="claim", cascade="all, delete-orphan", order_by="ClaimEvent.id")
     agreement: Mapped["Agreement | None"] = relationship(
         back_populates="claim", cascade="all, delete-orphan", uselist=False)
+    messages: Mapped[list["Message"]] = relationship(
+        back_populates="claim", cascade="all, delete-orphan", order_by="Message.id")
 
 
 class ClaimEvent(Base):
@@ -144,7 +166,8 @@ class ClaimEvent(Base):
 class IdentityVerification(Base):
     """What a claimant submitted to prove who they are. One per user, reused for every claim.
 
-    Document images are encrypted (surpay/crypto.py) before they are stored.
+    Document images and personal details are encrypted (surpay/crypto.py) before they are
+    stored. The legal name stays searchable because matching needs it.
     """
 
     __tablename__ = "identity_verifications"
@@ -152,13 +175,13 @@ class IdentityVerification(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), unique=True)
     legal_name: Mapped[str] = mapped_column(String(255))
-    date_of_birth: Mapped[date] = mapped_column(Date)
-    ssn_last4: Mapped[str] = mapped_column(String(4))
-    phone: Mapped[str] = mapped_column(String(32))
-    street: Mapped[str] = mapped_column(String(255))
-    city: Mapped[str] = mapped_column(String(128))
+    date_of_birth: Mapped[date] = mapped_column(EncryptedDate)
+    ssn_last4: Mapped[str] = mapped_column(EncryptedText)
+    phone: Mapped[str] = mapped_column(EncryptedText)
+    street: Mapped[str] = mapped_column(EncryptedText)
+    city: Mapped[str] = mapped_column(EncryptedText)
     state: Mapped[str] = mapped_column(String(2))
-    zip: Mapped[str] = mapped_column(String(10))
+    zip: Mapped[str] = mapped_column(EncryptedText)
     id_type: Mapped[str] = mapped_column(String(32))  # drivers_license | state_id | passport
     id_front: Mapped[bytes] = mapped_column(LargeBinary)
     id_back: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
@@ -186,6 +209,13 @@ class Agreement(Base):
     signed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     ip_address: Mapped[str] = mapped_column(String(64), default="")
     user_agent: Mapped[str] = mapped_column(String(255), default="")
+    # Evidence of who signed: their drawn signature (encrypted PNG), a fingerprint of the exact
+    # text signed, the device it was signed on and the name on their verified ID.
+    signature_image: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    document_sha256: Mapped[str] = mapped_column(String(64), default="")
+    device_id: Mapped[str] = mapped_column(String(128), default="")
+    device_info: Mapped[str] = mapped_column(String(255), default="")
+    legal_name_on_id: Mapped[str] = mapped_column(String(255), default="")
 
     claim: Mapped[Claim] = relationship(back_populates="agreement")
 
@@ -248,3 +278,137 @@ class AttorneyProfile(Base):
             return False
         want = county.lower().removesuffix(" county").strip()
         return any(c.lower().removesuffix(" county").strip() == want for c in self.counties)
+
+
+class Relative(Base):
+    """A family member whose surplus the user claims as their heir (or holds legal authority for).
+
+    Searches for a relative's name unlock only after staff check the relationship documents,
+    so nobody can use the app to look up an unrelated person.
+    """
+
+    __tablename__ = "relatives"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    full_name: Mapped[str] = mapped_column(String(255))
+    other_names: Mapped[list] = mapped_column(JSON, default=list)
+    # spouse | parent | child | sibling | grandparent | grandchild | other
+    relation: Mapped[str] = mapped_column("relationship", String(32))
+    # heir (they have died) | power_of_attorney | guardian
+    basis: Mapped[str] = mapped_column(String(32), default="heir")
+    date_of_death: Mapped[date | None] = mapped_column(EncryptedDate, nullable=True)
+    # Encrypted document photos.
+    death_certificate: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    relationship_proof: Mapped[bytes] = mapped_column(LargeBinary)
+    authority_document: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    submitted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    # pending -> approved | rejected
+    review_status: Mapped[str] = mapped_column(String(16), default="pending", index=True)
+    review_note: Mapped[str] = mapped_column(Text, default="")
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    user: Mapped[User] = relationship(back_populates="relatives")
+    addresses: Mapped[list[PreviousAddress]] = relationship(viewonly=True)
+
+
+class Message(Base):
+    """In-app chat between a claimant and their attorney about one claim. Encrypted at rest."""
+
+    __tablename__ = "messages"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    claim_id: Mapped[int] = mapped_column(ForeignKey("claims.id", ondelete="CASCADE"), index=True)
+    sender_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    sender_role: Mapped[str] = mapped_column(String(16))  # attorney | claimant
+    body: Mapped[str] = mapped_column(EncryptedText)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    claim: Mapped[Claim] = relationship(back_populates="messages")
+
+
+class Notification(Base):
+    """Something to tell a user: claim progress, a new message, a new case. Shown in the app and
+    as a phone notification."""
+
+    __tablename__ = "notifications"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String(32))  # claim_update | message | case_offer | money_released | ...
+    title: Mapped[str] = mapped_column(String(255))
+    body: Mapped[str] = mapped_column(Text, default="")
+    claim_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class Consent(Base):
+    """A record of each notice a person accepted (terms, privacy, ID processing...), and when."""
+
+    __tablename__ = "consents"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String(32))
+    version: Mapped[str] = mapped_column(String(64))
+    accepted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    ip_address: Mapped[str] = mapped_column(String(64), default="")
+    device_id: Mapped[str] = mapped_column(String(128), default="")
+    withdrawn_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class AuditLog(Base):
+    """Tamper-evident record of every significant action: who, what, when, from where.
+
+    Each entry stores the hash of the previous one, so editing or deleting any past entry
+    breaks the chain (`GET /admin/audit/verify`). Never updated or deleted by the app.
+    """
+
+    __tablename__ = "audit_log"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    actor_type: Mapped[str] = mapped_column(String(16))  # user | attorney | admin | system
+    actor_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    action: Mapped[str] = mapped_column(String(64), index=True)
+    entity_type: Mapped[str] = mapped_column(String(32), default="")
+    entity_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    ip_address: Mapped[str] = mapped_column(String(64), default="")
+    user_agent: Mapped[str] = mapped_column(String(255), default="")
+    device_id: Mapped[str] = mapped_column(String(128), default="")
+    device_info: Mapped[str] = mapped_column(String(255), default="")
+    details: Mapped[dict] = mapped_column(JSON, default=dict)
+    prev_hash: Mapped[str] = mapped_column(String(64), default="")
+    hash: Mapped[str] = mapped_column(String(64), default="")
+
+
+class FeeRule(Base):
+    """Staff-set fee inputs for a whole state (county = "") or one county.
+
+    base_pct: the usual rate there. legal_max_pct: the most the law allows (None = no known cap).
+    """
+
+    __tablename__ = "fee_rules"
+    __table_args__ = (UniqueConstraint("state", "county"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    state: Mapped[str] = mapped_column(String(2))
+    county: Mapped[str] = mapped_column(String(64), default="")
+    base_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    legal_max_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    legal_source: Mapped[str] = mapped_column(Text, default="")
+    note: Mapped[str] = mapped_column(Text, default="")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class FeeBand(Base):
+    """Rate by size of the recovery: smaller amounts carry a higher percentage."""
+
+    __tablename__ = "fee_bands"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    # Applies to amounts up to and including this; None = everything above the other bands.
+    up_to_cents: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    pct: Mapped[float] = mapped_column(Float)

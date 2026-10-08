@@ -22,9 +22,10 @@ def verify_password(password: str, hashed: str) -> bool:
     return bcrypt.checkpw(password.encode(), hashed.encode())
 
 
-def create_token(user_id: int) -> str:
+def create_token(user: User) -> str:
     exp = datetime.now(timezone.utc) + timedelta(days=config.TOKEN_TTL_DAYS)
-    return jwt.encode({"sub": str(user_id), "exp": exp}, config.SECRET_KEY, algorithm="HS256")
+    payload = {"sub": str(user.id), "v": user.token_version or 0, "exp": exp}
+    return jwt.encode(payload, config.SECRET_KEY, algorithm="HS256")
 
 
 def current_user(
@@ -40,6 +41,7 @@ def current_user(
         user = session.get(User, int(payload["sub"]))
     except (jwt.PyJWTError, KeyError, ValueError):
         raise unauthorized from None
-    if user is None:
+    # Signing out everywhere bumps token_version, which retires every older token.
+    if user is None or payload.get("v", 0) != (user.token_version or 0):
         raise unauthorized
     return user

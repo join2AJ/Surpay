@@ -16,6 +16,7 @@
   button { background:var(--brand); color:#fff; border:0; font-weight:600; cursor:pointer; }
   button.secondary { background:transparent; color:var(--text); border:1px solid var(--line); }
   button.danger { background:var(--bad); }
+  main:empty { display:none; }
   main { padding:16px; max-width:900px; margin:0 auto; display:grid; gap:16px; }
   .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px; }
   .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
@@ -35,23 +36,32 @@
 </head>
 <body>
 <header>
-  <h1>Surpay claims review</h1>
+  <h1>Surpay staff review</h1>
   <input id="token" type="password" placeholder="Admin token" autocomplete="off">
-  <button id="load">Load claims</button>
+  <button id="load">Load</button>
+  <select id="view">
+    <option value="reviews">Reviews (attorneys, IDs, family)</option>
+    <option value="claims">Claims</option>
+    <option value="fees">Fee rules</option>
+    <option value="audit">Audit trail</option>
+  </select>
   <select id="filter">
     <option value="">All claims</option>
     <option value="identity_submitted,agreement_signed">Needs ID review</option>
-    <option value="identity_verified,filed,approved">In progress</option>
+    <option value="identity_verified,attorney_assigned,filed,hearing_pending,approved">In progress</option>
     <option value="paid,denied,withdrawn">Closed</option>
   </select>
 </header>
 <p id="msg" class="muted"></p>
 <main id="lawyers"></main>
 <main id="pending"></main>
+<main id="relatives"></main>
 <main id="list"></main>
+<main id="fees"></main>
+<main id="audit"></main>
 
 <script>
-const STATUSES = ["requested","identity_submitted","agreement_signed","identity_verified","filed","approved","paid","denied","withdrawn"];
+const STATUSES = ["requested","identity_submitted","agreement_signed","identity_verified","attorney_assigned","filed","hearing_pending","approved","paid","denied","withdrawn"];
 const $ = (s) => document.querySelector(s);
 const tokenInput = $("#token");
 try { tokenInput.value = sessionStorage.getItem("surpay-admin") || ""; } catch {}
@@ -73,9 +83,9 @@ async function api(path, opts = {}) {
   return r;
 }
 
-async function loadImage(img, userId, kind) {
+async function loadImage(img, userId, kind, path) {
   try {
-    const blob = await (await api(`/admin/users/${userId}/documents/${kind}`)).blob();
+    const blob = await (await api(path || `/admin/users/${userId}/documents/${kind}`)).blob();
     img.src = URL.createObjectURL(blob);
     img.onclick = () => window.open(img.src, "_blank");
   } catch (e) { img.alt = "Not available"; }
@@ -90,6 +100,7 @@ function render(c) {
       el("span", { class: "pill" }, c.status),
       id ? el("span", { class: "pill " + id.review_status }, "ID " + id.review_status) : el("span", { class: "pill" }, "no ID yet")),
     el("div", { class: "muted" }, `${c.user.email} · ${c.user.phone || "no phone"}`),
+    ...(c.relative ? [el("div", { class: "pill " + c.relative.review_status }, `Family claim: for ${c.relative.name} (${c.relative.relationship}, ${c.relative.basis.replace(/_/g, " ")})`)] : []),
     el("h3", {}, "County record"),
     el("div", { class: "grid" },
       el("div", {}, "County"), el("div", {}, `${c.county} County, ${c.state} · ${c.reference}`),
@@ -120,7 +131,34 @@ function render(c) {
         el("button", { class: "danger", onclick: () => review(c, "rejected") }, "Reject ID (ask to resubmit)")),
     );
   }
-  if (c.agreement) card.append(el("div", { class: "muted" }, `Agreement signed by "${c.agreement.signature_name}" on ${when(c.agreement.signed_at)} (${c.agreement.version})`));
+  const fb = c.fee_basis || {};
+  const feeIn = el("input", { type: "number", step: "0.5", min: "0", max: "50", value: c.fee_pct, style: "width:90px" });
+  card.append(el("h3", {}, "Fee"),
+    el("div", { class: "muted" }, `${c.fee_pct}% · county rate ${fb.county_pct ?? "?"}% (${fb.county_pct_from || "?"}), amount band ${fb.amount_band_pct ?? "?"}%, legal max ${fb.legal_max_pct ?? "none set"}${fb.override ? " · set by staff: " + (fb.override_note || "") : ""}`),
+    c.agreement ? el("div", { class: "muted" }, "Fixed: the client signed at this fee.")
+      : el("div", { class: "row" }, feeIn, el("button", { class: "secondary", onclick: () => overrideFee(c, feeIn.value) }, "Set fee for this case")));
+  if (c.agreement) {
+    const a = c.agreement;
+    const sig = el("img", { alt: "signature", title: "Drawn signature", style: "width:220px;height:80px;object-fit:contain;background:#fff" });
+    if (a.has_signature_image) loadImage(sig, null, null, `/admin/claims/${c.id}/signature`);
+    const ev = el("pre", { class: "muted", style: "white-space:pre-wrap;display:none" });
+    card.append(el("h3", {}, "Agreement and signing evidence"),
+      el("div", { class: "grid" },
+        el("div", {}, "Typed name"), el("div", {}, `${a.signature_name} (ID: ${a.legal_name_on_id || "?"})`),
+        el("div", {}, "Signed"), el("div", {}, `${when(a.signed_at)} · version ${a.version}`),
+        el("div", {}, "IP / device"), el("div", {}, `${a.ip_address || "?"} · ${a.device || "?"} · ${a.device_id || "?"}`),
+        el("div", {}, "SHA-256"), el("div", { style: "word-break:break-all" }, a.document_sha256 || "—")),
+      el("div", { class: "docs" }, sig),
+      el("div", { class: "row" },
+        el("button", { class: "secondary", onclick: async () => {
+          try { ev.textContent = JSON.stringify(await (await api(`/admin/claims/${c.id}/evidence`)).json(), null, 2); ev.style.display = "block"; }
+          catch (e) { alert(e.message); } } }, "Show evidence certificate"),
+        c.messages ? el("button", { class: "secondary", onclick: async () => {
+          if (!confirm("Messages are private. Open them only for a dispute or misuse report. This is logged.")) return;
+          try { ev.textContent = (await (await api(`/admin/claims/${c.id}/messages`)).json()).map(m => `[${when(m.created_at)}] ${m.sender_role}: ${m.body}`).join("\n"); ev.style.display = "block"; }
+          catch (e) { alert(e.message); } } }, `Messages (${c.messages})`) : null),
+      ev);
+  }
   const at = c.attorney;
   card.append(el("h3", {}, "Attorney"),
     at ? el("div", { class: "row" },
@@ -223,6 +261,83 @@ async function reviewAttorney(a, decision) {
   } catch (e) { alert(e.message); }
 }
 
+async function overrideFee(c, pct) {
+  const note = prompt(`Set claim #${c.id} fee to ${pct}%? Reason (kept in the audit log):`);
+  if (note === null) return;
+  try { await api(`/admin/claims/${c.id}/fee`, { method: "POST", body: JSON.stringify({ fee_pct: Number(pct), note }) }); load(); }
+  catch (e) { alert(e.message); }
+}
+
+function renderRelative(r) {
+  const docs = el("div", { class: "docs" });
+  for (const kind of r.documents) {
+    const img = el("img", { alt: kind, title: kind.replace(/_/g, " ") });
+    docs.append(img);
+    loadImage(img, null, null, `/admin/relatives/${r.id}/documents/${kind}`);
+  }
+  const decide = async (decision) => {
+    const note = decision === "rejected" ? prompt("What's missing? The user sees this note.") : "";
+    if (decision === "rejected" && !note) return;
+    try { await api(`/admin/relatives/${r.id}`, { method: "POST", body: JSON.stringify({ decision, note }) }); load(); }
+    catch (e) { alert(e.message); }
+  };
+  return el("section", { class: "card" },
+    el("div", { class: "row" }, el("h2", {}, `Family claim · ${r.full_name}`), el("span", { class: "pill pending" }, "waiting"),
+      el("span", { class: "pill" }, `${r.possible_matches} possible match${r.possible_matches === 1 ? "" : "es"}`)),
+    el("div", { class: "muted" }, `Requested by ${r.user.verified_name} (${r.user.email}, ID ${r.user.identity_status}) · ${when(r.submitted_at)}`),
+    el("div", { class: "grid" },
+      el("div", {}, "Relationship"), el("div", {}, r.relationship),
+      el("div", {}, "Basis"), el("div", {}, r.basis.replace(/_/g, " ")),
+      el("div", {}, "Date of death"), el("div", {}, r.date_of_death || "—"),
+      el("div", {}, "Other names"), el("div", {}, r.other_names.join(", ") || "—")),
+    el("h3", {}, "Their homes"),
+    el("ol", {}, ...r.addresses.map(a => el("li", {}, `${a.street}, ${a.city}, ${a.state} ${a.zip} (${a.county})`))),
+    docs,
+    el("p", { class: "muted" }, "Check the documents link the requester to this person (birth/marriage certificates), the death certificate or authority document is genuine, and the names match."),
+    el("div", { class: "row" },
+      el("button", { onclick: () => decide("approved") }, "Approve"),
+      el("button", { class: "danger", onclick: () => decide("rejected") }, "Reject (ask for documents)")));
+}
+
+async function loadFees() {
+  const f = await (await api("/admin/fees")).json();
+  const state = el("input", { placeholder: "State (OH)", maxlength: "2", style: "width:90px" });
+  const county = el("input", { placeholder: "County (blank = whole state)" });
+  const base = el("input", { type: "number", step: "0.5", placeholder: "Usual %", style: "width:100px" });
+  const cap = el("input", { type: "number", step: "0.5", placeholder: "Legal max %", style: "width:110px" });
+  const source = el("input", { placeholder: "Law / source for the max" });
+  const num = (i) => i.value === "" ? null : Number(i.value);
+  const save = async () => {
+    try { await api("/admin/fees/rules", { method: "POST", body: JSON.stringify({ state: state.value, county: county.value, base_pct: num(base), legal_max_pct: num(cap), legal_source: source.value }) }); loadFees(); }
+    catch (e) { alert(e.message); }
+  };
+  const bands = el("textarea", { rows: "5", style: "width:100%;font-family:monospace" });
+  bands.value = f.bands.map(b => `${b.up_to_cents == null ? "above" : b.up_to_cents / 100} ${b.pct}`).join("\n");
+  const saveBands = async () => {
+    const parsed = bands.value.trim().split(/\n+/).map(l => { const [a, p] = l.trim().split(/\s+/); return { up_to_cents: a === "above" ? null : Math.round(Number(a) * 100), pct: Number(p) }; });
+    try { await api("/admin/fees/bands", { method: "PUT", body: JSON.stringify({ bands: parsed }) }); loadFees(); } catch (e) { alert(e.message); }
+  };
+  $("#fees").replaceChildren(
+    el("section", { class: "card" }, el("h2", {}, "How fees are set"),
+      el("p", { class: "muted" }, `${f.formula}. Default usual rate: ${f.default_pct}%. Users only see the final percentage.`),
+      el("h3", {}, "Amount bands (amount in dollars, then %; last line 'above')"), bands,
+      el("div", { class: "row" }, el("button", { onclick: saveBands }, "Save bands"))),
+    el("section", { class: "card" }, el("h2", {}, "State and county rules"),
+      el("div", { class: "row" }, state, county, base, cap, source, el("button", { onclick: save }, "Save rule")),
+      el("ol", {}, ...f.rules.map(r => el("li", {},
+        `${r.state}${r.county ? " · " + r.county : " (whole state)"}: usual ${r.base_pct != null ? r.base_pct + "%" : "default"}, legal max ${r.legal_max_pct != null ? r.legal_max_pct + "%" : "none"} ${r.legal_source ? "· " + r.legal_source : ""} `,
+        el("button", { class: "secondary", onclick: async () => { if (confirm("Delete this rule?")) { await api(`/admin/fees/rules/${r.id}`, { method: "DELETE" }); loadFees(); } } }, "Delete"))))));
+}
+
+async function loadAudit() {
+  const v = await (await api("/admin/audit/verify")).json();
+  const rows = await (await api("/admin/audit?limit=200")).json();
+  $("#audit").replaceChildren(
+    el("section", { class: "card" }, el("h2", {}, "Audit trail"),
+      el("p", { class: v.ok ? "muted" : "" }, v.ok ? `Chain intact: ${v.entries} entries, each linked to the previous by SHA-256.` : `CHAIN BROKEN at entry #${v.broken_at}: a past record was changed or removed.`),
+      el("ol", {}, ...rows.map(e => el("li", {}, `#${e.id} ${e.at} · ${e.actor_type}${e.actor_id ? " " + e.actor_id : ""} · ${e.action}${e.entity_type ? " · " + e.entity_type + " " + (e.entity_id ?? "") : ""} · ${e.ip || "-"} · ${e.device_info || e.user_agent || "-"}`)))));
+}
+
 async function claimAction(c, path, msg) {
   if (!confirm(msg)) return;
   try { await api(`/admin/claims/${c.id}/${path}`, { method: "POST" }); load(); } catch (e) { alert(e.message); }
@@ -231,7 +346,24 @@ async function claimAction(c, path, msg) {
 async function load() {
   try { sessionStorage.setItem("surpay-admin", tokenInput.value); } catch {}
   $("#msg").textContent = "Loading…";
+  const view = $("#view").value;
+  for (const id of ["#list", "#pending", "#lawyers", "#relatives", "#fees", "#audit"]) $(id).replaceChildren();
+  $("#filter").style.display = view === "claims" ? "" : "none";
   try {
+    if (view === "fees") { await loadFees(); $("#msg").textContent = ""; return; }
+    if (view === "audit") { await loadAudit(); $("#msg").textContent = ""; return; }
+    if (view === "claims") {
+      const all = await (await api("/admin/claims")).json();
+      const f = $("#filter").value;
+      const rows = f ? all.filter(c => f.split(",").includes(c.status)) : all;
+      $("#list").replaceChildren(...rows.map(render));
+      $("#msg").textContent = `${rows.length} of ${all.length} claims`;
+      return;
+    }
+    const rels = await (await api("/admin/relatives")).json();
+    $("#relatives").replaceChildren(
+      ...(rels.length ? [el("h2", {}, `Family claim reviews (${rels.length})`)] : []),
+      ...rels.map(renderRelative));
     const lawyers = await (await api("/admin/attorneys")).json();
     $("#lawyers").replaceChildren(
       ...(lawyers.length ? [el("h2", {}, `Attorney applications (${lawyers.length})`)] : []),
@@ -240,15 +372,12 @@ async function load() {
     $("#pending").replaceChildren(
       ...(pending.length ? [el("h2", {}, `Pending ID reviews (${pending.length})`)] : []),
       ...pending.map(renderIdentity));
-    const all = await (await api("/admin/claims")).json();
-    const f = $("#filter").value;
-    const rows = f ? all.filter(c => f.split(",").includes(c.status)) : all;
-    $("#list").replaceChildren(...rows.map(render));
-    $("#msg").textContent = `${lawyers.length} attorney applications · ${pending.length} ID reviews waiting · ${rows.length} of ${all.length} claims`;
-  } catch (e) { $("#msg").textContent = e.message; for (const id of ["#list", "#pending", "#lawyers"]) $(id).replaceChildren(); }
+    $("#msg").textContent = `${lawyers.length} attorney applications · ${pending.length} ID reviews · ${rels.length} family reviews waiting`;
+  } catch (e) { $("#msg").textContent = e.message; }
 }
 $("#load").addEventListener("click", load);
 $("#filter").addEventListener("change", load);
+$("#view").addEventListener("change", load);
 if (tokenInput.value) load();
 </script>
 </body>

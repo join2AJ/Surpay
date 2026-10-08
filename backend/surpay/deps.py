@@ -5,10 +5,11 @@ import binascii
 import hmac
 from typing import Annotated
 
-from fastapi import Depends, Header, HTTPException, status
+from fastapi import Depends, Header, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from . import config, crypto
+from .audit import ClientInfo
 from .auth import current_user
 from .db import get_session
 from .models import User
@@ -40,3 +41,21 @@ def require_admin(x_admin_token: Annotated[str | None, Header()] = None) -> None
 
 
 Admin = Annotated[None, Depends(require_admin)]
+
+
+def client_info(request: Request) -> ClientInfo:
+    """IP address and device details for the audit trail. The app sends the X-Device-* headers."""
+    h = request.headers
+    device = " / ".join(x for x in (h.get("x-device-model", ""), h.get("x-os-version", ""),
+                                     h.get("x-app-version", "")) if x)
+    install = h.get("x-install-id", "")
+    device_id = h.get("x-device-id", "")
+    return ClientInfo(
+        ip=request.client.host if request.client else "",
+        user_agent=h.get("user-agent", ""),
+        device_id=f"{device_id}/{install}" if install else device_id,
+        device_info=device,
+    )
+
+
+Client = Annotated[ClientInfo, Depends(client_info)]

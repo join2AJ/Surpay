@@ -24,6 +24,8 @@ DEMO_ENABLED = os.environ.get("SURPAY_SEED_DEMO", "false").lower() == "true"
 # Key for encrypting ID documents at rest. Falls back to SECRET_KEY; never change it once
 # documents are stored, or they can no longer be read.
 ENCRYPTION_KEY = os.environ.get("SURPAY_ENCRYPTION_KEY", "") or SECRET_KEY
+# Previous key while rotating (see surpay/crypto.py). Leave empty normally.
+ENCRYPTION_KEY_OLD = os.environ.get("SURPAY_ENCRYPTION_KEY_OLD", "")
 
 # Token for the staff review page (/admin). Admin endpoints are off when it's empty.
 ADMIN_TOKEN = os.environ.get("SURPAY_ADMIN_TOKEN", "")
@@ -46,12 +48,11 @@ USER_AGENT = os.environ.get(
     "SurpayBot/0.1 (+https://github.com/join2AJ/Surpay; surplus-funds research)",
 )
 
-# Contingency fee used to estimate what a claimant receives, per state.
-# PLACEHOLDERS: every value must be confirmed by a licensed attorney in that state
-# before launch (see docs/STRATEGY.md section 3). The fee shown must never exceed the cap.
+# Starting contingency fee when no county or state rule is set. The fee actually quoted for a
+# case comes from surpay/fees.py (county rate, amount band and legal cap, set by staff).
 DEFAULT_FEE_PCT = 15.0
-STATE_FEE_PCT: dict[str, float] = {}
 
-
-def fee_pct_for(state: str) -> float:
-    return STATE_FEE_PCT.get(state.upper(), DEFAULT_FEE_PCT)
+# Who people contact about their data (DPDP "grievance officer" / privacy contact).
+COMPANY_NAME = os.environ.get("SURPAY_COMPANY_NAME", "Surpay")
+PRIVACY_CONTACT = os.environ.get("SURPAY_PRIVACY_CONTACT", "privacy@surpay.app")
+SUPPORT_CONTACT = os.environ.get("SURPAY_SUPPORT_CONTACT", "support@surpay.app")

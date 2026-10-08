@@ -18,7 +18,7 @@ def seed(session):
 
 
 def signup(client, email="rob@example.com", name="Robert Sample", verified=True):
-    r = client.post("/auth/signup", json={"email": email, "password": "correct horse", "full_name": name})
+    r = client.post("/auth/signup", json={"email": email, "password": "correct horse", "accept_terms": True, "full_name": name})
     assert r.status_code == 201, r.text
     h = {"Authorization": f"Bearer {r.json()['token']}"}
     if verified:
@@ -37,8 +37,8 @@ def test_full_flow(client, session):
     first = m["matches"][0]
     assert first["confidence"] == "likely"
     assert first["amount_cents"] == 1973260
-    assert first["fee_pct"] == 15.0
-    assert first["estimated_net_cents"] == 1973260 - round(1973260 * 0.15)
+    assert first["fee_pct"] == 17.5  # average of the default 15% and the $10k-$50k band (20%)
+    assert first["estimated_net_cents"] == 1973260 - round(1973260 * 0.175)
     assert m["records_searched"] == 2
 
     r = client.put("/me", headers=h, json={
@@ -70,7 +70,7 @@ def test_cannot_claim_someone_elses_record(client, session):
 
 def test_auth_errors(client):
     signup(client)
-    assert client.post("/auth/signup", json={"email": "rob@example.com", "password": "correct horse",
+    assert client.post("/auth/signup", json={"email": "rob@example.com", "password": "correct horse", "accept_terms": True,
                                              "full_name": "Rob Two"}).status_code == 409
     assert client.post("/auth/login", json={"email": "rob@example.com", "password": "nope"}).status_code == 401
     assert client.post("/auth/login", json={"email": "ROB@example.com",

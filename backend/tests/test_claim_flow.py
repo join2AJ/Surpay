@@ -9,7 +9,7 @@ from surpay import claims, config, crypto
 from surpay.ingest import upsert
 from surpay.models import IdentityVerification
 from surpay.scrapers.base import RecordIn
-from tests.conftest import verify_identity
+from tests.conftest import SIGNATURE_PNG, verify_identity
 
 JPEG = base64.b64encode(b"\xff\xd8\xff\xe0" + b"0" * 400).decode()
 PNG = base64.b64encode(b"\x89PNG\r\n\x1a\n" + b"0" * 400).decode()
@@ -39,7 +39,7 @@ def unverified(client, session):
                  owner_name="TESTWELL, JORDAN A", owner_address="", amount_cents=612_550,
                  sale_date=None, source_url=""),
     ], full_snapshot=True)
-    r = client.post("/auth/signup", json={"email": "j@example.com", "password": "correct horse",
+    r = client.post("/auth/signup", json={"email": "j@example.com", "password": "correct horse", "accept_terms": True,
                                           "full_name": "Jordan Testwell"})
     h = {"Authorization": f"Bearer {r.json()['token']}"}
     assert client.put("/me", headers=h, json={"full_name": "Jordan Testwell", "other_names": [], "phone": "",
@@ -92,12 +92,21 @@ def test_full_flow_verify_first(client, session, unverified, admin):
     assert c["legal"]["law"] == "Ohio Revised Code § 5721.20"
 
     agreement = client.get(f"/me/claims/{c['id']}/agreement", headers=h).json()
-    assert not agreement["signed"] and "15%" in agreement["text"] and "Demo County" in agreement["text"]
+    assert not agreement["signed"] and "17.5%" in agreement["text"] and "Demo County" in agreement["text"]
+    assert agreement["expected_name"] == "Jordan Testwell" and len(agreement["document_sha256"]) == 64
+    assert "not a law firm" in agreement["text"] and "facilitator" in agreement["text"]
+    # The typed name must match the verified ID, and a drawn signature is required
+    bad = client.post(f"/me/claims/{c['id']}/agreement", headers=h,
+                      json={"signature_name": "J Testwell", "agreed": True, "signature_png_b64": SIGNATURE_PNG})
+    assert bad.status_code == 422 and "Jordan Testwell" in bad.text
+    bad = client.post(f"/me/claims/{c['id']}/agreement", headers=h,
+                      json={"signature_name": "Jordan Testwell", "agreed": True, "signature_png_b64": JPEG})
+    assert bad.status_code == 422 and "draw your signature" in bad.text
     c = client.post(f"/me/claims/{c['id']}/agreement", headers=h,
-                    json={"signature_name": "Jordan Testwell", "agreed": True}).json()
+                    json={"signature_name": "Jordan Testwell", "agreed": True, "signature_png_b64": SIGNATURE_PNG}).json()
     # ID already approved, so signing moves straight to verified
     assert c["status"] == "identity_verified" and c["next_action"] is None
-    assert steps(c)["filed"] == "current"
+    assert steps(c)["attorney_assigned"] == "current"
     assert client.get(f"/me/claims/{c['id']}/agreement", headers=h).json()["signed"] is True
 
     # 4. Staff move it along; the person sees each step done
@@ -143,7 +152,7 @@ def test_admin_off_without_token(client):
 
 def test_admin_page_served(client, admin):
     r = client.get("/admin")
-    assert r.status_code == 200 and "Surpay claims review" in r.text
+    assert r.status_code == 200 and "Surpay staff review" in r.text
 
 
 def test_address_needs_county_and_zip(client, user):
@@ -171,10 +180,11 @@ def test_timeline_estimates_move_forward():
     c.events = [ClaimEvent(status=s, created_at=long_ago) for s in claims.ORDER[:4]]
     t = claims.timeline(c)
     upcoming = [s for s in t if s["estimate_start"]]
-    assert [s["status"] for s in upcoming] == ["filed", "approved", "paid"]
+    assert [s["status"] for s in upcoming] == ["attorney_assigned", "filed", "hearing_pending", "approved", "paid"]
     today = datetime.now(timezone.utc).date()
     assert all(s["estimate_start"] >= today for s in upcoming)
-    assert upcoming[0]["estimate_end"] <= upcoming[1]["estimate_end"] <= upcoming[2]["estimate_end"]
+    ends = [s["estimate_end"] for s in upcoming]
+    assert ends == sorted(ends)
 
 
 def test_existing_database_gets_new_columns(tmp_path):

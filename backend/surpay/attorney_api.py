@@ -5,33 +5,52 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Response, status
 from sqlalchemy import select
 
-from . import attorneys, claims, config, crypto
-from .deps import CurrentUser, DbSession, encrypt_image
-from .legal import legal_basis
+from . import attorneys, audit, chat, claims, config, crypto, packet
+from .deps import Client, CurrentUser, DbSession, encrypt_image
+from .legal import filing_guide, legal_basis
 from .models import AttorneyProfile, Claim, ClaimEvent, User
-from .schemas import AttorneyApplyIn, AttorneyProfileOut, CaseDeclineIn, CaseOut, CaseStatusIn
+from .schemas import AttorneyApplyIn, AttorneyProfileOut, CaseDeclineIn, CaseOut, CaseStatusIn, ChatOut, MessageIn
 
 router = APIRouter(prefix="/attorney", tags=["attorney"])
 
-TERMS_VERSION = "attorney-template-2026-10"
+TERMS_VERSION = "attorney-2026-10-B"
 
 
 def terms_text(state: str) -> str:
-    """TEMPLATE: have ethics counsel in each state review the arrangement and this text."""
+    """Have ethics counsel in each state review this arrangement and wording before launch."""
     fee = config.attorney_fee_for(state) / 100
-    return f"""SURPAY PARTNER ATTORNEY TERMS ({TERMS_VERSION}, pending legal review)
+    c = config.COMPANY_NAME
+    return f"""PARTNER ATTORNEY TERMS
+Version {TERMS_VERSION}
 
-1. Cases. Surpay offers you surplus-funds claims for verified clients in the counties you serve. You may accept or decline any case. Please respond within 2 business days; unanswered offers may be reassigned.
+These terms apply between {c} and the attorney who accepts them in the {c} app ("you").
 
-2. Your client. On accepting, you represent the client, not Surpay. You exercise independent professional judgment; Surpay does not direct your legal work.
+1. CASE OFFERS
+{c} may offer you surplus-funds claims for clients whose identity {c} has verified, in the counties you serve. You may accept or decline any case. Please respond within two business days; unanswered offers may be reassigned. You may hand back an accepted case until you file it.
 
-3. Payment. Surpay pays you ${fee:,.2f} per case, due when the case is finished (funds released or claim denied).
+2. ATTORNEY-CLIENT RELATIONSHIP
+When you accept a case you represent the client, not {c}. You exercise independent professional judgment, and {c} does not direct or control your legal work. You are responsible for compliance with the Rules of Professional Conduct of every jurisdiction in which you practise, including rules on competence, communication, confidentiality, conflicts, fees and the sharing of fees.
 
-4. Your duties. Keep an active license in good standing and malpractice insurance; file promptly; keep the client informed; update each case's status in the app (filed, approved, paid or denied) so the client can follow it.
+3. ROLE OF {c.upper()}
+{c} is a technology platform. It is not a law firm, does not practise law and is not responsible for the legal work on any case. You agree not to describe {c} as your law firm or as the client's lawyer.
 
-5. Confidentiality. Client identity documents and details are for this case only. Do not copy, share or use them for anything else.
+4. PAYMENT
+{c} pays you ${fee:,.2f} per case for your work on it, due when the case closes (funds released or claim denied). You will not charge the client any additional fee or cost for the claim without {c}'s written agreement and the client's informed consent in writing.
 
-6. Verification. Surpay verifies your bar license before sending cases and may suspend access if your license status changes.
+5. STATUS UPDATES
+You will record each stage in the app as it happens: claim filed, waiting for the county or court, approved, money released, or denied. The client sees these updates.
+
+6. CONFIDENTIALITY AND DATA
+Client documents and details are provided only for the client's case. Do not copy, disclose or use them for any other purpose. Keep any downloaded copies secure and delete them when no longer needed for the file.
+
+7. COMMUNICATION WITH CLIENTS
+Communicate with clients through the app's messages. You send the first message. Do not request or share phone numbers, email addresses or other contact details in the app, and do not solicit clients for other services.
+
+8. LICENSE AND INSURANCE
+You confirm you hold an active license in good standing in {state.upper()} and professional liability insurance. Tell {c} at once if your license status changes. {c} may suspend case offers while it checks.
+
+9. ENDING
+Either party may end these terms by notice in the app. Cases you have already accepted continue until handed over or closed.
 """
 
 
@@ -60,7 +79,7 @@ def get_terms(state: str) -> dict:
 
 
 @router.post("/apply", response_model=AttorneyProfileOut)
-def apply(body: AttorneyApplyIn, user: CurrentUser, session: DbSession):
+def apply(body: AttorneyApplyIn, user: CurrentUser, session: DbSession, client: Client):
     if user.role != "attorney":
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Create an attorney account to apply")
     if not body.accept_terms:
@@ -76,6 +95,13 @@ def apply(body: AttorneyApplyIn, user: CurrentUser, session: DbSession):
         counties=sorted({c.strip() for c in body.counties if c.strip()}),
         bar_card=encrypt_image(body.bar_card_b64, "Bar card"),
     )
+    session.flush()
+    from .me_api import record_consent
+    record_consent(session, user, "attorney_terms", TERMS_VERSION, client)
+    audit.record(session, "attorney.applied", actor_type="attorney", actor_id=user.id, entity_type="attorney",
+                 entity_id=user.attorney.id, client=client,
+                 details={"bar_state": body.bar_state, "bar_number": body.bar_number.strip(),
+                          "counties": user.attorney.counties})
     session.commit()
     return _profile_out(user.attorney)
 
@@ -93,21 +119,33 @@ def case_out(c: Claim, full: bool) -> CaseOut:
         reference=r.reference, sale_type=r.sale_type, sale_date=r.sale_date, amount_cents=r.amount_cents,
         fee_cents=c.attorney_fee_cents, payout_status=c.payout_status, assigned_at=c.assigned_at,
         accepted_at=c.accepted_at, source_url=r.source_url, legal=legal_basis(r.state),
+        filing_guide=filing_guide(r.state), chat_open=chat.thread_open(c),
+        unread_messages=sum(1 for m in c.messages if m.sender_role == "claimant" and m.read_at is None),
     )
     if full:
-        u, i = c.user, c.user.identity
+        from .api import on_behalf_of
+        u, i, rel = c.user, c.user.identity, c.relative
+        out.on_behalf_of = on_behalf_of(rel)
+        # No email or phone: attorney and client talk through the app's messages.
         out.claimant = {
-            "name": i.legal_name if i else u.full_name, "email": u.email, "phone": i.phone if i else u.phone,
+            "name": i.legal_name if i else u.full_name,
             "date_of_birth": i.date_of_birth.isoformat() if i else None,
             "current_address": f"{i.street}, {i.city}, {i.state} {i.zip}" if i else "",
             "other_names": u.other_names or [], "ssn_last4": i.ssn_last4 if i else "",
             "id_type": i.id_type if i else "", "has_id_back": bool(i and i.id_back),
-            "homes": [f"{a.street}, {a.city}, {a.state} {a.zip} ({a.county})" for a in u.addresses],
+            "homes": [f"{a.street}, {a.city}, {a.state} {a.zip} ({a.county})" for a in u.addresses
+                      if a.relative_id == (rel.id if rel else None)],
+            "relative": None if rel is None else {
+                "name": rel.full_name, "relationship": rel.relation, "basis": rel.basis,
+                "date_of_death": rel.date_of_death.isoformat() if rel.date_of_death else None,
+                "documents": [k for k in ("relationship_proof", "death_certificate", "authority_document")
+                              if getattr(rel, k)]},
         }
         a = c.agreement
         out.agreement = None if a is None else {
             "text": a.text, "signature_name": a.signature_name, "signed_at": a.signed_at.isoformat(),
-            "fee_pct": a.fee_pct, "version": a.version,
+            "fee_pct": a.fee_pct, "version": a.version, "document_sha256": a.document_sha256,
+            "ip_address": a.ip_address, "device": a.device_info, "has_signature_image": a.signature_image is not None,
         }
         out.record = {"owner_name": r.owner_name, "owner_address": r.owner_address, "raw": r.raw}
         out.history = [{"status": e.status, "note": e.note, "at": e.created_at.isoformat()} for e in c.events]
@@ -139,31 +177,36 @@ def get_case(case_id: int, user: CurrentUser, session: DbSession):
 
 
 @router.post("/cases/{case_id}/accept", response_model=CaseOut)
-def accept_case(case_id: int, user: CurrentUser, session: DbSession):
+def accept_case(case_id: int, user: CurrentUser, session: DbSession, client: Client):
     _require_attorney(user)
     c = _my_case(user, session, case_id)
     if c.assignment_status != "accepted":
         c.assignment_status = "accepted"
         c.accepted_at = datetime.now(timezone.utc)
-        c.events.append(ClaimEvent(status=c.status, note=f"Attorney {user.attorney.full_name} took your case",
-                                          created_at=datetime.now(timezone.utc)))
+        if not claims.advance(c, "attorney_assigned", f"{user.attorney.full_name} accepted your case"):
+            c.events.append(ClaimEvent(status=c.status, note=f"Attorney {user.attorney.full_name} took your case",
+                                       created_at=datetime.now(timezone.utc)))
+        audit.record(session, "case.accepted", actor_type="attorney", actor_id=user.id, entity_type="claim",
+                     entity_id=c.id, client=client)
         session.commit()
     return case_out(c, full=True)
 
 
 @router.post("/cases/{case_id}/decline")
-def decline_case(case_id: int, body: CaseDeclineIn, user: CurrentUser, session: DbSession) -> dict:
+def decline_case(case_id: int, body: CaseDeclineIn, user: CurrentUser, session: DbSession, client: Client) -> dict:
     _require_attorney(user)
     c = _my_case(user, session, case_id)
-    if c.assignment_status == "accepted" and c.status != attorneys.READY:
+    if c.assignment_status == "accepted" and c.status not in attorneys.RETURNABLE:
         raise HTTPException(status.HTTP_409_CONFLICT, "Already filed; contact Surpay to hand it over")
+    audit.record(session, "case.declined", actor_type="attorney", actor_id=user.id, entity_type="claim",
+                 entity_id=c.id, client=client, details={"reason": body.reason})
     attorneys.decline(session, c, user.id)
     session.commit()
     return {"ok": True}
 
 
 @router.post("/cases/{case_id}/status", response_model=CaseOut)
-def update_case(case_id: int, body: CaseStatusIn, user: CurrentUser, session: DbSession):
+def update_case(case_id: int, body: CaseStatusIn, user: CurrentUser, session: DbSession, client: Client):
     _require_attorney(user)
     c = _my_case(user, session, case_id)
     if c.assignment_status != "accepted":
@@ -172,6 +215,8 @@ def update_case(case_id: int, body: CaseStatusIn, user: CurrentUser, session: Db
         raise HTTPException(status.HTTP_409_CONFLICT, "This case is already closed")
     claims.set_status(c, body.status, body.note)
     attorneys.settle_payout(c)
+    audit.record(session, "case.status", actor_type="attorney", actor_id=user.id, entity_type="claim",
+                 entity_id=c.id, client=client, details={"status": body.status, "note": body.note})
     session.commit()
     return case_out(c, full=True)
 
@@ -182,9 +227,51 @@ def case_document(case_id: int, kind: str, user: CurrentUser, session: DbSession
     c = _my_case(user, session, case_id)
     if c.assignment_status != "accepted":
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Accept the case to see documents")
-    i = c.user.identity
-    if i is None or kind not in ("id_front", "id_back", "selfie") or getattr(i, kind) is None:
+    owner = {"id_front": c.user.identity, "id_back": c.user.identity, "selfie": c.user.identity,
+             "relationship_proof": c.relative, "death_certificate": c.relative, "authority_document": c.relative,
+             "signature": c.agreement}.get(kind)
+    attr = "signature_image" if kind == "signature" else kind
+    blob = getattr(owner, attr, None) if owner is not None else None
+    if blob is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Not available")
-    data = crypto.decrypt(getattr(i, kind))
+    data = crypto.decrypt(blob)
     media = "image/png" if data.startswith(b"\x89PNG") else "image/jpeg"
     return Response(data, media_type=media, headers={"Cache-Control": "no-store"})
+
+
+@router.get("/cases/{case_id}/packet")
+def case_packet(case_id: int, user: CurrentUser, session: DbSession, client: Client):
+    """Printable PDF: cover sheet and filing steps, draft affidavit, signed agreement, exhibits."""
+    _require_attorney(user)
+    c = _my_case(user, session, case_id)
+    if c.assignment_status != "accepted":
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Accept the case to download the packet")
+    pdf = packet.build(c)
+    audit.record(session, "case.packet_downloaded", actor_type="attorney", actor_id=user.id, entity_type="claim",
+                 entity_id=c.id, client=client)
+    session.commit()
+    return Response(pdf, media_type="application/pdf", headers={
+        "Cache-Control": "no-store", "Content-Disposition": f'attachment; filename="surpay-case-{c.id}.pdf"'})
+
+
+@router.get("/cases/{case_id}/messages", response_model=ChatOut)
+def case_messages(case_id: int, user: CurrentUser, session: DbSession):
+    from .api import chat_out
+    _require_attorney(user)
+    c = _my_case(user, session, case_id)
+    chat.mark_read(c, "attorney")
+    session.commit()
+    return chat_out(c, "attorney")
+
+
+@router.post("/cases/{case_id}/messages", response_model=ChatOut)
+def send_case_message(case_id: int, body: MessageIn, user: CurrentUser, session: DbSession, client: Client):
+    from .api import chat_out
+    _require_attorney(user)
+    c = _my_case(user, session, case_id)
+    msg = chat.send(session, c, user, "attorney", body.body)
+    session.flush()
+    audit.record(session, "message.sent", actor_type="attorney", actor_id=user.id, entity_type="message",
+                 entity_id=msg.id, client=client, details={"claim_id": c.id, "body_sha256": crypto.sha256_hex(msg.body)})
+    session.commit()
+    return chat_out(c, "attorney")

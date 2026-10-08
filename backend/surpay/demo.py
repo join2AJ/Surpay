@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from . import crypto
 from .auth import hash_password
 from .ingest import upsert
-from .models import IdentityVerification, PreviousAddress, SurplusRecord, User
+from .models import IdentityVerification, Notification, PreviousAddress, SurplusRecord, User
 from .scrapers.base import RecordIn
 
 DEMO_EMAIL = "demo@surpay.test"
@@ -56,8 +56,13 @@ def reset_demo_user(session: Session) -> User:
     user.full_name = DEMO_NAME
     user.other_names = []
     user.phone = ""
+    user.relatives = []
     user.addresses = [PreviousAddress(**DEMO_ADDRESS)]
     user.claims = []
+    session.flush()
+    if user.id is not None:
+        for n in session.scalars(select(Notification).where(Notification.user_id == user.id)):
+            session.delete(n)
     if user.identity is not None:  # delete first: one identity per person
         session.delete(user.identity)
     session.flush()

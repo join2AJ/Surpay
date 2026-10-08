@@ -24,12 +24,20 @@ def session():
         yield s
 
 
+@pytest.fixture(autouse=True)
+def no_rate_limits():
+    from surpay.security import login_limiter
+    login_limiter.reset()
+    yield
+
+
 @pytest.fixture
 def client():
     with TestClient(app) as c:
         yield c
 
 
+SIGNATURE_PNG = __import__("base64").b64encode(b"\x89PNG\r\n\x1a\n" + b"s" * 200).decode()
 TEST_JPEG = __import__("base64").b64encode(b"\xff\xd8\xff\xe0" + b"0" * 200).decode()
 
 

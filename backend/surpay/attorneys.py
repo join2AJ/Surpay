@@ -7,12 +7,14 @@ from sqlalchemy.orm import Session
 
 from . import config
 from .claims import TERMINAL
-from .models import AttorneyProfile, Claim
+from .models import AttorneyProfile, Claim, Notification
 
 # Steps after which a claim is ready for (or already with) an attorney.
 READY = "identity_verified"
-OPEN_STATUSES = ("identity_verified", "filed", "approved")
-ATTORNEY_STATUSES = ("filed", "approved", "paid", "denied")
+OPEN_STATUSES = ("identity_verified", "attorney_assigned", "filed", "hearing_pending", "approved")
+ATTORNEY_STATUSES = ("filed", "hearing_pending", "approved", "paid", "denied")
+# An attorney can hand a case back until they've filed it.
+RETURNABLE = ("identity_verified", "attorney_assigned")
 
 
 def _open_load(session: Session, attorney_user_id: int) -> int:
@@ -41,6 +43,10 @@ def offer(session: Session, claim: Claim) -> AttorneyProfile | None:
     claim.assigned_at = datetime.now(timezone.utc)
     claim.accepted_at = None
     claim.attorney_fee_cents = config.attorney_fee_for(r.state)
+    session.add(Notification(
+        user_id=chosen.user_id, kind="case_offer", title="New case offered",
+        body=f"${r.amount_cents / 100:,.2f} surplus in {r.county} County, {r.state}. Accept or decline in the app.",
+        claim_id=claim.id))
     return chosen
 
 
@@ -55,6 +61,8 @@ def assign_ready(session: Session) -> int:
 
 
 def decline(session: Session, claim: Claim, attorney_user_id: int) -> None:
+    if claim.status == "attorney_assigned":
+        claim.status = READY  # back in the queue; the client keeps their history
     claim.declined_by = [*(claim.declined_by or []), attorney_user_id]
     claim.attorney_id = None
     claim.assignment_status = ""

@@ -1,30 +1,29 @@
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
-from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Request, Response, status
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, object_session
 
-from . import attorneys, claims, config, crypto
+from . import attorneys, audit, chat, claims, config, crypto, fees
+from .admin_api import router as admin_router
 from .attorney_api import router as attorney_router
 from .auth import create_token, hash_password, verify_password
 from .claims import ESTIMATE_DISCLAIMER
 from .db import init_db
 from .demo import reset_demo_user
-from .deps import Admin, CurrentUser, DbSession, encrypt_image
-from .legal import legal_basis
-from .matching import find_matches
-from .models import (
-    Agreement, AttorneyProfile, Claim, ClaimEvent, CountySource, IdentityVerification, PreviousAddress,
-    SurplusRecord, User,
-)
+from .deps import Client, CurrentUser, DbSession, encrypt_image
+from .legal import deadline_for, legal_basis
+from .matching import find_all_matches, find_matches
+from .me_api import record_consent, router as me_router, terms_current
+from .models import Agreement, Claim, CountySource, IdentityVerification, Notification, PreviousAddress, SurplusRecord, User
+from .policies import PRIVACY_VERSION, TERMS_VERSION
 from .schemas import (
-    AddressOut, AdminAttorneyIn, AdminIdentityIn, AttorneyPublic, AdminStatusIn, AgreementOut, ClaimIn, ClaimOut, CoverageOut, IdentityIn,
-    LoginIn, MatchesOut, MatchOut, MatchPreviewOut, ProfileIn, ProfileOut, SignIn, SignupIn, TokenOut,
+    AddressOut, AgreementOut, AttorneyPublic, ChatOut, ClaimIn, ClaimOut, CoverageOut, IdentityIn, LoginIn,
+    MatchesOut, MatchOut, MatchPreviewOut, MessageIn, ProfileIn, ProfileOut, SignIn, SignupIn, TokenOut,
 )
+from .security import SecurityHeaders, login_limiter
 
 
 @asynccontextmanager
@@ -33,9 +32,11 @@ async def lifespan(_app: FastAPI):
     yield
 
 
-app = FastAPI(title="Surpay API", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="Surpay API", version="0.2.0", lifespan=lifespan)
+app.add_middleware(SecurityHeaders)
 app.include_router(attorney_router)
-
+app.include_router(me_router)
+app.include_router(admin_router)
 
 
 def _identity_status(user: User) -> str | None:
@@ -48,15 +49,21 @@ def _name_locked(user: User) -> bool:
 
 def _profile(user: User) -> ProfileOut:
     ident = user.identity
+    session = object_session(user)
+    unread = session.scalar(select(func.count()).select_from(Notification).where(
+        Notification.user_id == user.id, Notification.read_at.is_(None))) if session else 0
     return ProfileOut(
         id=user.id, email=user.email, full_name=user.full_name,
         other_names=user.other_names or [], phone=user.phone,
         addresses=[AddressOut(id=a.id, street=a.street, city=a.city, state=a.state, zip=a.zip,
-                              county=a.county) for a in user.addresses],
+                              county=a.county) for a in user.own_addresses],
         identity_status=_identity_status(user),
         identity_note=ident.review_note if ident is not None and ident.review_status == "rejected" else "",
         name_locked=_name_locked(user),
         role=user.role,
+        terms_current=terms_current(user),
+        unread_notifications=unread or 0,
+        deletion_requested=user.deletion_requested_at is not None,
     )
 
 
@@ -98,34 +105,66 @@ def coverage(session: DbSession):
                        demo_login=config.DEMO_ENABLED)
 
 
+# --- Accounts -------------------------------------------------------------------------------
+
 @app.post("/auth/signup", response_model=TokenOut, status_code=status.HTTP_201_CREATED)
-def signup(body: SignupIn, session: DbSession):
+def signup(body: SignupIn, session: DbSession, client: Client):
+    if not body.accept_terms:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            "Please accept the Terms of Use and Privacy Notice to continue")
     user = User(email=body.email.lower(), password_hash=hash_password(body.password),
                 full_name=body.full_name.strip(), phone=body.phone, other_names=[], role=body.role)
     session.add(user)
     try:
-        session.commit()
+        session.flush()
     except IntegrityError:
         session.rollback()
         raise HTTPException(status.HTTP_409_CONFLICT, "An account with this email already exists") from None
-    return TokenOut(token=create_token(user.id), user=_profile(user))
+    record_consent(session, user, "terms", TERMS_VERSION, client)
+    record_consent(session, user, "privacy", PRIVACY_VERSION, client)
+    audit.record(session, "account.created", actor_id=user.id, entity_type="user", entity_id=user.id,
+                 client=client, details={"role": user.role})
+    session.commit()
+    return TokenOut(token=create_token(user), user=_profile(user))
 
 
 @app.post("/auth/login", response_model=TokenOut)
-def login(body: LoginIn, session: DbSession):
-    user = session.scalar(select(User).where(User.email == body.email.lower()))
+def login(body: LoginIn, session: DbSession, client: Client):
+    email = body.email.lower()
+    keys = (f"ip:{client.ip}", f"email:{email}")
+    login_limiter.check(*keys)
+    user = session.scalar(select(User).where(User.email == email))
     if user is None or not verify_password(body.password, user.password_hash):
+        login_limiter.fail(*keys)
+        audit.record(session, "auth.login_failed", actor_type="anonymous", client=client,
+                     details={"email_sha256": crypto.sha256_hex(email)})
+        session.commit()
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Wrong email or password")
-    return TokenOut(token=create_token(user.id), user=_profile(user))
+    audit.record(session, "auth.login", actor_id=user.id, entity_type="user", entity_id=user.id, client=client)
+    session.commit()
+    return TokenOut(token=create_token(user), user=_profile(user))
+
+
+@app.post("/auth/logout-all")
+def logout_everywhere(user: CurrentUser, session: DbSession, client: Client) -> dict:
+    """Sign out on every device: all existing tokens stop working."""
+    user.token_version = (user.token_version or 0) + 1
+    audit.record(session, "auth.logout_all", actor_id=user.id, entity_type="user", entity_id=user.id, client=client)
+    session.commit()
+    return {"ok": True}
 
 
 @app.post("/auth/demo", response_model=TokenOut)
-def demo_login(session: DbSession):
+def demo_login(session: DbSession, client: Client):
     """One-tap sign-in to a shared, fictional test account. Only when SURPAY_SEED_DEMO=true."""
     if not config.DEMO_ENABLED:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Demo login is turned off on this server")
     user = reset_demo_user(session)
-    return TokenOut(token=create_token(user.id), user=_profile(user))
+    for kind, version in (("terms", TERMS_VERSION), ("privacy", PRIVACY_VERSION)):
+        record_consent(session, user, kind, version, client)
+    audit.record(session, "auth.demo_login", actor_id=user.id, entity_type="user", entity_id=user.id, client=client)
+    session.commit()
+    return TokenOut(token=create_token(user), user=_profile(user))
 
 
 @app.get("/me", response_model=ProfileOut)
@@ -134,7 +173,7 @@ def get_me(user: CurrentUser):
 
 
 @app.put("/me", response_model=ProfileOut)
-def update_me(body: ProfileIn, user: CurrentUser, session: DbSession):
+def update_me(body: ProfileIn, user: CurrentUser, session: DbSession, client: Client):
     other_names = [n.strip() for n in body.other_names if n.strip()]
     if _name_locked(user) and (body.full_name.strip() != user.full_name or other_names != (user.other_names or [])):
         raise HTTPException(status.HTTP_409_CONFLICT,
@@ -142,12 +181,17 @@ def update_me(body: ProfileIn, user: CurrentUser, session: DbSession):
     user.full_name = body.full_name.strip()
     user.other_names = other_names
     user.phone = body.phone
-    user.addresses = [PreviousAddress(**a.model_dump()) for a in body.addresses]
-    session.add(user)
+    # Family members' homes are managed with the relative; only the person's own homes change here.
+    family = [a for a in user.addresses if a.relative_id is not None]
+    user.addresses = [PreviousAddress(**a.model_dump()) for a in body.addresses] + family
+    audit.record(session, "profile.updated", actor_id=user.id, entity_type="user", entity_id=user.id,
+                 client=client, details={"homes": len(body.addresses)})
     session.commit()
     session.refresh(user)
     return _profile(user)
 
+
+# --- Results ----------------------------------------------------------------------------------
 
 @app.get("/me/matches/preview", response_model=MatchPreviewOut)
 def my_matches_preview(user: CurrentUser, session: DbSession):
@@ -157,22 +201,32 @@ def my_matches_preview(user: CurrentUser, session: DbSession):
     return MatchPreviewOut(identity_status=_identity_status(user), possible_matches=len(find_matches(session, user)))
 
 
+def on_behalf_of(relative) -> str | None:
+    if relative is None:
+        return None
+    label = {"heir": "as heir", "power_of_attorney": "under power of attorney", "guardian": "as guardian"}
+    return f"{relative.full_name} (your {relative.relation}, {label.get(relative.basis, relative.basis)})"
+
+
 @app.get("/me/matches", response_model=MatchesOut)
 def my_matches(user: CurrentUser, session: DbSession):
     require_verified(user)
-    claim_status = {c.record_id: c.status for c in user.claims}
+    by_record = {c.record_id: c for c in user.claims}
     out = []
-    for m in find_matches(session, user):
+    for m in find_all_matches(session, user):
         r = m.record
-        pct = config.fee_pct_for(r.state)
-        fee = round(r.amount_cents * pct / 100)
+        claim = by_record.get(r.id)
+        pct = claim.fee_pct if claim is not None and claim.fee_pct is not None else fees.quote(session, r)[0]
+        fee = fees.fee_cents(r.amount_cents, pct)
         out.append(MatchOut(
             record_id=r.id, confidence=m.confidence, address_matched=m.address_matched,
             state=r.state, county=r.county, sale_type=r.sale_type, reference=r.reference,
             owner_name=r.owner_name, owner_address=r.owner_address, amount_cents=r.amount_cents,
             fee_pct=pct, estimated_fee_cents=fee, estimated_net_cents=r.amount_cents - fee,
             sale_date=r.sale_date, source_url=r.source_url, last_seen=r.last_seen,
-            claim_status=claim_status.get(r.id), legal=legal_basis(r.state),
+            claim_status=claim.status if claim else None, legal=legal_basis(r.state),
+            deadline_date=deadline_for(r.state, r.sale_date),
+            relative_id=m.relative.id if m.relative else None, on_behalf_of=on_behalf_of(m.relative),
         ))
     searched = session.scalar(select(func.count()).select_from(SurplusRecord)
                               .where(SurplusRecord.status == "listed"))
@@ -186,18 +240,19 @@ def my_matches(user: CurrentUser, session: DbSession):
     )
 
 
-def _net(record: SurplusRecord) -> int:
-    return record.amount_cents - round(record.amount_cents * config.fee_pct_for(record.state) / 100)
+# --- Claims -----------------------------------------------------------------------------------
 
-
-def _claim_out(c: Claim) -> ClaimOut:
+def claim_out(c: Claim) -> ClaimOut:
     r = c.record
+    session = object_session(c)
+    pct = fees.for_claim(session, c) if session is not None else (c.fee_pct or config.DEFAULT_FEE_PCT)
     steps = claims.timeline(c)
     ends = [s for s in steps if s["estimate_end"]]
     ident = c.user.identity
     return ClaimOut(
         id=c.id, record_id=r.id, status=c.status, county=r.county, state=r.state,
-        reference=r.reference, amount_cents=r.amount_cents, estimated_net_cents=_net(r),
+        reference=r.reference, amount_cents=r.amount_cents,
+        estimated_net_cents=r.amount_cents - fees.fee_cents(r.amount_cents, pct),
         created_at=c.created_at, updated_at=c.updated_at,
         next_action=claims.next_action(c),
         identity_status=ident.review_status if ident else None,
@@ -208,6 +263,11 @@ def _claim_out(c: Claim) -> ClaimOut:
         disclaimer=ESTIMATE_DISCLAIMER,
         legal=legal_basis(r.state),
         attorney=_attorney_public(c),
+        fee_pct=pct,
+        deadline_date=deadline_for(r.state, r.sale_date),
+        on_behalf_of=on_behalf_of(c.relative),
+        chat_open=chat.thread_open(c),
+        unread_messages=sum(1 for m in c.messages if m.sender_role == "attorney" and m.read_at is None),
     )
 
 
@@ -215,7 +275,7 @@ def _attorney_public(c: Claim) -> AttorneyPublic | None:
     a = c.attorney.attorney if c.attorney is not None and c.assignment_status == "accepted" else None
     if a is None:
         return None
-    return AttorneyPublic(name=a.full_name, firm=a.firm, phone=a.phone, bar=f"{a.bar_state} Bar #{a.bar_number}")
+    return AttorneyPublic(name=a.full_name, firm=a.firm, bar=f"{a.bar_state} Bar #{a.bar_number}")
 
 
 def _my_claim(user: User, claim_id: int) -> Claim:
@@ -226,32 +286,56 @@ def _my_claim(user: User, claim_id: int) -> Claim:
 
 
 @app.post("/me/claims", response_model=ClaimOut, status_code=status.HTTP_201_CREATED)
-def start_claim(body: ClaimIn, user: CurrentUser, session: DbSession):
+def start_claim(body: ClaimIn, user: CurrentUser, session: DbSession, client: Client):
     require_verified(user)
-    # Only allow claiming records the matcher actually linked to this user.
-    if body.record_id not in {m.record.id for m in find_matches(session, user)}:
+    # Only allow claiming records the matcher actually linked to this user (or a verified relative).
+    match = next((m for m in find_all_matches(session, user) if m.record.id == body.record_id), None)
+    if match is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No matching record for your profile")
     existing = session.scalar(select(Claim).where(Claim.user_id == user.id, Claim.record_id == body.record_id))
     if existing:
-        return _claim_out(existing)
+        return claim_out(existing)
     claim = claims.new_claim(session, user, body.record_id)
+    claim.record = match.record
+    claim.relative_id = match.relative.id if match.relative else None
+    fees.for_claim(session, claim)
+    session.flush()
+    audit.record(session, "claim.started", actor_id=user.id, entity_type="claim", entity_id=claim.id, client=client,
+                 details={"record_id": body.record_id, "fee_pct": claim.fee_pct, "relative_id": claim.relative_id})
     session.commit()
     session.refresh(claim)
-    return _claim_out(claim)
+    return claim_out(claim)
 
 
 @app.get("/me/claims", response_model=list[ClaimOut])
-def my_claims(user: CurrentUser):
-    return [_claim_out(c) for c in sorted(user.claims, key=lambda c: c.created_at, reverse=True)]
+def my_claims(user: CurrentUser, session: DbSession):
+    out = [claim_out(c) for c in sorted(user.claims, key=lambda c: c.created_at, reverse=True)]
+    session.commit()  # fees fixed on first view of an older claim
+    return out
 
 
 @app.get("/me/claims/{claim_id}", response_model=ClaimOut)
-def my_claim(claim_id: int, user: CurrentUser):
-    return _claim_out(_my_claim(user, claim_id))
+def my_claim(claim_id: int, user: CurrentUser, session: DbSession):
+    out = claim_out(_my_claim(user, claim_id))
+    session.commit()
+    return out
+
+
+@app.post("/me/claims/{claim_id}/withdraw", response_model=ClaimOut)
+def withdraw_claim(claim_id: int, user: CurrentUser, session: DbSession, client: Client):
+    """Cancel a claim before it's filed (free within 3 business days of signing, per the agreement)."""
+    claim = _my_claim(user, claim_id)
+    if claim.status in ("filed", "hearing_pending", "approved", "paid", "denied", "withdrawn"):
+        raise HTTPException(status.HTTP_409_CONFLICT,
+                            "This claim has already been filed. Message your attorney or contact support.")
+    claims.set_status(claim, "withdrawn", "Withdrawn by you")
+    audit.record(session, "claim.withdrawn", actor_id=user.id, entity_type="claim", entity_id=claim.id, client=client)
+    session.commit()
+    return claim_out(claim)
 
 
 @app.post("/me/identity", response_model=list[ClaimOut])
-def submit_identity(body: IdentityIn, user: CurrentUser, session: DbSession):
+def submit_identity(body: IdentityIn, user: CurrentUser, session: DbSession, client: Client):
     """Submit ID for review. Shared by all of the user's claims; resubmit after a rejection."""
     if not body.consent:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Please confirm the information is yours and correct")
@@ -271,9 +355,16 @@ def submit_identity(body: IdentityIn, user: CurrentUser, session: DbSession):
     )
     for c in user.claims:
         claims.sync_with_identity(c, user)
+    session.flush()
+    record_consent(session, user, "identity_processing", PRIVACY_VERSION, client)
+    audit.record(session, "identity.submitted", actor_id=user.id, entity_type="identity",
+                 entity_id=user.identity.id, client=client,
+                 details={"legal_name": body.legal_name.strip(), "id_type": body.id_type,
+                          "id_front_sha256": crypto.sha256_hex(body.id_front_b64),
+                          "selfie_sha256": crypto.sha256_hex(body.selfie_b64)})
     session.commit()
     session.refresh(user)
-    return [_claim_out(c) for c in user.claims]
+    return [claim_out(c) for c in user.claims]
 
 
 @app.get("/me/identity/status", response_model=ProfileOut)
@@ -282,40 +373,117 @@ def identity_status(user: CurrentUser):
     return _profile(user)
 
 
+# --- Agreement --------------------------------------------------------------------------------
+
+def legal_name(user: User) -> str:
+    return user.identity.legal_name if user.identity is not None else user.full_name
+
+
 @app.get("/me/claims/{claim_id}/agreement", response_model=AgreementOut)
-def get_agreement(claim_id: int, user: CurrentUser):
+def get_agreement(claim_id: int, user: CurrentUser, session: DbSession):
     claim = _my_claim(user, claim_id)
     a = claim.agreement
     if a:
         return AgreementOut(version=a.version, text=a.text, fee_pct=a.fee_pct, signed=True,
-                            signature_name=a.signature_name, signed_at=a.signed_at)
-    return AgreementOut(version=claims.AGREEMENT_VERSION, text=claims.agreement_text(claim, user),
-                        fee_pct=config.fee_pct_for(claim.record.state), signed=False,
-                        signature_name=None, signed_at=None)
+                            signature_name=a.signature_name, signed_at=a.signed_at,
+                            expected_name=a.legal_name_on_id or a.signature_name, document_sha256=a.document_sha256)
+    pct = fees.for_claim(session, claim)
+    session.commit()
+    text = claims.agreement_text(claim, user, pct)
+    return AgreementOut(version=claims.AGREEMENT_VERSION, text=text, fee_pct=pct, signed=False,
+                        signature_name=None, signed_at=None, expected_name=legal_name(user),
+                        document_sha256=crypto.sha256_hex(text))
+
+
+def _signature_png(b64: str) -> bytes:
+    import base64
+    import binascii
+    try:
+        data = base64.b64decode(b64, validate=True)
+    except (binascii.Error, ValueError):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Please draw your signature") from None
+    if not data.startswith(b"\x89PNG") or len(data) > 2 * 1024 * 1024:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Please draw your signature")
+    return data
 
 
 @app.post("/me/claims/{claim_id}/agreement", response_model=ClaimOut)
-def sign_agreement(claim_id: int, body: SignIn, request: Request, user: CurrentUser, session: DbSession):
+def sign_agreement(claim_id: int, body: SignIn, user: CurrentUser, session: DbSession, client: Client):
     claim = _my_claim(user, claim_id)
     if claim.agreement is not None:
-        return _claim_out(claim)
+        return claim_out(claim)
     if claim.status != "identity_submitted":
         raise HTTPException(status.HTTP_409_CONFLICT, "Verify your identity before signing")
     if not body.agreed:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Please tick the box to agree")
+    legal = legal_name(user)
+    if not claims.names_match(body.signature_name, legal):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            f"Type your full legal name exactly as it appears on your ID: {legal}")
+    png = _signature_png(body.signature_png_b64)
+    pct = fees.for_claim(session, claim)
+    text = claims.agreement_text(claim, user, pct)
+    digest = crypto.sha256_hex(text)
     claim.agreement = Agreement(
-        version=claims.AGREEMENT_VERSION, text=claims.agreement_text(claim, user),
-        fee_pct=config.fee_pct_for(claim.record.state), signature_name=body.signature_name.strip(),
-        ip_address=request.client.host if request.client else "",
-        user_agent=request.headers.get("user-agent", "")[:255],
+        version=claims.AGREEMENT_VERSION, text=text, fee_pct=pct, signature_name=body.signature_name.strip(),
+        ip_address=client.ip, user_agent=client.user_agent[:255], signature_image=crypto.encrypt(png),
+        document_sha256=digest, device_id=client.device_id[:128], device_info=client.device_info[:255],
+        legal_name_on_id=legal, signed_at=datetime.now(timezone.utc),
     )
     claims.advance(claim, "agreement_signed")
     claims.sync_with_identity(claim, user)
+    session.flush()
+    record_consent(session, user, "agreement", f"{claims.AGREEMENT_VERSION}:{claim.id}", client)
+    audit.record(session, "agreement.signed", actor_id=user.id, entity_type="claim", entity_id=claim.id,
+                 client=client, details={"document_sha256": digest, "signature_sha256": crypto.sha256_hex(png),
+                                         "typed_name": body.signature_name.strip(), "legal_name": legal,
+                                         "fee_pct": pct, "version": claims.AGREEMENT_VERSION})
     session.commit()
     attorneys.assign_ready(session)
     session.refresh(claim)
-    return _claim_out(claim)
+    return claim_out(claim)
 
+
+# --- Messages with the attorney ------------------------------------------------------------------
+
+def chat_out(claim: Claim, viewer_role: str) -> ChatOut:
+    has_attorney_msg = any(m.sender_role == "attorney" for m in claim.messages)
+    open_ = chat.thread_open(claim)
+    if viewer_role == "claimant":
+        can_send = open_ and has_attorney_msg
+        waiting = "" if can_send else (
+            "Your attorney will send the first message once they've reviewed your case."
+            if open_ else "Messages open once an attorney accepts your case.")
+        a = claim.attorney.attorney if claim.attorney is not None else None
+        counterpart = ", ".join(x for x in (a.full_name, a.firm) if x) if a and open_ else "Your attorney"
+    else:
+        can_send, waiting = open_, ""
+        rel = claim.relative
+        counterpart = legal_name(claim.user) + (f" (for {rel.full_name})" if rel else "")
+    return ChatOut(messages=[chat.message_out(m) for m in claim.messages], can_send=can_send,
+                   waiting_reason=waiting, counterpart=counterpart, code_of_conduct=chat.CODE_OF_CONDUCT)
+
+
+@app.get("/me/claims/{claim_id}/messages", response_model=ChatOut)
+def my_messages(claim_id: int, user: CurrentUser, session: DbSession):
+    claim = _my_claim(user, claim_id)
+    chat.mark_read(claim, "claimant")
+    session.commit()
+    return chat_out(claim, "claimant")
+
+
+@app.post("/me/claims/{claim_id}/messages", response_model=ChatOut)
+def send_my_message(claim_id: int, body: MessageIn, user: CurrentUser, session: DbSession, client: Client):
+    claim = _my_claim(user, claim_id)
+    msg = chat.send(session, claim, user, "claimant", body.body)
+    session.flush()
+    audit.record(session, "message.sent", actor_id=user.id, entity_type="message", entity_id=msg.id, client=client,
+                 details={"claim_id": claim.id, "body_sha256": crypto.sha256_hex(msg.body)})
+    session.commit()
+    return chat_out(claim, "claimant")
+
+
+# --- Reference data -------------------------------------------------------------------------------
 
 @app.get("/counties")
 def counties_in_state(state: str, session: DbSession) -> list[str]:
@@ -326,185 +494,3 @@ def counties_in_state(state: str, session: DbSession) -> list[str]:
     if config.DEMO_ENABLED and state.upper() == "OH":
         names.insert(0, "Demo County")  # so a test attorney can take the fictional demo cases
     return names
-
-
-# --- Staff review (enabled by SURPAY_ADMIN_TOKEN) -------------------------------------------
-
-@app.get("/admin", response_class=HTMLResponse, include_in_schema=False)
-def admin_page():
-    if not config.ADMIN_TOKEN:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found")
-    return HTMLResponse((Path(__file__).parent / "static" / "admin.html").read_text())
-
-
-def _admin_claim(c: Claim) -> dict:
-    u, i = c.user, c.user.identity
-    return {
-        **_claim_out(c).model_dump(mode="json"),
-        "user": {"id": u.id, "email": u.email, "full_name": u.full_name, "phone": u.phone,
-                 "addresses": [AddressOut(id=a.id, street=a.street, city=a.city, state=a.state, zip=a.zip,
-                                          county=a.county).model_dump() for a in u.addresses]},
-        "owner_name": c.record.owner_name, "owner_address": c.record.owner_address,
-        "identity": None if i is None else {
-            "legal_name": i.legal_name, "date_of_birth": i.date_of_birth.isoformat(), "ssn_last4": i.ssn_last4,
-            "phone": i.phone, "address": f"{i.street}, {i.city}, {i.state} {i.zip}", "id_type": i.id_type,
-            "has_id_back": i.id_back is not None, "review_status": i.review_status,
-            "review_note": i.review_note, "submitted_at": i.submitted_at.isoformat(),
-        },
-        "attorney": None if c.attorney is None or c.attorney.attorney is None else {
-            "name": c.attorney.attorney.full_name, "firm": c.attorney.attorney.firm,
-            "assignment_status": c.assignment_status, "fee_cents": c.attorney_fee_cents,
-            "payout_status": c.payout_status,
-        },
-        "agreement": None if c.agreement is None else {
-            "signature_name": c.agreement.signature_name, "signed_at": c.agreement.signed_at.isoformat(),
-            "version": c.agreement.version, "ip_address": c.agreement.ip_address,
-        },
-        "history": [{"status": e.status, "note": e.note, "at": e.created_at.isoformat()} for e in c.events],
-    }
-
-
-@app.get("/admin/claims")
-def admin_claims(_: Admin, session: DbSession) -> list[dict]:
-    return [_admin_claim(c) for c in session.scalars(select(Claim).order_by(Claim.id.desc()))]
-
-
-@app.get("/admin/identities")
-def admin_identities(_: Admin, session: DbSession, review_status: str = "pending") -> list[dict]:
-    """People waiting for ID review (or approved / rejected), oldest first, with what they listed."""
-    rows = session.scalars(
-        select(IdentityVerification).where(IdentityVerification.review_status == review_status)
-        .order_by(IdentityVerification.submitted_at)
-    )
-    out = []
-    for i in rows:
-        u = i.user
-        out.append({
-            "user": {"id": u.id, "email": u.email, "full_name": u.full_name, "other_names": u.other_names or [],
-                     "addresses": [AddressOut(id=a.id, street=a.street, city=a.city, state=a.state, zip=a.zip,
-                                              county=a.county).model_dump() for a in u.addresses]},
-            "identity": {
-                "legal_name": i.legal_name, "date_of_birth": i.date_of_birth.isoformat(), "ssn_last4": i.ssn_last4,
-                "phone": i.phone, "address": f"{i.street}, {i.city}, {i.state} {i.zip}", "id_type": i.id_type,
-                "has_id_back": i.id_back is not None, "review_status": i.review_status,
-                "review_note": i.review_note, "submitted_at": i.submitted_at.isoformat(),
-            },
-            "possible_matches": len(find_matches(session, u)),
-        })
-    return out
-
-
-@app.get("/admin/users/{user_id}/documents/{kind}")
-def admin_document(user_id: int, kind: str, _: Admin, session: DbSession):
-    user = session.get(User, user_id)
-    if user is None or user.identity is None or kind not in ("id_front", "id_back", "selfie"):
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found")
-    blob = getattr(user.identity, kind)
-    if blob is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Not provided")
-    data = crypto.decrypt(blob)
-    media = "image/png" if data.startswith(b"\x89PNG") else "image/jpeg"
-    return Response(data, media_type=media, headers={"Cache-Control": "no-store"})
-
-
-@app.post("/admin/users/{user_id}/identity")
-def admin_review_identity(user_id: int, body: AdminIdentityIn, _: Admin, session: DbSession) -> dict:
-    user = session.get(User, user_id)
-    if user is None or user.identity is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "No identity submitted")
-    user.identity.review_status = body.decision
-    user.identity.review_note = body.note
-    user.identity.reviewed_at = datetime.now(timezone.utc)
-    if body.decision == "approved":
-        user.full_name = user.identity.legal_name  # searches use the verified name from now on
-    for c in user.claims:
-        if body.decision == "approved":
-            claims.sync_with_identity(c, user)
-        elif c.status in ("identity_submitted", "agreement_signed"):
-            # Send them back to re-upload; a signed agreement stays on file.
-            claims.set_status(c, "requested", f"ID needs to be resubmitted: {body.note}")
-    session.commit()
-    attorneys.assign_ready(session)
-    return {"ok": True}
-
-
-@app.post("/admin/claims/{claim_id}/status")
-def admin_set_status(claim_id: int, body: AdminStatusIn, _: Admin, session: DbSession) -> dict:
-    claim = session.get(Claim, claim_id)
-    if claim is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Claim not found")
-    try:
-        claims.set_status(claim, body.status, body.note)
-    except ValueError as e:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(e)) from None
-    attorneys.settle_payout(claim)
-    session.commit()
-    attorneys.assign_ready(session)
-    return _admin_claim(claim)
-
-
-@app.post("/admin/claims/{claim_id}/reassign")
-def admin_reassign(claim_id: int, _: Admin, session: DbSession) -> dict:
-    """Take the case away from its current attorney (e.g. no response) and offer it to the next."""
-    claim = session.get(Claim, claim_id)
-    if claim is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Claim not found")
-    if claim.attorney_id:
-        attorneys.decline(session, claim, claim.attorney_id)
-    else:
-        attorneys.offer(session, claim)
-    session.commit()
-    return _admin_claim(claim)
-
-
-@app.post("/admin/claims/{claim_id}/payout")
-def admin_payout(claim_id: int, _: Admin, session: DbSession) -> dict:
-    """Record that the attorney's per-case fee has been paid."""
-    claim = session.get(Claim, claim_id)
-    if claim is None or claim.payout_status != "due":
-        raise HTTPException(status.HTTP_409_CONFLICT, "No payout due on this claim")
-    claim.payout_status = "paid"
-    claim.events.append(ClaimEvent(status=claim.status, note="Attorney fee paid", created_at=datetime.now(timezone.utc)))
-    session.commit()
-    return _admin_claim(claim)
-
-
-@app.get("/admin/attorneys")
-def admin_attorneys(_: Admin, session: DbSession, review_status: str = "pending") -> list[dict]:
-    rows = session.scalars(select(AttorneyProfile).where(AttorneyProfile.status == review_status)
-                           .order_by(AttorneyProfile.created_at))
-    out = []
-    for a in rows:
-        open_cases = session.scalar(select(func.count()).select_from(Claim).where(
-            Claim.attorney_id == a.user_id, Claim.assignment_status.in_(("offered", "accepted")),
-            Claim.status.in_(attorneys.OPEN_STATUSES)))
-        out.append({
-            "user_id": a.user_id, "email": a.user.email, "full_name": a.full_name, "bar_state": a.bar_state,
-            "bar_number": a.bar_number, "firm": a.firm, "phone": a.phone, "office_address": a.office_address,
-            "counties": a.counties, "status": a.status, "review_note": a.review_note,
-            "applied_at": a.created_at.isoformat(), "open_cases": open_cases,
-        })
-    return out
-
-
-@app.get("/admin/attorneys/{user_id}/bar-card")
-def admin_bar_card(user_id: int, _: Admin, session: DbSession):
-    user = session.get(User, user_id)
-    if user is None or user.attorney is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found")
-    data = crypto.decrypt(user.attorney.bar_card)
-    media = "image/png" if data.startswith(b"\x89PNG") else "image/jpeg"
-    return Response(data, media_type=media, headers={"Cache-Control": "no-store"})
-
-
-@app.post("/admin/attorneys/{user_id}")
-def admin_review_attorney(user_id: int, body: AdminAttorneyIn, _: Admin, session: DbSession) -> dict:
-    user = session.get(User, user_id)
-    if user is None or user.attorney is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "No application")
-    user.attorney.status = body.decision
-    user.attorney.review_note = body.note
-    user.attorney.reviewed_at = datetime.now(timezone.utc)
-    session.commit()
-    offered = attorneys.assign_ready(session)  # cases waiting in their counties go out now
-    return {"ok": True, "cases_offered": offered}

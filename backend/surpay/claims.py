@@ -7,10 +7,10 @@ shown to claimants carries the ESTIMATE_DISCLAIMER.
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, object_session
 
 from . import config
-from .models import Claim, ClaimEvent, User
+from .models import Claim, ClaimEvent, Notification, User
 
 
 @dataclass(frozen=True)
@@ -28,17 +28,23 @@ STEPS: list[Step] = [
     Step("identity_submitted", "Identity submitted",
          "Your ID, a selfie and your details. Takes about 5 minutes in the app.", (0, 0)),
     Step("agreement_signed", "Agreement signed",
-         "You e-sign the contingency agreement. No fee unless the money is recovered.", (0, 0)),
+         "You sign the contingency agreement in the app. No fee unless money is recovered.", (0, 0)),
     Step("identity_verified", "Identity verified",
-         "Our team checks your ID against the county record. Usually 1–2 business days.", (1, 3)),
+         "Our team checks your ID against the county record. Usually 1 to 2 business days.", (1, 3)),
+    Step("attorney_assigned", "Attorney assigned",
+         "A licensed attorney who practises in that county accepts your case. You can message them "
+         "in the app from here on.", (1, 7)),
     Step("filed", "Claim filed",
-         "A licensed attorney in the county's state prepares and files your claim with the county "
-         "or court. Usually 1–3 weeks.", (7, 21)),
-    Step("approved", "Approved by the county or court",
-         "The county reviews the claim; many courts hold a short hearing. Usually 1–4 months, "
-         "longer if another party also claims the funds.", (30, 120)),
+         "Your attorney prepares the claim with your documents and files it with the county or "
+         "court. Usually 1 to 3 weeks.", (7, 21)),
+    Step("hearing_pending", "Waiting for the county or court",
+         "The claim is with the county or court. Many courts set a hearing date; some counties "
+         "review the paperwork without one.", (3, 30)),
+    Step("approved", "Hearing held and claim approved",
+         "The judge or county officer approves the claim and orders the money paid out. Usually "
+         "1 to 4 months after filing, longer if someone else also claims the funds.", (30, 120)),
     Step("paid", "Money released",
-         "The county or court releases the funds and you receive your share. Usually 2–6 weeks "
+         "The county or court releases the funds and you receive your share. Usually 2 to 6 weeks "
          "after approval.", (14, 42)),
 ]
 ORDER = [s.status for s in STEPS]
@@ -51,7 +57,27 @@ ESTIMATE_DISCLAIMER = (
     "and fees and costs. Timing depends on the county, the court and your documents."
 )
 
-AGREEMENT_VERSION = "template-2026-10"
+AGREEMENT_VERSION = "2026-10-B"
+
+# What the claimant is told when their claim reaches a step (phone notification + in-app).
+_UPDATES = {
+    "identity_verified": ("claim_update", "Your identity is verified",
+                          "We're now matching your claim with a licensed attorney in {county}."),
+    "attorney_assigned": ("claim_update", "An attorney has taken your case",
+                          "{attorney} will file your claim. You can message them in the app."),
+    "filed": ("claim_update", "Your claim has been filed",
+              "Your attorney filed the claim for {amount} with {county}."),
+    "hearing_pending": ("claim_update", "Waiting for the county or court",
+                        "Your claim is with {county} for review or a hearing."),
+    "approved": ("claim_update", "Your claim was approved",
+                 "The county or court approved your claim. Payment usually follows in 2 to 6 weeks."),
+    "paid": ("money_released", "Money released",
+             "{county} has released the funds for your claim. Your attorney will confirm your payment."),
+    "denied": ("claim_update", "Update on your claim",
+               "The county or court did not approve this claim. Open the app for details."),
+    "requested": ("claim_update", "Please resubmit your ID",
+                  "We couldn't verify your ID. Open the app to upload it again."),
+}
 
 
 def _now() -> datetime:
@@ -68,6 +94,23 @@ def set_status(claim: Claim, status: str, note: str = "") -> None:
         raise ValueError(f"Unknown status {status!r}")
     claim.status = status
     claim.events.append(ClaimEvent(status=status, note=note, created_at=_now()))
+    _notify_claimant(claim, status, note)
+
+
+def _notify_claimant(claim: Claim, status: str, note: str) -> None:
+    session = object_session(claim)
+    if session is None or status not in _UPDATES or claim.id is None:
+        return
+    if status == "requested" and not note:
+        return  # a brand-new claim, not a resubmission request
+    kind, title, body = _UPDATES[status]
+    r = claim.record
+    lawyer = claim.attorney.attorney.full_name if claim.attorney and claim.attorney.attorney else "Your attorney"
+    body = body.format(county=f"{r.county} County, {r.state}", amount=f"${r.amount_cents / 100:,.2f}",
+                       attorney=lawyer)
+    if note and status not in ("requested",):
+        body = f"{body} Note: {note}"
+    session.add(Notification(user_id=claim.user_id, kind=kind, title=title, body=body, claim_id=claim.id))
 
 
 def advance(claim: Claim, status: str, note: str = "") -> bool:
@@ -140,33 +183,84 @@ def timeline(claim: Claim) -> list[dict]:
     return out
 
 
-def agreement_text(claim: Claim, user: User) -> str:
+def names_match(typed: str, legal: str) -> bool:
+    """A typed signature matches the verified legal name, ignoring case, spacing and punctuation."""
+    def norm(x: str) -> str:
+        return " ".join("".join(ch for ch in x.lower() if ch.isalnum() or ch.isspace()).split())
+    return bool(norm(typed)) and norm(typed) == norm(legal)
+
+
+def agreement_text(claim: Claim, user: User, fee_pct: float) -> str:
     """The contingency agreement shown to and signed by the claimant.
 
-    TEMPLATE: have a licensed attorney in each state you operate in review and replace this
-    before real claims are signed. Fee caps and required wording differ by state.
+    Have a licensed attorney in each state you operate in review this wording before real
+    claims are signed; fee limits and required notices differ by state.
     """
     r = claim.record
-    fee = config.fee_pct_for(r.state)
-    sale_date = r.sale_date.strftime("%B %d, %Y") if r.sale_date else "the date of sale"
-    return f"""SURPLUS FUNDS RECOVERY — CONTINGENCY FEE AGREEMENT
-(Template version {AGREEMENT_VERSION}, pending attorney review)
+    ident = user.identity
+    legal_name = ident.legal_name if ident else user.full_name
+    sale_date = r.sale_date.strftime("%B %-d, %Y") if r.sale_date else "the date of sale"
+    sale = "tax sale" if r.sale_type == "tax_sale" else "foreclosure sale"
+    rel = claim.relative
+    if rel is not None:
+        capacity = {"heir": f"as an heir of {rel.full_name}, deceased",
+                    "power_of_attorney": f"as attorney-in-fact for {rel.full_name}",
+                    "guardian": f"as court-appointed guardian of {rel.full_name}"}.get(rel.basis, "")
+        owner_line = f"Former owner: {rel.full_name} (the Claimant acts {capacity})"
+    else:
+        owner_line = f"Former owner: {legal_name}"
+    company = config.COMPANY_NAME
+    return f"""SURPLUS FUNDS RECOVERY AGREEMENT
+Agreement No. SP-{claim.id:06d}   Version {AGREEMENT_VERSION}
 
-Claimant: {user.full_name}
-Funds: surplus from the {r.sale_type.replace('_', ' ')} on {sale_date}, {r.county} County, {r.state} ({r.reference})
-Amount the county reports holding: ${r.amount_cents / 100:,.2f} (approximate; may change)
+This Agreement is made between {legal_name} ("Claimant") and {company} ("{company}").
 
-1. What Surpay does. Surpay arranges for a licensed attorney in {r.state} to prepare and file a claim for these funds on your behalf, and keeps you updated in the app. Surpay is not a law firm and does not give legal advice.
+PROPERTY AND FUNDS
+County: {r.county} County, {r.state}
+Reference: {r.reference}
+{owner_line}
+Sale: {sale} held on {sale_date}
+Amount reported by the county or court: ${r.amount_cents / 100:,.2f}
 
-2. Fee. You pay nothing upfront. If funds are recovered for you, the fee is {fee:g}% of the amount actually recovered, and never more than the maximum allowed by {r.state} law. If nothing is recovered, you owe nothing.
+1. PURPOSE
+The Claimant wishes to recover the surplus funds described above. {company} will arrange for an independent attorney licensed in {r.state} (the "Attorney") to prepare and file the claim on the Claimant's behalf, and will provide the Claimant with case updates through the {company} app.
 
-3. You can do this yourself. You have the right to claim these funds directly from the county or court without paying anyone.
+2. ROLE OF {company.upper()}
+{company} is a technology platform that connects claimants with independent attorneys and provides case tracking. {company} is not a law firm, does not provide legal advice, and does not represent the Claimant before any court or government office. {company} acts only as a facilitator.
 
-4. Estimates. Amounts and timelines shown in the app are approximate estimates, not guarantees. Other lienholders may have a right to part of the funds.
+3. THE ATTORNEY
+The Attorney represents the Claimant and is solely responsible for the legal work, including the preparation, accuracy and filing of the claim and any court appearance. The Attorney exercises independent professional judgment and is not directed by {company}. The Claimant may ask for a different attorney at any time before the claim is filed.
 
-5. Cancellation. You may cancel this agreement within 3 business days of signing by contacting Surpay, at no cost. After that, you may still withdraw, but costs already incurred by the attorney may apply where state law allows.
+4. FEE
+4.1 No fee is payable unless funds are recovered.
+4.2 If funds are recovered, the Claimant will pay a fee of {fee_pct:g}% of the amount actually paid out on the claim. The fee will not exceed the maximum permitted by the law of {r.state}; if a lower limit applies, the lower limit is the fee.
+4.3 The fee covers the Attorney's work on the claim. The Claimant pays no separate legal fees or filing costs for this claim.
+4.4 If nothing is recovered, the Claimant owes nothing.
 
-6. Your information. You authorize Surpay and its partner attorney to use the identity documents and details you provided only to verify your identity and pursue this claim.
+5. CLAIMANT'S RIGHT TO CLAIM DIRECTLY
+The Claimant understands that they may claim these funds directly from the county or court without using {company} or paying any fee.
 
-7. Electronic signature. By typing your name and tapping Sign, you agree that your electronic signature has the same effect as a handwritten signature.
+6. CLAIMANT'S STATEMENTS
+The Claimant confirms that the information and documents they have provided are true, complete and their own, and that they are entitled to claim these funds{' in the capacity stated above' if rel else ''}. The Claimant is responsible for any loss caused by false or incomplete information.
+
+7. NO GUARANTEE
+Amounts and timelines shown in the app are estimates. The county or court decides whether and how much is paid. Other parties, such as lienholders or co-owners, may be entitled to part of the funds.
+
+8. LIMITATION OF LIABILITY
+To the fullest extent permitted by law, {company} is not liable for the outcome of the claim, for any act or omission of the Attorney, the county, the court or any other party, or for any indirect or consequential loss. {company}'s total liability under this Agreement will not exceed the fee it actually receives for this claim. Nothing in this Agreement limits liability that cannot be limited by law.
+
+9. CANCELLATION
+The Claimant may cancel this Agreement within three (3) business days after signing, at no cost, through the app or by writing to {config.SUPPORT_CONTACT}. After that, the Claimant may still end the Agreement before the claim is filed. Once the claim is filed, the fee in section 4 applies to any funds later paid out on it.
+
+10. PERSONAL INFORMATION
+The Claimant authorises {company} and the Attorney to use their identity documents and personal details only to verify their identity and pursue this claim, as described in the {company} Privacy Notice. Communications about the claim take place in the app and are kept as part of the case record.
+
+11. ELECTRONIC SIGNATURE AND RECORDS
+The Claimant agrees to sign electronically under the U.S. Electronic Signatures in Global and National Commerce Act (15 U.S.C. 7001 et seq.) and the Uniform Electronic Transactions Act as adopted in {r.state}. The Claimant's drawn signature, typed legal name, the time of signing, IP address and device identifier are recorded with a fingerprint (SHA-256) of this text as evidence of signing.
+
+12. GOVERNING LAW
+This Agreement is governed by the law of the State of {r.state}.
+
+13. ENTIRE AGREEMENT
+This is the entire agreement between the parties about this claim. A copy is available to the Claimant in the app at any time.
 """

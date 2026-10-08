@@ -8,7 +8,7 @@ import pytest
 from surpay import config
 from surpay.ingest import upsert
 from surpay.scrapers.base import RecordIn
-from tests.conftest import verify_identity
+from tests.conftest import SIGNATURE_PNG, verify_identity
 
 JPEG = base64.b64encode(b"\xff\xd8\xff\xe0" + b"0" * 300).decode()
 
@@ -20,7 +20,7 @@ def admin(monkeypatch):
 
 
 def signup(client, email, name, role="claimant"):
-    r = client.post("/auth/signup", json={"email": email, "password": "correct horse", "full_name": name, "role": role})
+    r = client.post("/auth/signup", json={"email": email, "password": "correct horse", "accept_terms": True, "full_name": name, "role": role})
     assert r.status_code == 201, r.text
     assert r.json()["user"]["role"] == role
     return {"Authorization": f"Bearer {r.json()['token']}"}
@@ -52,7 +52,7 @@ def claimant_with_claim(client, session, email="jane@example.com"):
     rid = client.get("/me/matches", headers=h).json()["matches"][0]["record_id"]
     claim = client.post("/me/claims", headers=h, json={"record_id": rid}).json()
     claim = client.post(f"/me/claims/{claim['id']}/agreement", headers=h,
-                        json={"signature_name": "Jane Sample", "agreed": True}).json()
+                        json={"signature_name": "Jane Sample", "agreed": True, "signature_png_b64": SIGNATURE_PNG}).json()
     assert claim["status"] == "identity_verified"
     return h, claim
 
