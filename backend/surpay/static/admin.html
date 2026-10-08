@@ -46,6 +46,7 @@
   </select>
 </header>
 <p id="msg" class="muted"></p>
+<main id="lawyers"></main>
 <main id="pending"></main>
 <main id="list"></main>
 
@@ -120,6 +121,17 @@ function render(c) {
     );
   }
   if (c.agreement) card.append(el("div", { class: "muted" }, `Agreement signed by "${c.agreement.signature_name}" on ${when(c.agreement.signed_at)} (${c.agreement.version})`));
+  const at = c.attorney;
+  card.append(el("h3", {}, "Attorney"),
+    at ? el("div", { class: "row" },
+        el("span", {}, `${at.name}${at.firm ? " · " + at.firm : ""}`),
+        el("span", { class: "pill" }, at.assignment_status),
+        el("span", { class: "pill " + (at.payout_status === "paid" ? "approved" : at.payout_status === "due" ? "pending" : "") },
+          `fee ${money(at.fee_cents)} ${at.payout_status || "not due"}`))
+       : el("div", { class: "muted" }, c.status === "identity_verified" ? "No attorney serves this county yet. Recruit one, then press Offer." : "Assigned once ID is verified and the agreement signed."),
+    el("div", { class: "row" },
+      el("button", { class: "secondary", onclick: () => claimAction(c, "reassign", `Offer claim #${c.id} to ${at ? "the next" : "an"} attorney?`) }, at ? "Reassign" : "Offer to attorney"),
+      ...(at && at.payout_status === "due" ? [el("button", { onclick: () => claimAction(c, "payout", `Mark ${money(at.fee_cents)} paid to ${at.name}?`) }, "Mark attorney paid")] : [])));
 
   const sel = el("select", {}, ...STATUSES.map(s => { const o = el("option", { value: s }, s); if (s === c.status) o.selected = true; return o; }));
   const note = el("input", { placeholder: "Note (shown in history)" });
@@ -176,10 +188,54 @@ function renderIdentity(p) {
   );
 }
 
+function renderAttorney(a) {
+  const img = el("img", { alt: "bar card", title: "Bar card" });
+  (async () => {
+    try { img.src = URL.createObjectURL(await (await api(`/admin/attorneys/${a.user_id}/bar-card`)).blob()); img.onclick = () => window.open(img.src, "_blank"); }
+    catch { img.alt = "Not available"; }
+  })();
+  const search = `https://www.google.com/search?q=${encodeURIComponent(a.bar_state + " state bar attorney search " + a.full_name + " " + a.bar_number)}`;
+  return el("section", { class: "card" },
+    el("div", { class: "row" }, el("h2", {}, `Attorney application · ${a.full_name}`), el("span", { class: "pill pending" }, a.status)),
+    el("div", { class: "muted" }, `${a.email} · applied ${when(a.applied_at)}`),
+    el("div", { class: "grid" },
+      el("div", {}, "Bar"), el("div", {}, `${a.bar_state} #${a.bar_number}`),
+      el("div", {}, "Firm"), el("div", {}, a.firm || "—"),
+      el("div", {}, "Phone"), el("div", {}, a.phone),
+      el("div", {}, "Office"), el("div", {}, a.office_address),
+      el("div", {}, "Counties"), el("div", {}, a.counties.join(", "))),
+    el("div", { class: "docs" }, img),
+    el("p", { class: "muted" }, "Confirm the license is active on the state bar's official directory before approving. ",
+      el("a", { href: search, target: "_blank", rel: "noopener" }, "Find the bar directory")),
+    el("div", { class: "row" },
+      el("button", { onclick: () => reviewAttorney(a, "approved") }, "Approve attorney"),
+      el("button", { class: "danger", onclick: () => reviewAttorney(a, "rejected") }, "Reject")),
+  );
+}
+
+async function reviewAttorney(a, decision) {
+  const note = decision === "rejected" ? prompt("Why? The attorney sees this note.") : "";
+  if (decision === "rejected" && !note) return;
+  try {
+    const r = await (await api(`/admin/attorneys/${a.user_id}`, { method: "POST", body: JSON.stringify({ decision, note }) })).json();
+    if (decision === "approved") alert(`Approved. ${r.cases_offered} waiting case(s) offered to them.`);
+    load();
+  } catch (e) { alert(e.message); }
+}
+
+async function claimAction(c, path, msg) {
+  if (!confirm(msg)) return;
+  try { await api(`/admin/claims/${c.id}/${path}`, { method: "POST" }); load(); } catch (e) { alert(e.message); }
+}
+
 async function load() {
   try { sessionStorage.setItem("surpay-admin", tokenInput.value); } catch {}
   $("#msg").textContent = "Loading…";
   try {
+    const lawyers = await (await api("/admin/attorneys")).json();
+    $("#lawyers").replaceChildren(
+      ...(lawyers.length ? [el("h2", {}, `Attorney applications (${lawyers.length})`)] : []),
+      ...lawyers.map(renderAttorney));
     const pending = await (await api("/admin/identities")).json();
     $("#pending").replaceChildren(
       ...(pending.length ? [el("h2", {}, `Pending ID reviews (${pending.length})`)] : []),
@@ -188,8 +244,8 @@ async function load() {
     const f = $("#filter").value;
     const rows = f ? all.filter(c => f.split(",").includes(c.status)) : all;
     $("#list").replaceChildren(...rows.map(render));
-    $("#msg").textContent = `${pending.length} ID reviews waiting · ${rows.length} of ${all.length} claims`;
-  } catch (e) { $("#msg").textContent = e.message; $("#list").replaceChildren(); $("#pending").replaceChildren(); }
+    $("#msg").textContent = `${lawyers.length} attorney applications · ${pending.length} ID reviews waiting · ${rows.length} of ${all.length} claims`;
+  } catch (e) { $("#msg").textContent = e.message; for (const id of ["#list", "#pending", "#lawyers"]) $(id).replaceChildren(); }
 }
 $("#load").addEventListener("click", load);
 $("#filter").addEventListener("change", load);

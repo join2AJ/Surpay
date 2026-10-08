@@ -18,6 +18,20 @@ jobs:
       - run: pip install -r requirements-dev.txt
       - run: python -m pytest -q
 
+  # Tells Render to deploy once the backend tests pass. Set the repository secret
+  # RENDER_DEPLOY_HOOK to the service's Deploy Hook URL (Render -> surpay-api -> Settings).
+  deploy:
+    needs: backend
+    if: github.event_name == 'push' && github.ref_name == github.event.repository.default_branch
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Render deploy
+        env:
+          HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+        run: |
+          if [ -z "$HOOK" ]; then echo "RENDER_DEPLOY_HOOK not set; skipping"; exit 0; fi
+          curl -fsS -X POST "$HOOK" > /dev/null && echo "Render deploy triggered for ${GITHUB_SHA::7}"
+
   android:
     runs-on: ubuntu-latest
     steps:
@@ -34,13 +48,14 @@ jobs:
         working-directory: backend
         run: |
           pip install -r requirements.txt
-          export SURPAY_DATABASE_URL=sqlite:///./ci.db SURPAY_SECRET_KEY=ci
+          export SURPAY_DATABASE_URL=sqlite:///./ci.db SURPAY_SECRET_KEY=ci SURPAY_ADMIN_TOKEN=ci-admin SURPAY_SEED_DEMO=true
+          python -m surpay.cli sync-counties
           python -m surpay.cli seed-demo
           nohup uvicorn surpay.api:app --host 127.0.0.1 --port 8000 > uvicorn.log 2>&1 &
           for i in $(seq 1 30); do curl -sf http://127.0.0.1:8000/health && break; sleep 1; done
       - name: Unit + end-to-end tests
         working-directory: android
-        run: ./gradlew testDebugUnitTest -Pe2eUrl=http://127.0.0.1:8000/ -Proborazzi.test.record=true
+        run: ./gradlew testDebugUnitTest -Pe2eUrl=http://127.0.0.1:8000/ -Pe2eAdminToken=ci-admin -Proborazzi.test.record=true
       - name: Build debug APK
         working-directory: android
         run: ./gradlew assembleDebug

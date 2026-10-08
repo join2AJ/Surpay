@@ -62,13 +62,18 @@ class User(Base):
     # Other names the person may appear under (maiden name, nicknames).
     other_names: Mapped[list] = mapped_column(JSON, default=list)
     phone: Mapped[str] = mapped_column(String(32), default="")
+    # claimant (default) | attorney
+    role: Mapped[str] = mapped_column(String(16), default="claimant")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     addresses: Mapped[list["PreviousAddress"]] = relationship(
         back_populates="user", cascade="all, delete-orphan", order_by="PreviousAddress.id"
     )
-    claims: Mapped[list["Claim"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    claims: Mapped[list["Claim"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan", foreign_keys="Claim.user_id")
     identity: Mapped["IdentityVerification | None"] = relationship(
+        back_populates="user", cascade="all, delete-orphan", uselist=False)
+    attorney: Mapped["AttorneyProfile | None"] = relationship(
         back_populates="user", cascade="all, delete-orphan", uselist=False)
 
 
@@ -101,7 +106,20 @@ class Claim(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
-    user: Mapped[User] = relationship(back_populates="claims")
+    # Case allotment: the attorney currently offered or handling this claim.
+    attorney_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    # "" (not assigned) | offered | accepted
+    assignment_status: Mapped[str] = mapped_column(String(16), default="")
+    assigned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Attorneys who declined; never offered this claim again.
+    declined_by: Mapped[list] = mapped_column(JSON, default=list)
+    attorney_fee_cents: Mapped[int] = mapped_column(Integer, default=0)
+    # "" | due (case finished, attorney to be paid) | paid
+    payout_status: Mapped[str] = mapped_column(String(16), default="")
+
+    user: Mapped[User] = relationship(back_populates="claims", foreign_keys=[user_id])
+    attorney: Mapped["User | None"] = relationship(foreign_keys=[attorney_id])
     record: Mapped[SurplusRecord] = relationship()
     events: Mapped[list["ClaimEvent"]] = relationship(
         back_populates="claim", cascade="all, delete-orphan", order_by="ClaimEvent.id")
@@ -197,3 +215,36 @@ class CountySource(Base):
     content_hash: Mapped[str] = mapped_column(String(64), default="")
     last_changed: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     check_error: Mapped[str] = mapped_column(Text, default="")
+
+
+class AttorneyProfile(Base):
+    """A lawyer who files claims for Surpay clients in the counties they serve, paid per case."""
+
+    __tablename__ = "attorney_profiles"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), unique=True)
+    full_name: Mapped[str] = mapped_column(String(255))
+    bar_state: Mapped[str] = mapped_column(String(2), index=True)
+    bar_number: Mapped[str] = mapped_column(String(64))
+    firm: Mapped[str] = mapped_column(String(255), default="")
+    phone: Mapped[str] = mapped_column(String(32))
+    office_address: Mapped[str] = mapped_column(String(255))
+    # County names exactly as in the county registry, e.g. ["Dallas County", "Collin County"].
+    counties: Mapped[list] = mapped_column(JSON, default=list)
+    bar_card: Mapped[bytes] = mapped_column(LargeBinary)  # encrypted photo of bar card / license
+    terms_accepted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    # pending -> approved | rejected (rejected may re-apply)
+    status: Mapped[str] = mapped_column(String(16), default="pending", index=True)
+    review_note: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    user: Mapped[User] = relationship(back_populates="attorney")
+
+    def serves(self, county: str, state: str) -> bool:
+        """Licensed in the state and serving the county ("Dallas" matches "Dallas County")."""
+        if state.upper() != self.bar_state:
+            return False
+        want = county.lower().removesuffix(" county").strip()
+        return any(c.lower().removesuffix(" county").strip() == want for c in self.counties)

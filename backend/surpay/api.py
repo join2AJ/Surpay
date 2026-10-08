@@ -1,27 +1,28 @@
-import base64
-import binascii
-import hmac
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Annotated
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response, status
+from fastapi import FastAPI, HTTPException, Request, Response, status
 from fastapi.responses import HTMLResponse
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from . import claims, config, crypto
+from . import attorneys, claims, config, crypto
+from .attorney_api import router as attorney_router
+from .auth import create_token, hash_password, verify_password
 from .claims import ESTIMATE_DISCLAIMER
-from .auth import create_token, current_user, hash_password, verify_password
-from .db import get_session, init_db
+from .db import init_db
 from .demo import reset_demo_user
+from .deps import Admin, CurrentUser, DbSession, encrypt_image
 from .legal import legal_basis
 from .matching import find_matches
-from .models import Agreement, Claim, CountySource, IdentityVerification, PreviousAddress, SurplusRecord, User
+from .models import (
+    Agreement, AttorneyProfile, Claim, ClaimEvent, CountySource, IdentityVerification, PreviousAddress,
+    SurplusRecord, User,
+)
 from .schemas import (
-    AddressOut, AdminIdentityIn, AdminStatusIn, AgreementOut, ClaimIn, ClaimOut, CoverageOut, IdentityIn,
+    AddressOut, AdminAttorneyIn, AdminIdentityIn, AttorneyPublic, AdminStatusIn, AgreementOut, ClaimIn, ClaimOut, CoverageOut, IdentityIn,
     LoginIn, MatchesOut, MatchOut, MatchPreviewOut, ProfileIn, ProfileOut, SignIn, SignupIn, TokenOut,
 )
 
@@ -33,9 +34,8 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="Surpay API", version="0.1.0", lifespan=lifespan)
+app.include_router(attorney_router)
 
-DbSession = Annotated[Session, Depends(get_session)]
-CurrentUser = Annotated[User, Depends(current_user)]
 
 
 def _identity_status(user: User) -> str | None:
@@ -56,6 +56,7 @@ def _profile(user: User) -> ProfileOut:
         identity_status=_identity_status(user),
         identity_note=ident.review_note if ident is not None and ident.review_status == "rejected" else "",
         name_locked=_name_locked(user),
+        role=user.role,
     )
 
 
@@ -100,7 +101,7 @@ def coverage(session: DbSession):
 @app.post("/auth/signup", response_model=TokenOut, status_code=status.HTTP_201_CREATED)
 def signup(body: SignupIn, session: DbSession):
     user = User(email=body.email.lower(), password_hash=hash_password(body.password),
-                full_name=body.full_name.strip(), phone=body.phone, other_names=[])
+                full_name=body.full_name.strip(), phone=body.phone, other_names=[], role=body.role)
     session.add(user)
     try:
         session.commit()
@@ -206,7 +207,15 @@ def _claim_out(c: Claim) -> ClaimOut:
         estimated_completion_end=ends[-1]["estimate_end"] if ends else None,
         disclaimer=ESTIMATE_DISCLAIMER,
         legal=legal_basis(r.state),
+        attorney=_attorney_public(c),
     )
+
+
+def _attorney_public(c: Claim) -> AttorneyPublic | None:
+    a = c.attorney.attorney if c.attorney is not None and c.assignment_status == "accepted" else None
+    if a is None:
+        return None
+    return AttorneyPublic(name=a.full_name, firm=a.firm, phone=a.phone, bar=f"{a.bar_state} Bar #{a.bar_number}")
 
 
 def _my_claim(user: User, claim_id: int) -> Claim:
@@ -241,21 +250,6 @@ def my_claim(claim_id: int, user: CurrentUser):
     return _claim_out(_my_claim(user, claim_id))
 
 
-_MAX_IMAGE_BYTES = 6 * 1024 * 1024
-
-
-def _image(b64: str, label: str) -> bytes:
-    try:
-        data = base64.b64decode(b64, validate=True)
-    except (binascii.Error, ValueError):
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"{label}: not a valid image") from None
-    if len(data) > _MAX_IMAGE_BYTES:
-        raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, f"{label}: image is too large (max 6 MB)")
-    if not (data.startswith(b"\xff\xd8\xff") or data.startswith(b"\x89PNG")):
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"{label}: must be a JPEG or PNG photo")
-    return crypto.encrypt(data)
-
-
 @app.post("/me/identity", response_model=list[ClaimOut])
 def submit_identity(body: IdentityIn, user: CurrentUser, session: DbSession):
     """Submit ID for review. Shared by all of the user's claims; resubmit after a rejection."""
@@ -271,9 +265,9 @@ def submit_identity(body: IdentityIn, user: CurrentUser, session: DbSession):
         legal_name=body.legal_name.strip(), date_of_birth=body.date_of_birth, ssn_last4=body.ssn_last4,
         phone=body.phone.strip(), street=body.street.strip(), city=body.city.strip(), state=body.state,
         zip=body.zip, id_type=body.id_type,
-        id_front=_image(body.id_front_b64, "ID front"),
-        id_back=_image(body.id_back_b64, "ID back") if body.id_back_b64 else None,
-        selfie=_image(body.selfie_b64, "Selfie"),
+        id_front=encrypt_image(body.id_front_b64, "ID front"),
+        id_back=encrypt_image(body.id_back_b64, "ID back") if body.id_back_b64 else None,
+        selfie=encrypt_image(body.selfie_b64, "Selfie"),
     )
     for c in user.claims:
         claims.sync_with_identity(c, user)
@@ -318,6 +312,7 @@ def sign_agreement(claim_id: int, body: SignIn, request: Request, user: CurrentU
     claims.advance(claim, "agreement_signed")
     claims.sync_with_identity(claim, user)
     session.commit()
+    attorneys.assign_ready(session)
     session.refresh(claim)
     return _claim_out(claim)
 
@@ -331,16 +326,6 @@ def counties_in_state(state: str, session: DbSession) -> list[str]:
 
 
 # --- Staff review (enabled by SURPAY_ADMIN_TOKEN) -------------------------------------------
-
-def require_admin(x_admin_token: Annotated[str | None, Header()] = None) -> None:
-    if not config.ADMIN_TOKEN:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found")
-    if not x_admin_token or not hmac.compare_digest(x_admin_token, config.ADMIN_TOKEN):
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Wrong admin token")
-
-
-Admin = Annotated[None, Depends(require_admin)]
-
 
 @app.get("/admin", response_class=HTMLResponse, include_in_schema=False)
 def admin_page():
@@ -362,6 +347,11 @@ def _admin_claim(c: Claim) -> dict:
             "phone": i.phone, "address": f"{i.street}, {i.city}, {i.state} {i.zip}", "id_type": i.id_type,
             "has_id_back": i.id_back is not None, "review_status": i.review_status,
             "review_note": i.review_note, "submitted_at": i.submitted_at.isoformat(),
+        },
+        "attorney": None if c.attorney is None or c.attorney.attorney is None else {
+            "name": c.attorney.attorney.full_name, "firm": c.attorney.attorney.firm,
+            "assignment_status": c.assignment_status, "fee_cents": c.attorney_fee_cents,
+            "payout_status": c.payout_status,
         },
         "agreement": None if c.agreement is None else {
             "signature_name": c.agreement.signature_name, "signed_at": c.agreement.signed_at.isoformat(),
@@ -431,6 +421,7 @@ def admin_review_identity(user_id: int, body: AdminIdentityIn, _: Admin, session
             # Send them back to re-upload; a signed agreement stays on file.
             claims.set_status(c, "requested", f"ID needs to be resubmitted: {body.note}")
     session.commit()
+    attorneys.assign_ready(session)
     return {"ok": True}
 
 
@@ -443,5 +434,74 @@ def admin_set_status(claim_id: int, body: AdminStatusIn, _: Admin, session: DbSe
         claims.set_status(claim, body.status, body.note)
     except ValueError as e:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(e)) from None
+    attorneys.settle_payout(claim)
+    session.commit()
+    attorneys.assign_ready(session)
+    return _admin_claim(claim)
+
+
+@app.post("/admin/claims/{claim_id}/reassign")
+def admin_reassign(claim_id: int, _: Admin, session: DbSession) -> dict:
+    """Take the case away from its current attorney (e.g. no response) and offer it to the next."""
+    claim = session.get(Claim, claim_id)
+    if claim is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Claim not found")
+    if claim.attorney_id:
+        attorneys.decline(session, claim, claim.attorney_id)
+    else:
+        attorneys.offer(session, claim)
     session.commit()
     return _admin_claim(claim)
+
+
+@app.post("/admin/claims/{claim_id}/payout")
+def admin_payout(claim_id: int, _: Admin, session: DbSession) -> dict:
+    """Record that the attorney's per-case fee has been paid."""
+    claim = session.get(Claim, claim_id)
+    if claim is None or claim.payout_status != "due":
+        raise HTTPException(status.HTTP_409_CONFLICT, "No payout due on this claim")
+    claim.payout_status = "paid"
+    claim.events.append(ClaimEvent(status=claim.status, note="Attorney fee paid", created_at=datetime.now(timezone.utc)))
+    session.commit()
+    return _admin_claim(claim)
+
+
+@app.get("/admin/attorneys")
+def admin_attorneys(_: Admin, session: DbSession, review_status: str = "pending") -> list[dict]:
+    rows = session.scalars(select(AttorneyProfile).where(AttorneyProfile.status == review_status)
+                           .order_by(AttorneyProfile.created_at))
+    out = []
+    for a in rows:
+        open_cases = session.scalar(select(func.count()).select_from(Claim).where(
+            Claim.attorney_id == a.user_id, Claim.assignment_status.in_(("offered", "accepted")),
+            Claim.status.in_(attorneys.OPEN_STATUSES)))
+        out.append({
+            "user_id": a.user_id, "email": a.user.email, "full_name": a.full_name, "bar_state": a.bar_state,
+            "bar_number": a.bar_number, "firm": a.firm, "phone": a.phone, "office_address": a.office_address,
+            "counties": a.counties, "status": a.status, "review_note": a.review_note,
+            "applied_at": a.created_at.isoformat(), "open_cases": open_cases,
+        })
+    return out
+
+
+@app.get("/admin/attorneys/{user_id}/bar-card")
+def admin_bar_card(user_id: int, _: Admin, session: DbSession):
+    user = session.get(User, user_id)
+    if user is None or user.attorney is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found")
+    data = crypto.decrypt(user.attorney.bar_card)
+    media = "image/png" if data.startswith(b"\x89PNG") else "image/jpeg"
+    return Response(data, media_type=media, headers={"Cache-Control": "no-store"})
+
+
+@app.post("/admin/attorneys/{user_id}")
+def admin_review_attorney(user_id: int, body: AdminAttorneyIn, _: Admin, session: DbSession) -> dict:
+    user = session.get(User, user_id)
+    if user is None or user.attorney is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No application")
+    user.attorney.status = body.decision
+    user.attorney.review_note = body.note
+    user.attorney.reviewed_at = datetime.now(timezone.utc)
+    session.commit()
+    offered = attorneys.assign_ready(session)  # cases waiting in their counties go out now
+    return {"ok": True, "cases_offered": offered}

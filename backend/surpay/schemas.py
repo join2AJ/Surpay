@@ -33,6 +33,7 @@ class SignupIn(BaseModel):
     password: str = Field(min_length=8, max_length=128)
     full_name: str = Field(min_length=3, max_length=255)
     phone: str = Field(default="", max_length=32)
+    role: str = Field(default="claimant", pattern=r"^(claimant|attorney)$")
 
 
 class LoginIn(BaseModel):
@@ -64,6 +65,7 @@ class ProfileOut(BaseModel):
     identity_note: str = ""
     # Names can't change once ID is submitted: searches use the verified name only.
     name_locked: bool = False
+    role: str = "claimant"
 
 
 class MatchPreviewOut(BaseModel):
@@ -145,6 +147,8 @@ class ClaimOut(BaseModel):
     estimated_completion_end: date | None
     disclaimer: str
     legal: LegalOut
+    # The partner attorney, once they've accepted the case.
+    attorney: "AttorneyPublic | None" = None
 
 
 class IdentityIn(BaseModel):
@@ -201,4 +205,85 @@ class CoverageOut(BaseModel):
     counties: list[str]
     demo_login: bool = False
 
+
+
+
+class AttorneyPublic(BaseModel):
+    """What a claimant sees about their attorney."""
+    name: str
+    firm: str
+    phone: str
+    bar: str
+
+
+class AttorneyApplyIn(BaseModel):
+    full_name: str = Field(min_length=3, max_length=255)
+    bar_state: str = Field(min_length=2, max_length=2)
+    bar_number: str = Field(min_length=2, max_length=64)
+    firm: str = Field(default="", max_length=255)
+    phone: str = Field(min_length=7, max_length=32)
+    office_address: str = Field(min_length=5, max_length=255)
+    counties: list[str] = Field(min_length=1, max_length=254)
+    bar_card_b64: str = Field(min_length=100)
+    accept_terms: bool
+
+    @field_validator("bar_state")
+    @classmethod
+    def upper_state(cls, v: str) -> str:
+        return v.upper()
+
+
+class AttorneyProfileOut(BaseModel):
+    full_name: str
+    bar_state: str
+    bar_number: str
+    firm: str
+    phone: str
+    office_address: str
+    counties: list[str]
+    status: str
+    review_note: str
+    fee_per_case_cents: int
+    terms: str
+
+
+class CaseOut(BaseModel):
+    """A case as an attorney sees it. Claimant details are only filled in after accepting."""
+    id: int
+    assignment_status: str  # offered | accepted
+    status: str
+    county: str
+    state: str
+    reference: str
+    sale_type: str
+    sale_date: date | None
+    amount_cents: int
+    fee_cents: int
+    payout_status: str
+    assigned_at: datetime | None
+    accepted_at: datetime | None
+    source_url: str
+    legal: LegalOut
+    # After accepting:
+    claimant: dict | None = None
+    agreement: dict | None = None
+    record: dict | None = None
+    history: list[dict] = Field(default_factory=list)
+
+
+class CaseDeclineIn(BaseModel):
+    reason: str = Field(default="", max_length=500)
+
+
+class CaseStatusIn(BaseModel):
+    status: str = Field(pattern=r"^(filed|approved|paid|denied)$")
+    note: str = Field(default="", max_length=1000)
+
+
+class AdminAttorneyIn(BaseModel):
+    decision: str = Field(pattern=r"^(approved|rejected)$")
+    note: str = ""
+
+
 TokenOut.model_rebuild()
+ClaimOut.model_rebuild()

@@ -28,6 +28,16 @@ ENCRYPTION_KEY = os.environ.get("SURPAY_ENCRYPTION_KEY", "") or SECRET_KEY
 # Token for the staff review page (/admin). Admin endpoints are off when it's empty.
 ADMIN_TOKEN = os.environ.get("SURPAY_ADMIN_TOKEN", "")
 
+# What Surpay pays a partner attorney per case, by state, in cents. PLACEHOLDER: set from your
+# attorney agreements. Paid once the county or court releases the funds.
+DEFAULT_ATTORNEY_FEE_CENTS = int(os.environ.get("SURPAY_ATTORNEY_FEE_CENTS", "50000"))
+STATE_ATTORNEY_FEE_CENTS: dict[str, int] = {}
+
+
+def attorney_fee_for(state: str) -> int:
+    return STATE_ATTORNEY_FEE_CENTS.get(state.upper(), DEFAULT_ATTORNEY_FEE_CENTS)
+
+
 TOKEN_TTL_DAYS = int(os.environ.get("SURPAY_TOKEN_TTL_DAYS", "30"))
 
 # Identify the scraper honestly to county webmasters.

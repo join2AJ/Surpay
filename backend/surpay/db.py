@@ -24,6 +24,14 @@ SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
 # existing ones, so these are added in place (works on SQLite and Postgres).
 _ADDED_COLUMNS = [
     ("previous_addresses", "county", "VARCHAR(64) NOT NULL DEFAULT ''"),
+    ("users", "role", "VARCHAR(16) NOT NULL DEFAULT 'claimant'"),
+    ("claims", "attorney_id", "INTEGER REFERENCES users(id)"),
+    ("claims", "assignment_status", "VARCHAR(16) NOT NULL DEFAULT ''"),
+    ("claims", "assigned_at", "TIMESTAMP WITH TIME ZONE"),
+    ("claims", "accepted_at", "TIMESTAMP WITH TIME ZONE"),
+    ("claims", "declined_by", "JSON"),
+    ("claims", "attorney_fee_cents", "INTEGER NOT NULL DEFAULT 0"),
+    ("claims", "payout_status", "VARCHAR(16) NOT NULL DEFAULT ''"),
 ]
 
 
