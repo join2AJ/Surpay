@@ -86,6 +86,8 @@ fun ClaimScreen(
         Spacer(Modifier.height(8.dp))
         claim.timeline.forEachIndexed { i, step -> TimelineRow(step, isLast = i == claim.timeline.lastIndex) }
 
+        LegalCard(claim.legal)
+        Spacer(Modifier.height(12.dp))
         if (claim.status in setOf("agreement_signed", "identity_verified", "filed", "approved", "paid")) {
             OutlinedButton(onClick = onViewAgreement) { Text("View signed agreement") }
         }
@@ -110,7 +112,7 @@ fun ClaimScreen(
 private fun NextActionCard(claim: Claim, onVerifyIdentity: () -> Unit, onSignAgreement: () -> Unit) {
     val (title, body, button, action) = when (claim.nextAction) {
         "verify_identity" -> Quad(
-            if (claim.identityStatus == "rejected") "Please resubmit your ID" else "Step 1 of 2: Verify your identity",
+            if (claim.identityStatus == "rejected") "Please resubmit your ID" else "Verify your identity",
             if (claim.identityStatus == "rejected") {
                 "We couldn’t verify your last submission: ${claim.identityNote.ifBlank { "please try again" }}"
             } else {
@@ -119,7 +121,7 @@ private fun NextActionCard(claim: Claim, onVerifyIdentity: () -> Unit, onSignAgr
             "Verify my identity", onVerifyIdentity,
         )
         "sign_agreement" -> Quad(
-            "Step 2 of 2: Sign the agreement",
+            "One step left: sign the agreement",
             "Review and e-sign the contingency agreement. No fee unless your money is recovered.",
             "Review and sign", onSignAgreement,
         )

@@ -1,6 +1,7 @@
 from datetime import date
 
 from surpay.ingest import upsert
+from tests.conftest import verify_identity
 from surpay.scrapers.base import RecordIn
 
 
@@ -16,10 +17,13 @@ def seed(session):
     ], full_snapshot=True)
 
 
-def signup(client, email="rob@example.com", name="Robert Sample"):
+def signup(client, email="rob@example.com", name="Robert Sample", verified=True):
     r = client.post("/auth/signup", json={"email": email, "password": "correct horse", "full_name": name})
     assert r.status_code == 201, r.text
-    return {"Authorization": f"Bearer {r.json()['token']}"}
+    h = {"Authorization": f"Bearer {r.json()['token']}"}
+    if verified:
+        verify_identity(client, h, name)
+    return h
 
 
 def test_full_flow(client, session):
@@ -48,11 +52,12 @@ def test_full_flow(client, session):
 
     rid = m["matches"][0]["record_id"]
     c = client.post("/me/claims", headers=h, json={"record_id": rid})
-    assert c.status_code == 201 and c.json()["status"] == "requested"
-    assert c.json()["next_action"] == "verify_identity"
+    # ID was verified at sign-up, so the only thing left is signing the agreement
+    assert c.status_code == 201 and c.json()["status"] == "identity_submitted"
+    assert c.json()["next_action"] == "sign_agreement"
     # idempotent
     assert client.post("/me/claims", headers=h, json={"record_id": rid}).json()["id"] == c.json()["id"]
-    assert client.get("/me/matches", headers=h).json()["matches"][0]["claim_status"] == "requested"
+    assert client.get("/me/matches", headers=h).json()["matches"][0]["claim_status"] == "identity_submitted"
     assert len(client.get("/me/claims", headers=h).json()) == 1
 
 
@@ -94,10 +99,43 @@ def test_demo_login_one_tap(client, monkeypatch):
     assert [x["confidence"] for x in m["matches"]] == ["strong", "likely"]
     assert m["total_amount_cents"] == 2_845_000 + 612_550
 
+    assert r.json()["user"]["identity_status"] == "approved"  # demo is pre-verified
+
     # A tester starts a claim and edits the profile; the next demo sign-in starts fresh.
     client.post("/me/claims", headers=h, json={"record_id": m["matches"][0]["record_id"]})
-    client.put("/me", headers=h, json={"full_name": "Someone Else", "other_names": [], "phone": "", "addresses": []})
+    client.put("/me", headers=h, json={"full_name": "Jordan Testwell", "other_names": [], "phone": "", "addresses": []})
     r2 = client.post("/auth/demo").json()
     h2 = {"Authorization": f"Bearer {r2['token']}"}
     assert r2["user"]["full_name"] == "Jordan Testwell" and len(r2["user"]["addresses"]) == 1
     assert client.get("/me/claims", headers=h2).json() == []
+
+
+def test_results_locked_until_identity_approved(client, session):
+    """A broker can't sign up and look up someone else: nothing shows until their own ID is approved,
+    and the search only ever uses the name on that ID."""
+    seed(session)
+    h = signup(client, email="broker@example.com", name="Robert Sample", verified=False)
+    assert client.get("/me/matches", headers=h).status_code == 403
+    assert client.get("/me/matches/preview", headers=h).json() == {"identity_status": None, "possible_matches": 0}
+
+    # They submit their own ID; it's pending review: a count only, no amounts or details
+    verify_identity(client, h, "Bobby Broker", approve=False)
+    assert client.get("/me/matches", headers=h).status_code == 403
+    assert client.get("/me/matches/preview", headers=h).json() == {"identity_status": "pending", "possible_matches": 0}
+    assert client.post("/me/claims", headers=h, json={"record_id": 1}).status_code == 403
+
+    # And they can't swap in someone else's name now
+    r = client.put("/me", headers=h, json={"full_name": "Robert Sample", "other_names": ["Robert Sample"],
+                                           "phone": "", "addresses": []})
+    assert r.status_code == 409
+    me = client.get("/me", headers=h).json()
+    assert me["name_locked"] is True and me["identity_status"] == "pending"
+
+
+def test_legal_basis_on_matches(client, session):
+    seed(session)
+    h = signup(client)
+    m = client.get("/me/matches", headers=h).json()["matches"][0]
+    assert m["legal"]["law"] == "Ohio Revised Code § 5721.20"
+    assert any("W-9" in p for p in m["legal"]["proof"])
+    assert "3 years" in m["legal"]["deadline"]

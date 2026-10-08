@@ -78,11 +78,12 @@ class OfflineDemoTest {
 
         compose.onNodeWithText("$28,450.00").performClick()
         compose.waitUntilAtLeastOneExists(hasTestTag("startClaim"), 10_000)
+        compose.onNodeWithTag("legalCard").performScrollTo().assertExists()
         compose.onNodeWithTag("startClaim").performScrollTo().performClick()
-        compose.completeIdentity()
+        // The demo person is pre-verified: straight to signing
         compose.signAgreement("Jordan Testwell")
         compose.waitUntilAtLeastOneExists(hasTestTag("eta"), 10_000)
-        compose.onNodeWithText("Agreement signed: ID under review").assertExists()
+        compose.onNodeWithText("Identity verified: preparing filing").assertExists()
     }
 
     @Test fun signUpExplainsThereIsNoServer() {

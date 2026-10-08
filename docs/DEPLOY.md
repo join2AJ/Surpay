@@ -66,16 +66,19 @@ banner says so. Real sign-up and sign-in always need the server.
 
 ## 5. Reviewing claims (staff)
 
-When someone starts a claim, the app takes them straight through:
-1. identity verification: their details, a photo of their ID and a selfie;
-2. e-signing the agreement.
-
-Then it waits for you. Open **`https://<your-service>.onrender.com/admin`** on your phone and
+Everyone verifies **before** they can see anything. Sign-up is: account → verify ID (details,
+ID photo, selfie) → list every home they've owned → wait for review. Until you approve the ID,
+they see only *how many* possible records exist, never amounts or details. Searches use the
+name on their ID (plus other names declared at submission), and names lock once submitted, so
+nobody, including brokers, can look up someone else. After approval, starting a claim goes
+straight to e-signing the agreement. Open **`https://<your-service>.onrender.com/admin`** on your phone and
 enter the admin token (Render → surpay-api → **Environment** → `SURPAY_ADMIN_TOKEN`, tap the eye
 icon to reveal it). For each claim you can:
 
+- **Pending ID reviews** at the top: each person's ID photos, selfie, details, the homes they
+  listed and how many records match them;
 - see the county record next to the homes the person listed and the ID they submitted;
-- **Approve ID**, which moves their signed claims to "Identity verified", or **Reject ID** with a
+- **Approve ID**, which unlocks their results (and moves any signed claims to "Identity verified"), or **Reject ID** with a
   note they'll see in the app, asking them to upload again;
 - move the claim to **filed → approved → paid** (or denied / withdrawn) as the attorney reports
   progress. Each change updates the timeline and estimated dates the person sees in the app.

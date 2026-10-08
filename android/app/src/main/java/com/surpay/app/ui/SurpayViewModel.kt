@@ -6,6 +6,7 @@ import com.surpay.app.data.AgreementDoc
 import com.surpay.app.data.Claim
 import com.surpay.app.data.Coverage
 import com.surpay.app.data.IdentityRequest
+import com.surpay.app.data.MatchPreview
 import com.surpay.app.data.MatchesResponse
 import com.surpay.app.data.Profile
 import com.surpay.app.data.ProfileUpdate
@@ -125,7 +126,7 @@ class SurpayViewModel(private val repo: SurpayRepository, private val server: Se
     fun saveProfile(update: ProfileUpdate, onSaved: () -> Unit) = submit {
         val profile = repo.updateProfile(update)
         _session.value = SessionState.SignedIn(profile, offlineDemo = repo.isOfflineDemo)
-        refreshMatches()
+        if (profile.identityStatus == "approved") refreshMatches() else refreshPreview()
         onSaved()
     }
 
@@ -190,9 +191,29 @@ class SurpayViewModel(private val repo: SurpayRepository, private val server: Se
         }
     }
 
-    fun submitIdentity(body: IdentityRequest, onDone: () -> Unit) = submit {
+    fun submitIdentity(body: IdentityRequest, onDone: () -> Unit = {}) = submit {
         upsertClaims(repo.submitIdentity(body))
+        refreshProfileNow()
         onDone()
+    }
+
+    private suspend fun refreshProfileNow() {
+        val profile = repo.me()
+        val current = _session.value as? SessionState.SignedIn ?: return
+        _session.value = current.copy(profile = profile, offlineDemo = repo.isOfflineDemo)
+    }
+
+    /** Re-read the profile, e.g. to see whether staff have approved the ID yet. */
+    fun refreshProfile() {
+        viewModelScope.launch { runCatching { refreshProfileNow() } }
+    }
+
+    private val _preview = MutableStateFlow<MatchPreview?>(null)
+    /** While ID is under review: how many possible records (no amounts or details). */
+    val preview: StateFlow<MatchPreview?> = _preview.asStateFlow()
+
+    fun refreshPreview() {
+        viewModelScope.launch { runCatching { repo.matchesPreview() }.onSuccess { _preview.value = it } }
     }
 
     fun loadAgreement(claimId: Int) {

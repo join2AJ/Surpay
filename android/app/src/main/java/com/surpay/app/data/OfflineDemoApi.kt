@@ -27,10 +27,11 @@ class OfflineDemoApi : SurpayApi {
     /** recordId -> (status -> when reached), in step order. */
     private val claims = linkedMapOf<Int, LinkedHashMap<String, Instant>>()
     private val signed = mutableMapOf<Int, String>()
-    private var identitySubmitted = false
+    private var identitySubmitted = true  // the demo person is pre-verified
 
     private fun freshProfile() = Profile(
         id = 0, email = "demo@surpay.test", fullName = DEMO_NAME,
+        identityStatus = "approved", nameLocked = true,
         addresses = listOf(
             Address(id = 1, street = "412 Maple Ridge Rd", city = "Springfield", state = "OH", zip = "45501", county = "Clark County"),
         ),
@@ -41,7 +42,7 @@ class OfflineDemoApi : SurpayApi {
         profile = freshProfile()
         claims.clear()
         signed.clear()
-        identitySubmitted = false
+        identitySubmitted = true
     }
 
     private fun nameMatches(owner: String): Boolean {
@@ -89,6 +90,7 @@ class OfflineDemoApi : SurpayApi {
                 reference = r.ref, ownerName = r.owner, ownerAddress = r.address, amountCents = r.cents,
                 feePct = feePct, estimatedFeeCents = fee, estimatedNetCents = r.cents - fee,
                 saleDate = r.sold, sourceUrl = "", lastSeen = now, claimStatus = claims[r.id]?.keys?.last(),
+                legal = OHIO_LEGAL,
             )
         }.sortedWith(compareBy<Match> { if (it.confidence == "strong") 0 else 1 }.thenByDescending { it.amountCents })
         return MatchesResponse(
@@ -120,10 +122,11 @@ class OfflineDemoApi : SurpayApi {
                 "identity_submitted" -> "sign_agreement"
                 else -> null
             },
-            identityStatus = if (identitySubmitted) "pending" else null,
+            identityStatus = if (identitySubmitted) "approved" else null,
             timeline = timeline,
             estimatedCompletionStart = last?.estimateStart, estimatedCompletionEnd = last?.estimateEnd,
             disclaimer = DISCLAIMER,
+            legal = OHIO_LEGAL,
         )
     }
 
@@ -137,6 +140,8 @@ class OfflineDemoApi : SurpayApi {
     }
 
     override suspend fun claims(): List<Claim> = claims.keys.reversed().map { toClaim(it) }
+
+    override suspend fun matchesPreview() = MatchPreview("approved", records.count { nameMatches(it.owner) })
 
     override suspend fun claim(id: Int): Claim = toClaim(id)
 
@@ -162,6 +167,7 @@ class OfflineDemoApi : SurpayApi {
     override suspend fun signAgreement(id: Int, body: SignRequest): Claim {
         signed[id] = body.signatureName
         reach(id, "agreement_signed")
+        reach(id, "identity_verified")  // ID already approved
         return toClaim(id)
     }
 
@@ -177,6 +183,24 @@ class OfflineDemoApi : SurpayApi {
     companion object {
         const val OFFLINE_DEMO_TOKEN = "offline-demo"
         const val DISCLAIMER = "All amounts and dates are approximate estimates, not a promise or guarantee."
+
+        // Mirrors backend/surpay/legal.py for Ohio (the demo records are in Ohio).
+        val OHIO_LEGAL = Legal(
+            law = "Ohio Revised Code § 5721.20",
+            right = "Money left after a tax foreclosure sale pays the taxes, costs and liens belongs to the former owner. " +
+                "The county holds it in the owner’s name.",
+            process = "A signed, notarized application is sent to the county auditor or treasurer with supporting documents.",
+            deadline = "The county pays the owner on demand within 3 years of receiving the funds.",
+            proof = listOf(
+                "A government photo ID (driver’s license, state ID or passport)",
+                "Proof you owned the property when it was sold: the deed, a property tax bill, or the county record showing your name",
+                "Proof you lived at or received mail at the property: utility bills, bank statements, insurance or tax records",
+                "An IRS Form W-9 with your Social Security number, so the county can issue the payment",
+            ),
+            note = "This is general information, not legal advice.",
+            constitutional = "Tyler v. Hennepin County (U.S. Supreme Court, 2023): keeping surplus beyond the debt owed is an unconstitutional taking.",
+            sources = listOf("https://codes.ohio.gov/ohio-revised-code/section-5721.20"),
+        )
 
         // Same steps and typical durations as backend/surpay/claims.py.
         private val STEPS = listOf(

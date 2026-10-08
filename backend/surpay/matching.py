@@ -59,7 +59,10 @@ def _address_matches(user: User, record: SurplusRecord) -> bool:
 
 
 def find_matches(session: Session, user: User) -> list[Match]:
-    names = [user.full_name, *[n for n in (user.other_names or []) if n]]
+    # Only the person's own names: the name on their ID once submitted, plus other names they
+    # declared before submitting. This stops anyone searching for someone else.
+    own = user.identity.legal_name if user.identity is not None else user.full_name
+    names = [own, *[n for n in (user.other_names or []) if n]]
     surnames = {name_tokens(n)[-1] for n in names if len(name_tokens(n)) >= 2}
     if not surnames:
         return []

@@ -46,6 +46,7 @@
   </select>
 </header>
 <p id="msg" class="muted"></p>
+<main id="pending"></main>
 <main id="list"></main>
 
 <script>
@@ -144,16 +145,51 @@ async function setStatus(c, status, note) {
   catch (e) { alert(e.message); }
 }
 
+function renderIdentity(p) {
+  const id = p.identity, u = p.user;
+  const docs = el("div", { class: "docs" });
+  for (const kind of ["id_front", ...(id.has_id_back ? ["id_back"] : []), "selfie"]) {
+    const img = el("img", { alt: kind, title: kind });
+    docs.append(img);
+    loadImage(img, u.id, kind);
+  }
+  const c = { user: u };
+  return el("section", { class: "card" },
+    el("div", { class: "row" }, el("h2", {}, `ID review · ${id.legal_name}`), el("span", { class: "pill pending" }, "waiting"),
+      el("span", { class: "pill" }, `${p.possible_matches} possible match${p.possible_matches === 1 ? "" : "es"}`)),
+    el("div", { class: "muted" }, `${u.email} · submitted ${when(id.submitted_at)}`),
+    el("div", { class: "grid" },
+      el("div", {}, "Legal name"), el("div", {}, id.legal_name),
+      el("div", {}, "Other names"), el("div", {}, u.other_names.join(", ") || "—"),
+      el("div", {}, "Date of birth"), el("div", {}, id.date_of_birth),
+      el("div", {}, "SSN last 4"), el("div", {}, id.ssn_last4),
+      el("div", {}, "Phone"), el("div", {}, id.phone),
+      el("div", {}, "Current address"), el("div", {}, id.address),
+      el("div", {}, "ID type"), el("div", {}, id.id_type.replace("_", " "))),
+    el("h3", {}, "Homes they listed"),
+    el("ol", {}, ...u.addresses.map(a => el("li", {}, `${a.street}, ${a.city}, ${a.state} ${a.zip} (${a.county || "county not given"})`))),
+    docs,
+    el("p", { class: "muted" }, "Check the photo matches the selfie, the name and date of birth match the ID, and nothing looks edited."),
+    el("div", { class: "row" },
+      el("button", { onclick: () => review(c, "approved") }, "Approve ID"),
+      el("button", { class: "danger", onclick: () => review(c, "rejected") }, "Reject (ask to resubmit)")),
+  );
+}
+
 async function load() {
   try { sessionStorage.setItem("surpay-admin", tokenInput.value); } catch {}
   $("#msg").textContent = "Loading…";
   try {
+    const pending = await (await api("/admin/identities")).json();
+    $("#pending").replaceChildren(
+      ...(pending.length ? [el("h2", {}, `Pending ID reviews (${pending.length})`)] : []),
+      ...pending.map(renderIdentity));
     const all = await (await api("/admin/claims")).json();
     const f = $("#filter").value;
     const rows = f ? all.filter(c => f.split(",").includes(c.status)) : all;
     $("#list").replaceChildren(...rows.map(render));
-    $("#msg").textContent = `${rows.length} of ${all.length} claims`;
-  } catch (e) { $("#msg").textContent = e.message; $("#list").replaceChildren(); }
+    $("#msg").textContent = `${pending.length} ID reviews waiting · ${rows.length} of ${all.length} claims`;
+  } catch (e) { $("#msg").textContent = e.message; $("#list").replaceChildren(); $("#pending").replaceChildren(); }
 }
 $("#load").addEventListener("click", load);
 $("#filter").addEventListener("change", load);

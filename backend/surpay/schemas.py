@@ -59,6 +59,27 @@ class ProfileOut(BaseModel):
     other_names: list[str]
     phone: str
     addresses: list[AddressOut]
+    # None (not submitted) | pending | approved | rejected. Matches unlock at "approved".
+    identity_status: str | None = None
+    identity_note: str = ""
+    # Names can't change once ID is submitted: searches use the verified name only.
+    name_locked: bool = False
+
+
+class MatchPreviewOut(BaseModel):
+    identity_status: str | None
+    possible_matches: int
+
+
+class LegalOut(BaseModel):
+    law: str
+    right: str
+    process: str
+    deadline: str
+    proof: list[str]
+    note: str
+    constitutional: str
+    sources: list[str]
 
 
 class MatchOut(BaseModel):
@@ -79,6 +100,7 @@ class MatchOut(BaseModel):
     source_url: str
     last_seen: datetime
     claim_status: str | None
+    legal: LegalOut
 
 
 class MatchesOut(BaseModel):
@@ -122,6 +144,7 @@ class ClaimOut(BaseModel):
     estimated_completion_start: date | None
     estimated_completion_end: date | None
     disclaimer: str
+    legal: LegalOut
 
 
 class IdentityIn(BaseModel):
@@ -139,6 +162,8 @@ class IdentityIn(BaseModel):
     id_back_b64: str | None = None
     selfie_b64: str = Field(min_length=100)
     consent: bool
+    # Other names they've used (maiden name...). Locked with the legal name once submitted.
+    other_names: list[str] = Field(default_factory=list, max_length=5)
 
     @field_validator("state")
     @classmethod

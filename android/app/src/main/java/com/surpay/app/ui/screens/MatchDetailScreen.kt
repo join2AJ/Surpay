@@ -74,6 +74,8 @@ fun MatchDetailScreen(
         }
 
         Spacer(Modifier.height(12.dp))
+        LegalCard(match.legal)
+        Spacer(Modifier.height(12.dp))
         Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = MaterialTheme.shapes.medium) {
             Text(
                 "You can claim this money yourself, for free, by contacting the ${match.county} County " +

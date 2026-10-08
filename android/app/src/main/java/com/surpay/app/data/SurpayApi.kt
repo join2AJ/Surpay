@@ -48,6 +48,29 @@ data class Profile(
     @SerialName("other_names") val otherNames: List<String> = emptyList(),
     val phone: String = "",
     val addresses: List<Address> = emptyList(),
+    /** null (ID not submitted) | pending | approved | rejected. Results unlock at approved. */
+    @SerialName("identity_status") val identityStatus: String? = null,
+    @SerialName("identity_note") val identityNote: String = "",
+    @SerialName("name_locked") val nameLocked: Boolean = false,
+)
+
+@Serializable
+data class MatchPreview(
+    @SerialName("identity_status") val identityStatus: String? = null,
+    @SerialName("possible_matches") val possibleMatches: Int = 0,
+)
+
+/** Which law gives the owner this money, what they must prove, and the deadline. */
+@Serializable
+data class Legal(
+    val law: String = "",
+    val right: String = "",
+    val process: String = "",
+    val deadline: String = "",
+    val proof: List<String> = emptyList(),
+    val note: String = "",
+    val constitutional: String = "",
+    val sources: List<String> = emptyList(),
 )
 
 @Serializable
@@ -80,6 +103,7 @@ data class Match(
     @SerialName("source_url") val sourceUrl: String = "",
     @SerialName("last_seen") val lastSeen: String,
     @SerialName("claim_status") val claimStatus: String? = null,
+    val legal: Legal = Legal(),
 )
 
 @Serializable
@@ -128,6 +152,7 @@ data class Claim(
     @SerialName("estimated_completion_start") val estimatedCompletionStart: String? = null,
     @SerialName("estimated_completion_end") val estimatedCompletionEnd: String? = null,
     val disclaimer: String = "",
+    val legal: Legal = Legal(),
 )
 
 @Serializable
@@ -145,6 +170,7 @@ data class IdentityRequest(
     @SerialName("id_back_b64") val idBackB64: String? = null,
     @SerialName("selfie_b64") val selfieB64: String,
     val consent: Boolean,
+    @SerialName("other_names") val otherNames: List<String> = emptyList(),
 )
 
 @Serializable
@@ -179,6 +205,7 @@ interface SurpayApi {
     @GET("me") suspend fun me(): Profile
     @PUT("me") suspend fun updateMe(@Body body: ProfileUpdate): Profile
     @GET("me/matches") suspend fun matches(): MatchesResponse
+    @GET("me/matches/preview") suspend fun matchesPreview(): MatchPreview
     @POST("me/claims") suspend fun startClaim(@Body body: ClaimRequest): Claim
     @GET("me/claims") suspend fun claims(): List<Claim>
     @GET("me/claims/{id}") suspend fun claim(@Path("id") id: Int): Claim

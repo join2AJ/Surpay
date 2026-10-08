@@ -178,7 +178,7 @@ fun AuthScreen(
             if (form.busy) {
                 CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
             } else {
-                Text(if (signingUp) "Check my name — it’s free" else "Sign in", fontWeight = FontWeight.Bold)
+                Text(if (signingUp) "Create account — it’s free" else "Sign in", fontWeight = FontWeight.Bold)
             }
         }
         TextButton(
@@ -187,6 +187,13 @@ fun AuthScreen(
         ) {
             Text(if (signingUp) "Already have an account? Sign in" else "New here? Create an account")
         }
+
+        Spacer(Modifier.height(20.dp))
+        Text("How it works", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(8.dp))
+        HowStep("1", "Create your account and verify your ID", "About 5 minutes. Only verified owners can see results, so nobody can look you up.")
+        HowStep("2", "List every home you’ve owned", "We check county surplus lists for your name and those addresses.")
+        HowStep("3", "See what you’re owed and claim it", "The law that entitles you, what you need to prove, and a licensed attorney to file.")
 
         Spacer(Modifier.height(16.dp))
         TrustRow(Icons.Filled.Lock, "Your details are encrypted and never sold")
@@ -201,6 +208,22 @@ fun AuthScreen(
         )
         TextButton(onClick = onServerSettings, modifier = Modifier.align(Alignment.CenterHorizontally)) {
             Text("Server settings", style = MaterialTheme.typography.bodySmall)
+        }
+    }
+}
+
+@Composable
+private fun HowStep(n: String, title: String, body: String) {
+    Row(Modifier.padding(vertical = 6.dp), verticalAlignment = Alignment.Top) {
+        Surface(shape = RoundedCornerShape(50), color = MaterialTheme.colorScheme.primaryContainer, modifier = Modifier.size(28.dp)) {
+            Box(contentAlignment = Alignment.Center) {
+                Text(n, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+            }
+        }
+        Spacer(Modifier.size(12.dp))
+        Column {
+            Text(title, fontWeight = FontWeight.SemiBold)
+            Text(body, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

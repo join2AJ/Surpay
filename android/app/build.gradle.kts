@@ -73,7 +73,9 @@ dependencies {
     testImplementation(libs.roborazzi.compose)
 }
 
-// The end-to-end test talks to a running backend: ./gradlew testDebugUnitTest -Pe2eUrl=http://127.0.0.1:8000/
+// The end-to-end test talks to a running backend:
+// ./gradlew testDebugUnitTest -Pe2eUrl=http://127.0.0.1:8000/ -Pe2eAdminToken=<SURPAY_ADMIN_TOKEN>
 tasks.withType<Test>().configureEach {
     (project.findProperty("e2eUrl") as String?)?.let { systemProperty("surpay.e2eUrl", it) }
+    (project.findProperty("e2eAdminToken") as String?)?.let { systemProperty("surpay.e2eAdminToken", it) }
 }

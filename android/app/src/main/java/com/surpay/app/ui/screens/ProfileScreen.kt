@@ -74,6 +74,7 @@ fun ProfileScreen(
     counties: Map<String, List<String>> = emptyMap(),
     onStateChosen: (String) -> Unit = {},
     modifier: Modifier = Modifier,
+    header: (@Composable () -> Unit)? = null,
 ) {
     var fullName by rememberSaveable { mutableStateOf(profile.fullName) }
     var otherNames by rememberSaveable { mutableStateOf(profile.otherNames.joinToString(", ")) }
@@ -93,9 +94,10 @@ fun ProfileScreen(
         modifier
             .fillMaxSize()
             .imePadding()
-            .verticalScroll(rememberScrollState())
-            .padding(20.dp),
+            .verticalScroll(rememberScrollState()),
     ) {
+      header?.invoke()
+      Column(Modifier.padding(20.dp)) {
         Text(
             if (firstRun) "Where have you owned property?" else "Your details",
             style = MaterialTheme.typography.headlineSmall,
@@ -110,16 +112,19 @@ fun ProfileScreen(
         )
         Spacer(Modifier.height(20.dp))
 
+        // Names are locked to the verified ID so nobody can search under someone else's name.
+        val locked = profile.nameLocked
         OutlinedTextField(
-            value = fullName, onValueChange = { fullName = it },
+            value = fullName, onValueChange = { fullName = it }, readOnly = locked, enabled = !locked,
             label = { Text("Full legal name") }, singleLine = true,
+            supportingText = if (locked) ({ Text("Matches your verified ID. Contact support to change it.") }) else null,
             modifier = Modifier.fillMaxWidth().testTag("fullName"),
         )
         Spacer(Modifier.height(10.dp))
         OutlinedTextField(
-            value = otherNames, onValueChange = { otherNames = it },
+            value = otherNames, onValueChange = { otherNames = it }, readOnly = locked, enabled = !locked,
             label = { Text("Other names (optional)") },
-            supportingText = { Text("Maiden or previous names, separated by commas") },
+            supportingText = { Text(if (locked) "Locked with your verified ID" else "Maiden or previous names, separated by commas") },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
         )
@@ -185,7 +190,7 @@ fun ProfileScreen(
             if (form.busy) {
                 CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
             } else {
-                Text(if (firstRun) "Search for my money" else "Save and search again", fontWeight = FontWeight.Bold)
+                Text(if (firstRun) "Save and continue" else "Save and search again", fontWeight = FontWeight.Bold)
             }
         }
         if (!firstRun) {
@@ -194,6 +199,7 @@ fun ProfileScreen(
                 Text("Sign out")
             }
         }
+      }
     }
 }
 

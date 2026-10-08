@@ -2,7 +2,9 @@ package com.surpay.app.ui
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.ui.graphics.Color
@@ -47,6 +49,8 @@ import com.surpay.app.ui.screens.ClaimScreen
 import com.surpay.app.ui.screens.ClaimsScreen
 import com.surpay.app.ui.screens.IdentityScreen
 import com.surpay.app.ui.screens.LoadingScreen
+import com.surpay.app.ui.screens.OnboardingHeader
+import com.surpay.app.ui.screens.VerifyingScreen
 import com.surpay.app.ui.screens.ServerSettingsDialog
 import com.surpay.app.ui.screens.UnreachableScreen
 import com.surpay.app.ui.screens.MatchDetailScreen
@@ -94,7 +98,8 @@ fun SurpayApp(vm: SurpayViewModel) {
             onClearError = vm::clearFormError,
             onServerSettings = { showServer = true },
         )
-        is SessionState.SignedIn -> SignedInApp(vm, s)
+        // Verified people get the app; everyone else finishes onboarding first.
+        is SessionState.SignedIn -> if (s.profile.identityStatus == "approved") SignedInApp(vm, s) else OnboardingFlow(vm, s)
     }
     if (showServer) {
         ServerSettingsDialog(
@@ -116,8 +121,8 @@ private fun SignedInApp(vm: SurpayViewModel, session: SessionState.SignedIn) {
     val counties by vm.counties.collectAsStateWithLifecycle()
     val backStack by nav.currentBackStackEntryAsState()
     val route = backStack?.destination?.route
-    // Everyone must list at least one home before searching; decided once per sign-in.
-    val start = remember { if (session.isNewUser || session.profile.addresses.isEmpty()) Routes.SETUP else Routes.MATCHES }
+    // Onboarding (ID approved, at least one home) is done by the time we get here.
+    val start = remember { if (session.profile.addresses.isEmpty()) Routes.SETUP else Routes.MATCHES }
 
     LaunchedEffect(Unit) {
         vm.refreshMatches()
@@ -295,4 +300,47 @@ private fun NavHostController.switchTab(route: String) = navigate(route) {
     popUpTo(graph.startDestinationId) { saveState = true }
     launchSingleTop = true
     restoreState = true
+}
+
+/**
+ * Sign-up continues here until staff approve the ID: verify identity, list homes, then wait.
+ * No results, tabs or claims are reachable from here, so an unverified account can't look anyone up.
+ */
+@Composable
+private fun OnboardingFlow(vm: SurpayViewModel, session: SessionState.SignedIn) {
+    val form by vm.form.collectAsStateWithLifecycle()
+    val preview by vm.preview.collectAsStateWithLifecycle()
+    val counties by vm.counties.collectAsStateWithLifecycle()
+    var editingHomes by rememberSaveable { mutableStateOf(false) }
+    val p = session.profile
+    val stage = when {
+        p.identityStatus == null || p.identityStatus == "rejected" -> "identity"
+        p.addresses.isEmpty() || editingHomes -> "homes"
+        else -> "waiting"
+    }
+    LaunchedEffect(stage) { vm.clearFormError() }
+
+    Surface(Modifier.fillMaxSize()) {
+        when (stage) {
+            "identity" -> IdentityScreen(
+                profile = p, form = form, onSubmit = { vm.submitIdentity(it) },
+                modifier = Modifier.systemBarsPadding(),
+                header = { OnboardingHeader(step = 1) },
+            )
+            "homes" -> ProfileScreen(
+                profile = p, form = form, firstRun = !editingHomes,
+                onSave = { update -> vm.saveProfile(update) { editingHomes = false } },
+                onLogout = vm::logout,
+                counties = counties, onStateChosen = vm::loadCounties,
+                modifier = Modifier.systemBarsPadding(),
+                header = { OnboardingHeader(step = 2) },
+            )
+            else -> VerifyingScreen(
+                profile = p, preview = preview,
+                onRefresh = { vm.refreshProfile(); vm.refreshPreview() },
+                onEditHomes = { editingHomes = true },
+                onLogout = vm::logout,
+            )
+        }
+    }
 }

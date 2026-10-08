@@ -31,6 +31,7 @@ import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -78,9 +79,16 @@ private fun formatDob(input: String): String {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun IdentityScreen(profile: Profile, form: FormState, onSubmit: (IdentityRequest) -> Unit, modifier: Modifier = Modifier) {
+fun IdentityScreen(
+    profile: Profile,
+    form: FormState,
+    onSubmit: (IdentityRequest) -> Unit,
+    modifier: Modifier = Modifier,
+    header: (@Composable () -> Unit)? = null,
+) {
     val photos = rememberPhotoSource()
     var legalName by rememberSaveable { mutableStateOf(profile.fullName) }
+    var otherNames by rememberSaveable { mutableStateOf(profile.otherNames.joinToString(", ")) }
     var dob by rememberSaveable { mutableStateOf("") }
     var ssn4 by rememberSaveable { mutableStateOf("") }
     var phone by rememberSaveable { mutableStateOf(profile.phone) }
@@ -100,12 +108,23 @@ fun IdentityScreen(profile: Profile, form: FormState, onSubmit: (IdentityRequest
         street.trim().length >= 3 && city.trim().length >= 2 && state.length == 2 && zip.length == 5 &&
         idFront != null && selfie != null && consent
 
-    Column(modifier.fillMaxSize().imePadding().verticalScroll(rememberScrollState()).padding(20.dp)) {
+    Column(modifier.fillMaxSize().imePadding().verticalScroll(rememberScrollState())) {
+      header?.invoke()
+      Column(Modifier.padding(20.dp)) {
+        if (profile.identityStatus == "rejected") {
+            Surface(color = MaterialTheme.colorScheme.errorContainer, shape = MaterialTheme.shapes.medium,
+                modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
+                Text(
+                    "We couldn’t verify your last submission: ${profile.identityNote.ifBlank { "please try again" }}",
+                    Modifier.padding(12.dp), color = MaterialTheme.colorScheme.onErrorContainer,
+                )
+            }
+        }
         Text("Verify your identity", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(6.dp))
         Text(
-            "The county will only release money to the right person, so we confirm it’s you before " +
-                "an attorney files. Takes about 5 minutes.",
+            "Counties only release money to the rightful owner, and only you may see your results, so " +
+                "everyone is verified before searching. Takes about 5 minutes.",
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -118,6 +137,12 @@ fun IdentityScreen(profile: Profile, form: FormState, onSubmit: (IdentityRequest
 
         Section("About you")
         Field(legalName, { legalName = it }, "Full legal name (as on your ID)", "legalName")
+        OutlinedTextField(
+            value = otherNames, onValueChange = { otherNames = it }, singleLine = true,
+            label = { Text("Other names you’ve used (optional)") },
+            supportingText = { Text("Maiden or previous names, comma-separated. Your names can’t be changed after you submit.") },
+            modifier = Modifier.fillMaxWidth(),
+        )
         OutlinedTextField(
             value = dob, onValueChange = { dob = formatDob(it) }, label = { Text("Date of birth (MM/DD/YYYY)") },
             singleLine = true, isError = dob.length == 10 && dobIso == null,
@@ -205,13 +230,14 @@ fun IdentityScreen(profile: Profile, form: FormState, onSubmit: (IdentityRequest
                     legalName = legalName.trim(), dateOfBirth = dobIso!!, ssnLast4 = ssn4, phone = phone.trim(),
                     street = street.trim(), city = city.trim(), state = state, zip = zip, idType = idType,
                     idFrontB64 = idFront!!.b64(), idBackB64 = idBack?.b64(), selfieB64 = selfie!!.b64(), consent = consent,
+                    otherNames = otherNames.split(',').map { it.trim() }.filter { it.isNotEmpty() },
                 ))
             },
             enabled = ready && !form.busy,
             modifier = Modifier.fillMaxWidth().height(52.dp).testTag("submitIdentity"),
         ) {
             if (form.busy) CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
-            else Text("Submit and continue to agreement", fontWeight = FontWeight.Bold)
+            else Text("Submit for verification", fontWeight = FontWeight.Bold)
         }
         if (!ready) {
             Text(
@@ -220,6 +246,7 @@ fun IdentityScreen(profile: Profile, form: FormState, onSubmit: (IdentityRequest
                 modifier = Modifier.padding(top = 6.dp),
             )
         }
+      }
     }
 }
 

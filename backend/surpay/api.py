@@ -17,11 +17,12 @@ from .claims import ESTIMATE_DISCLAIMER
 from .auth import create_token, current_user, hash_password, verify_password
 from .db import get_session, init_db
 from .demo import reset_demo_user
+from .legal import legal_basis
 from .matching import find_matches
 from .models import Agreement, Claim, CountySource, IdentityVerification, PreviousAddress, SurplusRecord, User
 from .schemas import (
     AddressOut, AdminIdentityIn, AdminStatusIn, AgreementOut, ClaimIn, ClaimOut, CoverageOut, IdentityIn,
-    LoginIn, MatchesOut, MatchOut, ProfileIn, ProfileOut, SignIn, SignupIn, TokenOut,
+    LoginIn, MatchesOut, MatchOut, MatchPreviewOut, ProfileIn, ProfileOut, SignIn, SignupIn, TokenOut,
 )
 
 
@@ -37,13 +38,38 @@ DbSession = Annotated[Session, Depends(get_session)]
 CurrentUser = Annotated[User, Depends(current_user)]
 
 
+def _identity_status(user: User) -> str | None:
+    return user.identity.review_status if user.identity is not None else None
+
+
+def _name_locked(user: User) -> bool:
+    return _identity_status(user) in ("pending", "approved")
+
+
 def _profile(user: User) -> ProfileOut:
+    ident = user.identity
     return ProfileOut(
         id=user.id, email=user.email, full_name=user.full_name,
         other_names=user.other_names or [], phone=user.phone,
         addresses=[AddressOut(id=a.id, street=a.street, city=a.city, state=a.state, zip=a.zip,
                               county=a.county) for a in user.addresses],
+        identity_status=_identity_status(user),
+        identity_note=ident.review_note if ident is not None and ident.review_status == "rejected" else "",
+        name_locked=_name_locked(user),
     )
+
+
+def require_verified(user: User) -> None:
+    """Amounts and record details are only for people whose ID we've approved.
+
+    This is what stops a broker from creating an account and typing in a client's name.
+    """
+    status_ = _identity_status(user)
+    if status_ != "approved":
+        detail = {None: "Verify your identity to see your results",
+                  "rejected": "Please resubmit your ID to see your results"}.get(
+            status_, "Your identity is being verified. Results unlock once it's approved")
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail)
 
 
 def _covered_counties(session: Session) -> list[str]:
@@ -108,8 +134,12 @@ def get_me(user: CurrentUser):
 
 @app.put("/me", response_model=ProfileOut)
 def update_me(body: ProfileIn, user: CurrentUser, session: DbSession):
+    other_names = [n.strip() for n in body.other_names if n.strip()]
+    if _name_locked(user) and (body.full_name.strip() != user.full_name or other_names != (user.other_names or [])):
+        raise HTTPException(status.HTTP_409_CONFLICT,
+                            "Your name is locked to your verified ID. Contact support to change it.")
     user.full_name = body.full_name.strip()
-    user.other_names = [n.strip() for n in body.other_names if n.strip()]
+    user.other_names = other_names
     user.phone = body.phone
     user.addresses = [PreviousAddress(**a.model_dump()) for a in body.addresses]
     session.add(user)
@@ -118,8 +148,17 @@ def update_me(body: ProfileIn, user: CurrentUser, session: DbSession):
     return _profile(user)
 
 
+@app.get("/me/matches/preview", response_model=MatchPreviewOut)
+def my_matches_preview(user: CurrentUser, session: DbSession):
+    """While ID is under review: only how many possible records, never amounts or details."""
+    if user.identity is None or user.identity.review_status == "rejected":
+        return MatchPreviewOut(identity_status=_identity_status(user), possible_matches=0)
+    return MatchPreviewOut(identity_status=_identity_status(user), possible_matches=len(find_matches(session, user)))
+
+
 @app.get("/me/matches", response_model=MatchesOut)
 def my_matches(user: CurrentUser, session: DbSession):
+    require_verified(user)
     claim_status = {c.record_id: c.status for c in user.claims}
     out = []
     for m in find_matches(session, user):
@@ -132,7 +171,7 @@ def my_matches(user: CurrentUser, session: DbSession):
             owner_name=r.owner_name, owner_address=r.owner_address, amount_cents=r.amount_cents,
             fee_pct=pct, estimated_fee_cents=fee, estimated_net_cents=r.amount_cents - fee,
             sale_date=r.sale_date, source_url=r.source_url, last_seen=r.last_seen,
-            claim_status=claim_status.get(r.id),
+            claim_status=claim_status.get(r.id), legal=legal_basis(r.state),
         ))
     searched = session.scalar(select(func.count()).select_from(SurplusRecord)
                               .where(SurplusRecord.status == "listed"))
@@ -166,6 +205,7 @@ def _claim_out(c: Claim) -> ClaimOut:
         estimated_completion_start=ends[-1]["estimate_start"] if ends else None,
         estimated_completion_end=ends[-1]["estimate_end"] if ends else None,
         disclaimer=ESTIMATE_DISCLAIMER,
+        legal=legal_basis(r.state),
     )
 
 
@@ -178,6 +218,7 @@ def _my_claim(user: User, claim_id: int) -> Claim:
 
 @app.post("/me/claims", response_model=ClaimOut, status_code=status.HTTP_201_CREATED)
 def start_claim(body: ClaimIn, user: CurrentUser, session: DbSession):
+    require_verified(user)
     # Only allow claiming records the matcher actually linked to this user.
     if body.record_id not in {m.record.id for m in find_matches(session, user)}:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No matching record for your profile")
@@ -225,6 +266,7 @@ def submit_identity(body: IdentityIn, user: CurrentUser, session: DbSession):
     if user.identity is not None:  # replacing a rejected submission
         session.delete(user.identity)
         session.flush()
+    user.other_names = [n.strip() for n in body.other_names if n.strip()]
     user.identity = IdentityVerification(
         legal_name=body.legal_name.strip(), date_of_birth=body.date_of_birth, ssn_last4=body.ssn_last4,
         phone=body.phone.strip(), street=body.street.strip(), city=body.city.strip(), state=body.state,
@@ -238,6 +280,12 @@ def submit_identity(body: IdentityIn, user: CurrentUser, session: DbSession):
     session.commit()
     session.refresh(user)
     return [_claim_out(c) for c in user.claims]
+
+
+@app.get("/me/identity/status", response_model=ProfileOut)
+def identity_status(user: CurrentUser):
+    """Same as GET /me; the app polls this while waiting for review."""
+    return _profile(user)
 
 
 @app.get("/me/claims/{claim_id}/agreement", response_model=AgreementOut)
@@ -328,6 +376,31 @@ def admin_claims(_: Admin, session: DbSession) -> list[dict]:
     return [_admin_claim(c) for c in session.scalars(select(Claim).order_by(Claim.id.desc()))]
 
 
+@app.get("/admin/identities")
+def admin_identities(_: Admin, session: DbSession, review_status: str = "pending") -> list[dict]:
+    """People waiting for ID review (or approved / rejected), oldest first, with what they listed."""
+    rows = session.scalars(
+        select(IdentityVerification).where(IdentityVerification.review_status == review_status)
+        .order_by(IdentityVerification.submitted_at)
+    )
+    out = []
+    for i in rows:
+        u = i.user
+        out.append({
+            "user": {"id": u.id, "email": u.email, "full_name": u.full_name, "other_names": u.other_names or [],
+                     "addresses": [AddressOut(id=a.id, street=a.street, city=a.city, state=a.state, zip=a.zip,
+                                              county=a.county).model_dump() for a in u.addresses]},
+            "identity": {
+                "legal_name": i.legal_name, "date_of_birth": i.date_of_birth.isoformat(), "ssn_last4": i.ssn_last4,
+                "phone": i.phone, "address": f"{i.street}, {i.city}, {i.state} {i.zip}", "id_type": i.id_type,
+                "has_id_back": i.id_back is not None, "review_status": i.review_status,
+                "review_note": i.review_note, "submitted_at": i.submitted_at.isoformat(),
+            },
+            "possible_matches": len(find_matches(session, u)),
+        })
+    return out
+
+
 @app.get("/admin/users/{user_id}/documents/{kind}")
 def admin_document(user_id: int, kind: str, _: Admin, session: DbSession):
     user = session.get(User, user_id)
@@ -349,6 +422,8 @@ def admin_review_identity(user_id: int, body: AdminIdentityIn, _: Admin, session
     user.identity.review_status = body.decision
     user.identity.review_note = body.note
     user.identity.reviewed_at = datetime.now(timezone.utc)
+    if body.decision == "approved":
+        user.full_name = user.identity.legal_name  # searches use the verified name from now on
     for c in user.claims:
         if body.decision == "approved":
             claims.sync_with_identity(c, user)

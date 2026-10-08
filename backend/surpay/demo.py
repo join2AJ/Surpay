@@ -10,9 +10,10 @@ from datetime import date
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from . import crypto
 from .auth import hash_password
 from .ingest import upsert
-from .models import PreviousAddress, SurplusRecord, User
+from .models import IdentityVerification, PreviousAddress, SurplusRecord, User
 from .scrapers.base import RecordIn
 
 DEMO_EMAIL = "demo@surpay.test"
@@ -38,7 +39,7 @@ def demo_records() -> list[RecordIn]:
 
 
 def reset_demo_user(session: Session) -> User:
-    """Get the shared demo account in its starting state: profile filled in, no claims, no ID.
+    """Get the shared demo account in its starting state: profile filled in, ID approved, no claims.
 
     Testers share this account, so each demo sign-in starts fresh.
     """
@@ -57,7 +58,17 @@ def reset_demo_user(session: Session) -> User:
     user.phone = ""
     user.addresses = [PreviousAddress(**DEMO_ADDRESS)]
     user.claims = []
-    user.identity = None
+    if user.identity is not None:  # delete first: one identity per person
+        session.delete(user.identity)
+    session.flush()
+    # Pre-verified, so testers go straight to results. The "photos" are placeholders.
+    placeholder = crypto.encrypt(b"\xff\xd8\xff\xe0demo-placeholder")
+    user.identity = IdentityVerification(
+        legal_name=DEMO_NAME, date_of_birth=date(1980, 4, 2), ssn_last4="0000", phone="555-010-0000",
+        street=DEMO_ADDRESS["street"], city=DEMO_ADDRESS["city"], state="OH", zip=DEMO_ADDRESS["zip"],
+        id_type="drivers_license", id_front=placeholder, selfie=placeholder,
+        review_status="approved", review_note="Demo account",
+    )
     session.commit()
     session.refresh(user)
     return user

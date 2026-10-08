@@ -9,6 +9,7 @@ from surpay import claims, config, crypto
 from surpay.ingest import upsert
 from surpay.models import IdentityVerification
 from surpay.scrapers.base import RecordIn
+from tests.conftest import verify_identity
 
 JPEG = base64.b64encode(b"\xff\xd8\xff\xe0" + b"0" * 400).decode()
 PNG = base64.b64encode(b"\x89PNG\r\n\x1a\n" + b"0" * 400).decode()
@@ -18,6 +19,7 @@ IDENTITY = {
     "legal_name": "Jordan Testwell", "date_of_birth": "1980-04-02", "ssn_last4": "1234",
     "phone": "555-010-0000", "street": "9 New Home Ln", "city": "Columbus", "state": "oh", "zip": "43004",
     "id_type": "drivers_license", "id_front_b64": JPEG, "selfie_b64": PNG, "consent": True,
+    "other_names": ["Jordan Oldname"],
 }
 
 
@@ -28,7 +30,7 @@ def admin(monkeypatch):
 
 
 @pytest.fixture
-def user(client, session):
+def unverified(client, session):
     upsert(session, "demo", [
         RecordIn(source_key="D1", state="OH", county="Demo", sale_type="tax_sale", reference="Case D1",
                  owner_name="Jordan Testwell", owner_address="412 Maple Ridge Rd, Springfield, OH",
@@ -42,6 +44,13 @@ def user(client, session):
     h = {"Authorization": f"Bearer {r.json()['token']}"}
     assert client.put("/me", headers=h, json={"full_name": "Jordan Testwell", "other_names": [], "phone": "",
                                               "addresses": [ADDRESS]}).status_code == 200
+    return h
+
+
+@pytest.fixture
+def user(client, unverified):
+    h = unverified
+    verify_identity(client, h, "Jordan Testwell")
     ids = [m["record_id"] for m in client.get("/me/matches", headers=h).json()["matches"]]
     return h, ids
 
@@ -50,81 +59,73 @@ def steps(claim):
     return {s["status"]: s["state"] for s in claim["timeline"]}
 
 
-def test_full_claim_flow(client, session, user, admin):
-    h, (rid, rid2) = user
-    c = client.post("/me/claims", headers=h, json={"record_id": rid}).json()
-    assert c["next_action"] == "verify_identity"
-    assert steps(c)["requested"] == "done" and steps(c)["identity_submitted"] == "current"
-    assert c["estimated_completion_end"] is not None
-    assert "approximate estimates" in c["disclaimer"]
-
-    # Can't sign before the ID is in
-    assert client.post(f"/me/claims/{c['id']}/agreement", headers=h,
-                       json={"signature_name": "Jordan Testwell", "agreed": True}).status_code == 409
-
-    # ID upload: stored encrypted, claim moves on
-    [c] = client.post("/me/identity", headers=h, json=IDENTITY).json()
-    assert c["status"] == "identity_submitted" and c["next_action"] == "sign_agreement"
-    assert c["identity_status"] == "pending"
+def test_full_flow_verify_first(client, session, unverified, admin):
+    h = unverified
+    # 1. ID first: stored encrypted, pending review, results stay locked
+    assert client.post("/me/identity", headers=h, json=IDENTITY).json() == []
     stored = session.query(IdentityVerification).one()
-    assert stored.state == "OH" and stored.id_front != base64.b64decode(JPEG)  # encrypted at rest
-    assert crypto.decrypt(stored.id_front) == base64.b64decode(JPEG)
+    assert stored.state == "OH" and crypto.decrypt(stored.id_front) == base64.b64decode(JPEG)
+    assert stored.id_front != base64.b64decode(JPEG)  # encrypted at rest
+    assert client.get("/me", headers=h).json()["other_names"] == ["Jordan Oldname"]
+    assert client.get("/me/matches", headers=h).status_code == 403
+    assert client.get("/me/matches/preview", headers=h).json()["possible_matches"] == 2
+
+    # 2. Staff see the pending ID (before any claim exists); approving unlocks results
+    assert client.get("/admin/claims").status_code == 401
+    [pending] = client.get("/admin/identities", headers=admin).json()
+    assert pending["identity"]["legal_name"] == "Jordan Testwell" and pending["possible_matches"] == 2
+    uid = client.get("/me", headers=h).json()["id"]
+    assert pending["user"]["id"] == uid
+    doc = client.get(f"/admin/users/{uid}/documents/selfie", headers=admin)
+    assert doc.status_code == 200 and doc.headers["content-type"] == "image/png"
+    client.post(f"/admin/users/{uid}/identity", headers=admin, json={"decision": "approved"})
+    me = client.get("/me", headers=h).json()
+    assert me["identity_status"] == "approved" and me["full_name"] == "Jordan Testwell"
+    assert client.get("/admin/identities", headers=admin).json() == []
+    rid, rid2 = [m["record_id"] for m in client.get("/me/matches", headers=h).json()["matches"]]
+
+    # 3. Start a claim: only the agreement is left
+    c = client.post("/me/claims", headers=h, json={"record_id": rid}).json()
+    assert c["status"] == "identity_submitted" and c["next_action"] == "sign_agreement"
+    assert steps(c)["agreement_signed"] == "current"
+    assert c["estimated_completion_end"] is not None and "approximate estimates" in c["disclaimer"]
+    assert c["legal"]["law"] == "Ohio Revised Code § 5721.20"
 
     agreement = client.get(f"/me/claims/{c['id']}/agreement", headers=h).json()
     assert not agreement["signed"] and "15%" in agreement["text"] and "Demo County" in agreement["text"]
     c = client.post(f"/me/claims/{c['id']}/agreement", headers=h,
                     json={"signature_name": "Jordan Testwell", "agreed": True}).json()
-    assert c["status"] == "agreement_signed" and c["next_action"] is None
+    # ID already approved, so signing moves straight to verified
+    assert c["status"] == "identity_verified" and c["next_action"] is None
+    assert steps(c)["filed"] == "current"
     assert client.get(f"/me/claims/{c['id']}/agreement", headers=h).json()["signed"] is True
 
-    # A second claim reuses the identity already on file
-    c2 = client.post("/me/claims", headers=h, json={"record_id": rid2}).json()
-    assert c2["status"] == "identity_submitted" and c2["next_action"] == "sign_agreement"
-
-    # Staff: review page and documents need the token
-    assert client.get("/admin/claims").status_code == 401
-    listing = client.get("/admin/claims", headers=admin).json()
-    assert {x["id"] for x in listing} == {c["id"], c2["id"]}
-    uid = listing[0]["user"]["id"]
-    doc = client.get(f"/admin/users/{uid}/documents/selfie", headers=admin)
-    assert doc.status_code == 200 and doc.headers["content-type"] == "image/png"
-
-    # Approving the ID moves signed claims forward
-    client.post(f"/admin/users/{uid}/identity", headers=admin, json={"decision": "approved"})
-    c = client.get(f"/me/claims/{c['id']}", headers=h).json()
-    assert c["status"] == "identity_verified" and c["identity_status"] == "approved"
-    assert steps(c)["filed"] == "current"
-
-    # Second claim signs later and goes straight to verified
-    c2 = client.post(f"/me/claims/{c2['id']}/agreement", headers=h,
-                     json={"signature_name": "Jordan Testwell", "agreed": True}).json()
-    assert c2["status"] == "identity_verified"
-
+    # 4. Staff move it along; the person sees each step done
     for s in ("filed", "approved", "paid"):
         client.post(f"/admin/claims/{c['id']}/status", headers=admin, json={"status": s, "note": f"{s} note"})
     c = client.get(f"/me/claims/{c['id']}", headers=h).json()
     assert c["status"] == "paid" and set(steps(c).values()) == {"done"}
     assert c["estimated_completion_end"] is None
+    assert len(client.get("/admin/claims", headers=admin).json()) == 1
 
 
-def test_rejected_id_can_be_resubmitted(client, user, admin):
-    h, (rid, _) = user
-    claim_id = client.post("/me/claims", headers=h, json={"record_id": rid}).json()["id"]
+def test_rejected_id_can_be_resubmitted(client, unverified, admin):
+    h = unverified
     client.post("/me/identity", headers=h, json=IDENTITY)
     assert client.post("/me/identity", headers=h, json=IDENTITY).status_code == 409  # already submitted
-    uid = client.get("/admin/claims", headers=admin).json()[0]["user"]["id"]
+    uid = client.get("/me", headers=h).json()["id"]
     client.post(f"/admin/users/{uid}/identity", headers=admin, json={"decision": "rejected", "note": "Photo is blurry"})
 
-    c = client.get(f"/me/claims/{claim_id}", headers=h).json()
-    assert c["next_action"] == "verify_identity" and c["identity_status"] == "rejected"
-    assert c["identity_note"] == "Photo is blurry"
-    [c] = client.post("/me/identity", headers=h, json=IDENTITY).json()
-    assert c["status"] == "identity_submitted" and c["identity_status"] == "pending"
+    me = client.get("/me", headers=h).json()
+    assert me["identity_status"] == "rejected" and me["identity_note"] == "Photo is blurry"
+    assert me["name_locked"] is False
+    assert client.get("/me/matches", headers=h).status_code == 403
+    client.post("/me/identity", headers=h, json=IDENTITY)
+    assert client.get("/me", headers=h).json()["identity_status"] == "pending"
 
 
-def test_identity_validation(client, user):
-    h, (rid, _) = user
-    client.post("/me/claims", headers=h, json={"record_id": rid})
+def test_identity_validation(client, unverified):
+    h = unverified
     bad = [
         {**IDENTITY, "consent": False},
         {**IDENTITY, "ssn_last4": "12a4"},
