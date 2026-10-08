@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Surpay — Reclaim Your Foreclosure Surplus</title>
+  <meta name="description" content="When a property sells at a tax or foreclosure auction for more than the debt owed, the surplus belongs to the former owner. Surpay helps you find and claim it. Free search, no upfront fees.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="nav">
+    <div class="wrap nav-inner">
+      <a class="logo" href="#top" aria-label="Surpay home">
+        <span class="logo-mark" aria-hidden="true">S</span>Surpay
+      </a>
+      <nav class="nav-links" aria-label="Primary">
+        <a href="#why">Why it exists</a>
+        <a href="#how">How it works</a>
+        <a href="#fees">Fees</a>
+        <a href="#faq">FAQ</a>
+      </nav>
+      <a class="btn btn-small" href="#check">Check my name</a>
+    </div>
+  </header>
+
+  <main id="top">
+    <!-- Hero -->
+    <section class="hero">
+      <div class="wrap hero-grid">
+        <div>
+          <p class="eyebrow">Foreclosure &amp; tax-sale surplus recovery</p>
+          <h1>The county won’t tell you they owe you money. <span class="accent">We will.</span></h1>
+          <p class="lede">
+            When a property is sold at a tax or foreclosure auction for more than the debt owed,
+            the remaining cash legally belongs to the former owner. Surpay connects you with
+            local attorneys to reclaim your funds before the deadline to claim them passes.
+          </p>
+          <a class="btn btn-primary" href="#check">Check My Name <span class="btn-sub">100% free search</span></a>
+          <ul class="badges" aria-label="Our commitments">
+            <li><span aria-hidden="true">🔒</span> Encrypted in transit &amp; at rest</li>
+            <li><span aria-hidden="true">⚖️</span> Claims filed by licensed attorneys in your state</li>
+            <li><span aria-hidden="true">🚫</span> Zero out-of-pocket fees</li>
+          </ul>
+        </div>
+
+        <form id="check" class="card check-form" novalidate>
+          <h2>See if you’re owed a surplus</h2>
+          <p class="muted small">We search county surplus lists and court registries for your name. No credit card, ever.</p>
+          <label>Full name on the old deed
+            <input name="name" autocomplete="name" required placeholder="Jane A. Doe">
+          </label>
+          <label>Previous property address
+            <input name="address" autocomplete="street-address" required placeholder="123 Oak St, Tampa">
+          </label>
+          <div class="row">
+            <label>State
+              <select name="state" required>
+                <option value="">Select…</option>
+                <option>Florida</option><option>Texas</option><option>Ohio</option>
+                <option>Georgia</option><option>Arizona</option><option>Colorado</option>
+                <option>Other</option>
+              </select>
+            </label>
+            <label>Approx. sale year
+              <input name="year" inputmode="numeric" placeholder="2023">
+            </label>
+          </div>
+          <label>Email for your results
+            <input name="email" type="email" autocomplete="email" required placeholder="you@example.com">
+          </label>
+          <label class="consent">
+            <input type="checkbox" name="consent" required>
+            <span>I agree to be contacted about my search results. I understand Surpay is not a law firm or a government agency.</span>
+          </label>
+          <button class="btn btn-primary btn-block" type="submit">Check My Name</button>
+          <p class="form-msg" role="status" aria-live="polite"></p>
+        </form>
+      </div>
+    </section>
+
+    <!-- Section 2: Why -->
+    <section id="why" class="section">
+      <div class="wrap narrow">
+        <h2>Why is this money sitting there?</h2>
+        <p>
+          If a home owed $50,000 in taxes but sold at a county auction for $150,000, the remaining
+          $100,000 is called a <strong>“surplus.”</strong> By law, this money belongs to the previous
+          homeowner. In 2023 the U.S. Supreme Court confirmed in <em>Tyler v. Hennepin County</em> that a
+          government cannot keep more than it is owed.
+        </p>
+        <p>
+          But counties do not actively search for you. And if a claim isn’t filed correctly and on
+          time, the money can go to other lienholders or revert to the county.
+        </p>
+        <div class="math card">
+          <div><span class="muted small">Auction sale price</span><strong>$150,000</strong></div>
+          <div class="op" aria-hidden="true">−</div>
+          <div><span class="muted small">Debt owed</span><strong>$50,000</strong></div>
+          <div class="op" aria-hidden="true">=</div>
+          <div class="hl"><span class="small">Surplus owed to you</span><strong>$100,000</strong></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 3: How -->
+    <section id="how" class="section alt">
+      <div class="wrap">
+        <h2 class="center">Claiming your surplus used to require expensive lawyers. We made it simple.</h2>
+        <ol class="steps">
+          <li class="card">
+            <span class="step-num">1</span>
+            <h3>Verify your match</h3>
+            <p>Enter your name and the previous property address. We cross-reference county surplus lists and court records to confirm whether funds are held and how much.</p>
+          </li>
+          <li class="card">
+            <span class="step-num">2</span>
+            <h3>E-sign &amp; relax</h3>
+            <p>Verify your identity securely and sign a contingency agreement. A licensed local attorney files the claim with the court or county on your behalf.</p>
+          </li>
+          <li class="card">
+            <span class="step-num">3</span>
+            <h3>Get paid</h3>
+            <p>Once the claim is approved, the funds are released to you. You see every status update along the way.</p>
+          </li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- Section 4: Fees -->
+    <section id="fees" class="section">
+      <div class="wrap narrow">
+        <h2>We only get paid when you do.</h2>
+        <p>
+          We will never ask for your credit card or an upfront payment. We work on a contingency fee
+          that never exceeds your state’s legal cap, typically 15% to 20%. You see the exact percentage
+          before you sign anything.
+        </p>
+        <p>
+          If we recover your $50,000 surplus, our fee comes out of the proceeds. If the claim is denied,
+          <strong>you owe us absolutely nothing.</strong>
+        </p>
+        <p class="muted small">
+          You are always free to file a claim yourself with the county clerk or court, at no cost.
+          We exist for people who would rather have professionals handle the paperwork and the hearing.
+        </p>
+        <a class="btn btn-primary" href="#check">See If You Have Unclaimed Funds</a>
+      </div>
+    </section>
+
+    <!-- FAQ -->
+    <section id="faq" class="section alt">
+      <div class="wrap narrow">
+        <h2>Questions people ask us</h2>
+        <details>
+          <summary>Is this a scam?</summary>
+          <p>It’s a fair question. You should never pay upfront to recover money that’s yours. We don’t. You can look up your case on your county clerk’s website yourself, and we’ll show you the case number so you can.</p>
+        </details>
+        <details>
+          <summary>Can I claim it myself?</summary>
+          <p>Yes. Surplus claims are public processes and you can file without us. Many people use a service because the filings, deadlines, and hearings can be complicated, especially when other lienholders compete for the same funds.</p>
+        </details>
+        <details>
+          <summary>How long does it take?</summary>
+          <p>It depends on the county and whether the claim is contested. Uncontested claims commonly resolve in a few months.</p>
+        </details>
+        <details>
+          <summary>What happens to my personal information?</summary>
+          <p>We use it only to search for and file your claim. We never sell it.</p>
+        </details>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="wrap">
+      <p><strong>Surpay</strong> is not a law firm and does not provide legal advice. Legal services are provided by independent licensed attorneys. Surpay is not affiliated with any government agency. You may be able to recover these funds on your own, without a fee, by contacting the county clerk or court that holds them.</p>
+      <p class="muted small">© <span id="yr"></span> Surpay. All rights reserved.</p>
+    </div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
