@@ -19,7 +19,12 @@ sealed interface SessionState {
     data object Loading : SessionState
     data object SignedOut : SessionState
     data class Unreachable(val message: String) : SessionState
-    data class SignedIn(val profile: Profile, val isNewUser: Boolean = false) : SessionState
+    data class SignedIn(
+        val profile: Profile,
+        val isNewUser: Boolean = false,
+        /** Signed in to the on-device demo because no server was reachable. */
+        val offlineDemo: Boolean = false,
+    ) : SessionState
 }
 
 data class FormState(val busy: Boolean = false, val error: String? = null)
@@ -63,7 +68,8 @@ class SurpayViewModel(private val repo: SurpayRepository, private val server: Se
         _session.value = SessionState.Loading
         viewModelScope.launch {
             _session.value = try {
-                repo.restoreSession()?.let { SessionState.SignedIn(it) } ?: SessionState.SignedOut
+                repo.restoreSession()?.let { SessionState.SignedIn(it, offlineDemo = repo.isOfflineDemo) }
+                    ?: SessionState.SignedOut
             } catch (e: Exception) {
                 SessionState.Unreachable(e.userMessage())
             }
@@ -109,12 +115,13 @@ class SurpayViewModel(private val repo: SurpayRepository, private val server: Se
     }
 
     fun demoLogin() = submit {
-        _session.value = SessionState.SignedIn(repo.demoLogin())
+        val profile = repo.demoLogin()
+        _session.value = SessionState.SignedIn(profile, offlineDemo = repo.isOfflineDemo)
     }
 
     fun saveProfile(update: ProfileUpdate, onSaved: () -> Unit) = submit {
         val profile = repo.updateProfile(update)
-        _session.value = SessionState.SignedIn(profile)
+        _session.value = SessionState.SignedIn(profile, offlineDemo = repo.isOfflineDemo)
         refreshMatches()
         onSaved()
     }

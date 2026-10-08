@@ -59,6 +59,10 @@ To test, tap **Try the demo account (testing)** on the sign-in screen. It signs 
 one tap as the fictional Jordan Testwell, with two demo matches. Testers share this account, and
 it resets on every demo sign-in. It only works while `SURPAY_SEED_DEMO=true`.
 
+If the app can't reach a Surpay server (for example, before you've deployed), the demo button
+falls back to an **offline demo** that runs on the phone with the same made-up data. A yellow
+banner says so. Real sign-up and sign-in always need the server.
+
 ## Before real users
 
 - Set `SURPAY_SEED_DEMO=false` in Render. The fake Demo County disappears and the demo sign-in is switched off.

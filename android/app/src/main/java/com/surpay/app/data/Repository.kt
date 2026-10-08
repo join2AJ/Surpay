@@ -50,11 +50,23 @@ class TokenStore(private val context: Context) {
     }
 }
 
-class SurpayRepository(private val api: SurpayApi, private val tokens: TokenStore) {
+class SurpayRepository(private val remote: SurpayApi, private val tokens: TokenStore) {
+    private val offlineDemo = OfflineDemoApi()
+
+    /** True while signed in to the on-device demo because no server was reachable. */
+    @Volatile var isOfflineDemo = false
+        private set
+
+    private val api: SurpayApi get() = if (isOfflineDemo) offlineDemo else remote
+
     suspend fun restoreSession(): Profile? {
-        if (tokens.load() == null) return null
+        val token = tokens.load() ?: return null
+        if (token == OfflineDemoApi.OFFLINE_DEMO_TOKEN) {
+            isOfflineDemo = true
+            return offlineDemo.me()
+        }
         return try {
-            api.me()
+            remote.me()
         } catch (e: HttpException) {
             if (e.code() == 401) tokens.clear()
             null
@@ -67,16 +79,38 @@ class SurpayRepository(private val api: SurpayApi, private val tokens: TokenStor
     suspend fun login(email: String, password: String): Profile =
         api.login(LoginRequest(email.trim(), password)).also { tokens.save(it.token) }.user
 
-    /** Testing only: shared fictional account, reset on every demo sign-in. */
-    suspend fun demoLogin(): Profile = api.demoLogin().also { tokens.save(it.token) }.user
+    /**
+     * Testing only: the server's shared fictional account, reset on every demo sign-in. If there
+     * is no Surpay server at the configured address (not deployed yet, or offline), fall back to
+     * the same demo running on the phone so the app can still be tried.
+     */
+    suspend fun demoLogin(): Profile {
+        val response = try {
+            isOfflineDemo = false
+            remote.demoLogin()
+        } catch (e: Exception) {
+            if (!e.isNoServer()) throw e
+            isOfflineDemo = true
+            offlineDemo.demoLogin()
+        }
+        tokens.save(response.token)
+        return response.user
+    }
 
-    suspend fun logout() = tokens.clear()
+    suspend fun logout() {
+        tokens.clear()
+        isOfflineDemo = false
+    }
 
     suspend fun updateProfile(update: ProfileUpdate): Profile = api.updateMe(update)
     suspend fun matches(): MatchesResponse = api.matches()
     suspend fun startClaim(recordId: Int): Claim = api.startClaim(ClaimRequest(recordId))
-    suspend fun coverage(): Coverage = api.coverage()
+    suspend fun coverage(): Coverage = remote.coverage()
 }
+
+/** The server isn't there: unreachable, or a host that has no Surpay API behind it. */
+private fun Exception.isNoServer(): Boolean = this is IOException ||
+    (this is HttpException && (code() == 404 || code() >= 500))
 
 /** Turn a network/HTTP failure into a sentence a person can act on. */
 fun Throwable.userMessage(): String = when (this) {
@@ -91,7 +125,12 @@ fun Throwable.userMessage(): String = when (this) {
                 else -> null
             }
         }.getOrNull()
-        detail?.takeIf { it.isNotBlank() } ?: "Something went wrong (error ${code()}). Please try again."
+        when {
+            !detail.isNullOrBlank() -> detail
+            code() == 404 -> "No Surpay server found at this address. Deploy the backend (docs/DEPLOY.md) " +
+                "or change the address under Server settings."
+            else -> "Something went wrong (error ${code()}). Please try again."
+        }
     }
     is IOException -> "Can't reach Surpay. Check your internet connection and try again."
     else -> message ?: "Something went wrong. Please try again."

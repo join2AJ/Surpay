@@ -1,6 +1,13 @@
 package com.surpay.app.ui
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -97,25 +104,36 @@ private fun SignedInApp(vm: SurpayViewModel, session: SessionState.SignedIn) {
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        when (route) {
-                            Routes.SETUP -> "Set up your search"
-                            Routes.PROFILE -> "Profile"
-                            Routes.DETAIL -> "Surplus details"
-                            else -> "Your money"
-                        },
-                    )
-                },
-                navigationIcon = {
-                    if (route == Routes.DETAIL) {
-                        IconButton(onClick = { nav.popBackStack() }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+            Column {
+                TopAppBar(
+                    title = {
+                        Text(
+                            when (route) {
+                                Routes.SETUP -> "Set up your search"
+                                Routes.PROFILE -> "Profile"
+                                Routes.DETAIL -> "Surplus details"
+                                else -> "Your money"
+                            },
+                        )
+                    },
+                    navigationIcon = {
+                        if (route == Routes.DETAIL) {
+                            IconButton(onClick = { nav.popBackStack() }) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                            }
                         }
+                    },
+                )
+                if (session.offlineDemo) {
+                    Surface(color = Color(0xFFFFF1D6), contentColor = Color(0xFF6B4A00), modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            "Offline demo: made-up data on this phone. No Surpay server is connected yet.",
+                            Modifier.padding(horizontal = 16.dp, vertical = 8.dp).testTag("offlineBanner"),
+                            style = MaterialTheme.typography.bodySmall,
+                        )
                     }
-                },
-            )
+                }
+            }
         },
         bottomBar = {
             if (route == Routes.MATCHES || route == Routes.PROFILE) {
