@@ -51,8 +51,8 @@ To point the emulator at a local backend, build with
 `./gradlew assembleDebug -PsurpayApiUrl=http://10.0.2.2:8000/` (10.0.2.2 is your computer as
 seen from the emulator), or set it in the app under **Server settings**.
 
-To try it, sign up as **Jordan Testwell** and add the address **412 Maple Ridge Rd, OH**.
-You'll see two demo matches.
+To try it, tap **Try the demo account (testing)** on the sign-in screen (needs
+`SURPAY_SEED_DEMO=true` on the server). You'll see two demo matches.
 
 ## Tests
 

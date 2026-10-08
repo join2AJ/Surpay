@@ -109,6 +109,7 @@ data class Coverage(
     val records: Int,
     @SerialName("total_amount_cents") val totalAmountCents: Long,
     val counties: List<String>,
+    @SerialName("demo_login") val demoLogin: Boolean = false,
 )
 
 @Serializable
@@ -118,6 +119,7 @@ interface SurpayApi {
     @GET("coverage") suspend fun coverage(): Coverage
     @POST("auth/signup") suspend fun signup(@Body body: SignupRequest): TokenResponse
     @POST("auth/login") suspend fun login(@Body body: LoginRequest): TokenResponse
+    @POST("auth/demo") suspend fun demoLogin(): TokenResponse
     @GET("me") suspend fun me(): Profile
     @PUT("me") suspend fun updateMe(@Body body: ProfileUpdate): Profile
     @GET("me/matches") suspend fun matches(): MatchesResponse

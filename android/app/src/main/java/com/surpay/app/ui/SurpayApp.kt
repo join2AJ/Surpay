@@ -69,6 +69,7 @@ fun SurpayApp(vm: SurpayViewModel) {
             coverage = coverage,
             onSignup = vm::signup,
             onLogin = vm::login,
+            onDemoLogin = vm::demoLogin,
             onClearError = vm::clearFormError,
             onServerSettings = { showServer = true },
         )

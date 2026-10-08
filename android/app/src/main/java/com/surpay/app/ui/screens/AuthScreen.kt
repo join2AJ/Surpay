@@ -24,6 +24,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -42,6 +43,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import com.surpay.app.BuildConfig
 import com.surpay.app.data.Coverage
 import com.surpay.app.ui.FormState
 import com.surpay.app.ui.dollars
@@ -53,8 +55,11 @@ fun AuthScreen(
     onSignup: (email: String, password: String, fullName: String) -> Unit,
     onLogin: (email: String, password: String) -> Unit,
     onClearError: () -> Unit,
+    onDemoLogin: () -> Unit = {},
     onServerSettings: () -> Unit = {},
 ) {
+    // Test builds always offer it; a release build only when the server has demo mode on.
+    val showDemo = BuildConfig.DEBUG || coverage?.demoLogin == true
     val slow = rememberIsSlow(form.busy)
     var signingUp by rememberSaveable { mutableStateOf(true) }
     var name by rememberSaveable { mutableStateOf("") }
@@ -106,6 +111,23 @@ fun AuthScreen(
             }
         }
         Spacer(Modifier.height(24.dp))
+
+        if (showDemo) {
+            OutlinedButton(
+                onClick = { onClearError(); onDemoLogin() },
+                enabled = !form.busy,
+                modifier = Modifier.fillMaxWidth().height(48.dp).testTag("demoLogin"),
+            ) {
+                Text("Try the demo account (testing)")
+            }
+            Text(
+                "Signs in as “Jordan Testwell”, a made-up person with demo matches.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.align(Alignment.CenterHorizontally).padding(top = 4.dp),
+            )
+            Spacer(Modifier.height(20.dp))
+        }
 
         Text(
             if (signingUp) "Create your free account" else "Welcome back",

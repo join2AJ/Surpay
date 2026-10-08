@@ -108,6 +108,10 @@ class SurpayViewModel(private val repo: SurpayRepository, private val server: Se
         _session.value = SessionState.SignedIn(repo.login(email, password))
     }
 
+    fun demoLogin() = submit {
+        _session.value = SessionState.SignedIn(repo.demoLogin())
+    }
+
     fun saveProfile(update: ProfileUpdate, onSaved: () -> Unit) = submit {
         val profile = repo.updateProfile(update)
         _session.value = SessionState.SignedIn(profile)

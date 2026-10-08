@@ -15,16 +15,16 @@
 
 import argparse
 import sys
-from datetime import date, datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from sqlalchemy import func, select
 
-from . import counties
+from . import counties, demo
 from .db import SessionLocal, init_db
 from .ingest import run_source, upsert
 from .models import ScrapeRun, SurplusRecord
-from .scrapers import SOURCES, RecordIn
+from .scrapers import SOURCES
 from .scrapers.file_import import records_from_file
 
 
@@ -42,23 +42,6 @@ def _recently_ok(session, source: str, hours: float) -> bool:
     if last.tzinfo is None:  # SQLite drops the timezone
         last = last.replace(tzinfo=timezone.utc)
     return datetime.now(timezone.utc) - last < timedelta(hours=hours)
-
-
-def _demo_records() -> list[RecordIn]:
-    """Fictional people and places in 'Demo County' so they can't be mistaken for real records."""
-    rows = [
-        ("D-1001", "Jordan Testwell", "412 Maple Ridge Rd, Springfield, OH 45501", 2_845_000, date(2024, 6, 17)),
-        ("D-1002", "TESTWELL, JORDAN A", "88 Harbor View Dr, Springfield, OH 45502", 612_550, date(2023, 11, 6)),
-        ("D-1003", "Casey Placeholder", "19 Elm St, Springfield, OH 45503", 1_210_000, date(2024, 2, 12)),
-        ("D-1004", "Morgan & Riley Example", "7 Birch Ct, Springfield, OH 45504", 4_390_075, date(2024, 9, 9)),
-        ("D-1005", "Avery Sampleton", "230 Lake Shore Blvd, Springfield, OH 45505", 98_013, date(2025, 1, 21)),
-    ]
-    return [
-        RecordIn(source_key=key, state="OH", county="Demo", sale_type="tax_sale", reference=f"Case {key}",
-                 owner_name=name, owner_address=addr, amount_cents=cents, sale_date=sold,
-                 source_url="", raw={"demo": True})
-        for key, name, addr, cents, sold in rows
-    ]
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -142,7 +125,7 @@ def main(argv: list[str] | None = None) -> int:
             print("researched by difficulty:", dict(s["by_difficulty"]))
             print("states researched:", ", ".join(s["states_researched"]))
         elif args.cmd == "seed-demo":
-            run = upsert(session, "demo", [] if args.remove else _demo_records(), full_snapshot=True)
+            run = upsert(session, "demo", [] if args.remove else demo.demo_records(), full_snapshot=True)
             print(f"demo: +{run.added} new, {run.updated} updated, {run.delisted} removed")
         elif args.cmd == "stats":
             rows = session.execute(

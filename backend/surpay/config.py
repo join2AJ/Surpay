@@ -18,6 +18,9 @@ if not SECRET_KEY:
     SECRET_KEY = "dev-only-insecure-secret-change-me"
     warnings.warn("SURPAY_SECRET_KEY is not set; using an insecure development key.")
 
+# Testing only: fictional Demo County records and a one-tap demo account. Off for real users.
+DEMO_ENABLED = os.environ.get("SURPAY_SEED_DEMO", "false").lower() == "true"
+
 TOKEN_TTL_DAYS = int(os.environ.get("SURPAY_TOKEN_TTL_DAYS", "30"))
 
 # Identify the scraper honestly to county webmasters.

@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from . import config
 from .auth import create_token, current_user, hash_password, verify_password
 from .db import get_session, init_db
+from .demo import reset_demo_user
 from .matching import find_matches
 from .models import Claim, PreviousAddress, SurplusRecord, User
 from .schemas import (
@@ -59,7 +60,8 @@ def coverage(session: DbSession):
         select(func.count(), func.coalesce(func.sum(SurplusRecord.amount_cents), 0))
         .where(SurplusRecord.status == "listed")
     ).one()
-    return CoverageOut(records=count, total_amount_cents=total, counties=_covered_counties(session))
+    return CoverageOut(records=count, total_amount_cents=total, counties=_covered_counties(session),
+                       demo_login=config.DEMO_ENABLED)
 
 
 @app.post("/auth/signup", response_model=TokenOut, status_code=status.HTTP_201_CREATED)
@@ -80,6 +82,15 @@ def login(body: LoginIn, session: DbSession):
     user = session.scalar(select(User).where(User.email == body.email.lower()))
     if user is None or not verify_password(body.password, user.password_hash):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Wrong email or password")
+    return TokenOut(token=create_token(user.id), user=_profile(user))
+
+
+@app.post("/auth/demo", response_model=TokenOut)
+def demo_login(session: DbSession):
+    """One-tap sign-in to a shared, fictional test account. Only when SURPAY_SEED_DEMO=true."""
+    if not config.DEMO_ENABLED:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Demo login is turned off on this server")
+    user = reset_demo_user(session)
     return TokenOut(token=create_token(user.id), user=_profile(user))
 
 

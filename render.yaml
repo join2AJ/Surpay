@@ -21,7 +21,7 @@ services:
         sync: false
       - key: SURPAY_SECRET_KEY
         generateValue: true
-      # Adds fictional "Demo County" records so you can try the app (sign up as
-      # "Jordan Testwell", address "412 Maple Ridge Rd", OH). Set to false before launch.
+      # Testing only: fictional "Demo County" records plus the one-tap
+      # "Try the demo account" sign-in. Set to false before launch.
       - key: SURPAY_SEED_DEMO
         value: "true"

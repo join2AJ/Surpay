@@ -6,7 +6,7 @@ FastAPI + SQLAlchemy. SQLite by default; set `SURPAY_DATABASE_URL` for Postgres
 | Env var | Purpose |
 |---|---|
 | `SURPAY_DATABASE_URL` (or `DATABASE_URL`) | Database (default `sqlite:///./surpay.db`). `postgres://` URLs from Render/Neon work as-is |
-| `SURPAY_SEED_DEMO` | `true` to add the fictional Demo County records on start (`start.sh`) |
+| `SURPAY_SEED_DEMO` | `true` for testing: fictional Demo County records and the one-tap demo sign-in (`POST /auth/demo`) |
 | `SURPAY_SECRET_KEY` | Signs login tokens. **Required in production**: a long random string |
 | `SURPAY_USER_AGENT` | How the scraper identifies itself to county sites |
 

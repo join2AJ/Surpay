@@ -25,7 +25,7 @@ def signup(client, email="rob@example.com", name="Robert Sample"):
 def test_full_flow(client, session):
     seed(session)
     assert client.get("/coverage").json() == {"records": 2, "total_amount_cents": 1973760,
-                                              "counties": ["Adams County, OH"]}
+                                              "counties": ["Adams County, OH"], "demo_login": False}
     h = signup(client)
 
     m = client.get("/me/matches", headers=h).json()
@@ -70,3 +70,32 @@ def test_auth_errors(client):
                                             "password": "correct horse"}).status_code == 200
     assert client.get("/me/matches").status_code == 401
     assert client.get("/me", headers={"Authorization": "Bearer garbage"}).status_code == 401
+
+
+def test_demo_login_off_by_default(client):
+    assert client.get("/coverage").json()["demo_login"] is False
+    assert client.post("/auth/demo").status_code == 404
+
+
+def test_demo_login_one_tap(client, monkeypatch):
+    from surpay import config
+
+    monkeypatch.setattr(config, "DEMO_ENABLED", True)
+    assert client.get("/coverage").json()["demo_login"] is True
+
+    r = client.post("/auth/demo")
+    assert r.status_code == 200
+    h = {"Authorization": f"Bearer {r.json()['token']}"}
+    assert r.json()["user"]["full_name"] == "Jordan Testwell"
+
+    m = client.get("/me/matches", headers=h).json()
+    assert [x["confidence"] for x in m["matches"]] == ["strong", "likely"]
+    assert m["total_amount_cents"] == 2_845_000 + 612_550
+
+    # A tester starts a claim and edits the profile; the next demo sign-in starts fresh.
+    client.post("/me/claims", headers=h, json={"record_id": m["matches"][0]["record_id"]})
+    client.put("/me", headers=h, json={"full_name": "Someone Else", "other_names": [], "phone": "", "addresses": []})
+    r2 = client.post("/auth/demo").json()
+    h2 = {"Authorization": f"Bearer {r2['token']}"}
+    assert r2["user"]["full_name"] == "Jordan Testwell" and len(r2["user"]["addresses"]) == 1
+    assert client.get("/me/claims", headers=h2).json() == []

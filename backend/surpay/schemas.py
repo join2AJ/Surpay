@@ -100,5 +100,6 @@ class CoverageOut(BaseModel):
     records: int
     total_amount_cents: int
     counties: list[str]
+    demo_login: bool = False
 
 TokenOut.model_rebuild()

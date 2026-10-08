@@ -67,6 +67,9 @@ class SurpayRepository(private val api: SurpayApi, private val tokens: TokenStor
     suspend fun login(email: String, password: String): Profile =
         api.login(LoginRequest(email.trim(), password)).also { tokens.save(it.token) }.user
 
+    /** Testing only: shared fictional account, reset on every demo sign-in. */
+    suspend fun demoLogin(): Profile = api.demoLogin().also { tokens.save(it.token) }.user
+
     suspend fun logout() = tokens.clear()
 
     suspend fun updateProfile(update: ProfileUpdate): Profile = api.updateMe(update)

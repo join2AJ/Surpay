@@ -55,11 +55,12 @@ Download `app-debug.apk` from the latest CI run (Actions → CI → artifacts), 
 `cd android && ./gradlew assembleDebug`. On the phone, allow "install unknown apps" for
 your browser or file manager.
 
-To try it with the demo data, sign up as **Jordan Testwell** and add the address
-**412 Maple Ridge Rd, OH**.
+To test, tap **Try the demo account (testing)** on the sign-in screen. It signs you in with
+one tap as the fictional Jordan Testwell, with two demo matches. Testers share this account, and
+it resets on every demo sign-in. It only works while `SURPAY_SEED_DEMO=true`.
 
 ## Before real users
 
-- Set `SURPAY_SEED_DEMO=false` in Render so the fake Demo County disappears.
+- Set `SURPAY_SEED_DEMO=false` in Render. The fake Demo County disappears and the demo sign-in is switched off.
 - Free Render sleeps. Upgrade to the $7/month Starter plan when people depend on it.
 - Read "Before real users" in `backend/README.md`: fees, ID verification, rate limits.

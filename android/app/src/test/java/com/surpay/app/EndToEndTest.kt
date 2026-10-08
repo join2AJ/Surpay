@@ -20,6 +20,7 @@ import com.surpay.app.ui.SurpayApp
 import com.surpay.app.ui.SurpayViewModel
 import com.surpay.app.ui.theme.SurpayTheme
 import androidx.compose.material3.Surface
+import kotlinx.coroutines.runBlocking
 import org.junit.Assume.assumeTrue
 import org.junit.Rule
 import org.junit.Test
@@ -46,7 +47,7 @@ class EndToEndTest {
         assumeTrue("set -Pe2eUrl to run", !url.isNullOrBlank())
 
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
-        val tokens = TokenStore(context)
+        val tokens = TokenStore(context).also { runBlocking { it.clear() } } // start signed out
         val server = ServerStore(context, url!!)
         val vm = SurpayViewModel(SurpayRepository(SurpayApi.create({ server.current }, { tokens.cached }), tokens), server)
         compose.setContent { SurpayTheme { Surface { SurpayApp(vm) } } }
@@ -86,5 +87,25 @@ class EndToEndTest {
         compose.waitUntilAtLeastOneExists(hasTestTag("claimStatus"), timeout)
         compose.onNodeWithText("Claim requested").assertExists()
         shot("5_claimed")
+    }
+
+    @Test fun demoAccountOneTap() {
+        val url = System.getProperty("surpay.e2eUrl")
+        assumeTrue("set -Pe2eUrl to run", !url.isNullOrBlank())
+
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val tokens = TokenStore(context).also { runBlocking { it.clear() } } // start signed out
+        val server = ServerStore(context, url!!)
+        val vm = SurpayViewModel(SurpayRepository(SurpayApi.create({ server.current }, { tokens.cached }), tokens), server)
+        compose.setContent { SurpayTheme { Surface { SurpayApp(vm) } } }
+
+        compose.waitUntilAtLeastOneExists(hasTestTag("demoLogin"), 15_000)
+        shot("6_demo_button")
+        compose.onNodeWithTag("demoLogin").performClick()
+        // Straight to matches: the demo profile already has an address, so the strong match shows.
+        compose.waitUntilAtLeastOneExists(hasTestTag("totalAmount"), 15_000)
+        compose.onNodeWithText("$34,575.50").assertExists()
+        compose.onNodeWithText("Name & address match").assertExists()
+        shot("7_demo_matches")
     }
 }
