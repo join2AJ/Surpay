@@ -9,6 +9,8 @@ services:
     name: surpay-api
     runtime: python
     plan: free
+    # Same region as the Neon database ("AWS US East 2 (Ohio)") so queries stay fast.
+    region: ohio
     rootDir: backend
     buildCommand: pip install -r requirements.txt
     startCommand: ./start.sh

@@ -14,7 +14,8 @@ functions. Use it for `index.html` only.
 
 ## 1. Database (Neon): 3 minutes
 
-1. Sign up at https://neon.tech and create a project (any region near Render's, e.g. US East).
+1. Sign up at https://neon.tech and create a project in region **AWS US East 2 (Ohio)**, the
+   same region `render.yaml` uses for the API.
 2. Copy the **connection string**. It looks like
    `postgresql://user:password@ep-xxx.us-east-2.aws.neon.tech/neondb?sslmode=require`
 
