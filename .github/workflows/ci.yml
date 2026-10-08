@@ -3,6 +3,7 @@ name: CI
 on:
   push:
   pull_request:
+  workflow_dispatch:  # "Run workflow" button: re-test and redeploy without a code change
 
 jobs:
   backend:
@@ -22,7 +23,7 @@ jobs:
   # RENDER_DEPLOY_HOOK to the service's Deploy Hook URL (Render -> surpay-api -> Settings).
   deploy:
     needs: backend
-    if: github.event_name == 'push' && github.ref_name == github.event.repository.default_branch
+    if: github.event_name != 'pull_request' && github.ref_name == github.event.repository.default_branch
     runs-on: ubuntu-latest
     steps:
       - name: Trigger Render deploy
