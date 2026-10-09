@@ -132,7 +132,7 @@ def test_closed_accounts_and_passwords(client, session):
 
 
 def test_spoofed_forwarded_for_is_ignored(client):
-    client.post("/auth/signup", headers={"X-Forwarded-For": "6.6.6.6, 203.0.113.9, 10.0.0.7"},
+    client.post("/auth/signup", headers={"X-Forwarded-For": "6.6.6.6, 203.0.113.9, 104.22.0.1, 10.0.0.7"},
                 json={"email": "ip@example.com", "password": "correct horse", "full_name": "Ip Person",
                       "accept_terms": True})
     from surpay.db import SessionLocal
