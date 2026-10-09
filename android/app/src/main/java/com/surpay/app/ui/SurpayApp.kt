@@ -136,6 +136,7 @@ fun SurpayApp(vm: SurpayViewModel) {
                 onSignup = { e, p, n, r -> vm.signup(e, p, n, r, acceptTerms = true) },
                 onLogin = vm::login,
                 onDemoLogin = vm::demoLogin,
+                onDemoAttorneyLogin = vm::demoAttorneyLogin,
                 onClearError = vm::clearFormError,
                 onServerSettings = { showServer = true },
                 policies = policies,
@@ -399,6 +400,7 @@ private fun SignedInApp(vm: SurpayViewModel, session: SessionState.SignedIn) {
                     onExport = { vm.exportData { openOrShare(context, it, "surpay-my-data.json", "application/json") } },
                     onLogoutEverywhere = vm::logoutEverywhere,
                     onDelete = { vm.deleteAccount { msg -> Toast.makeText(context, msg, Toast.LENGTH_LONG).show() } },
+                    onChangePassword = vm::changePassword,
                 )
             }
             composable(Routes.DETAIL, arguments = listOf(navArgument("id") { type = NavType.IntType })) { entry ->
@@ -432,7 +434,7 @@ private fun SignedInApp(vm: SurpayViewModel, session: SessionState.SignedIn) {
                         onSignAgreement = { nav.navigate(Routes.agreement(id)) },
                         onViewAgreement = { nav.navigate(Routes.agreement(id)) },
                         onMessages = { nav.navigate(Routes.chat(id)) },
-                        onWithdraw = { vm.withdrawClaim(id) },
+                        onChangeAttorney = { vm.changeAttorney(id) },
                         busy = form.busy,
                     )
                 }

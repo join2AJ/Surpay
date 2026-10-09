@@ -321,6 +321,8 @@ class Message(Base):
     claim_id: Mapped[int] = mapped_column(ForeignKey("claims.id", ondelete="CASCADE"), index=True)
     sender_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     sender_role: Mapped[str] = mapped_column(String(16))  # attorney | claimant
+    # The attorney this conversation was with. A new attorney never sees an earlier attorney's thread.
+    attorney_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     body: Mapped[str] = mapped_column(EncryptedText)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

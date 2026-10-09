@@ -135,6 +135,14 @@ def sync_with_identity(claim: Claim, user: User) -> None:
     if ident is None or ident.review_status == "rejected":
         return
     advance(claim, "identity_submitted", "Using the identity already on file")
+    a = claim.agreement
+    if a is not None and claim.status == "identity_submitted":
+        # Signed before an ID resubmission: still valid if it's in the same verified name,
+        # otherwise they sign again in their new name.
+        if names_match(a.signature_name, ident.legal_name):
+            advance(claim, "agreement_signed", "Using the agreement already signed")
+        else:
+            claim.agreement = None  # delete-orphan removes the old one; the audit log keeps its record
     if ident.review_status == "approved" and claim.status == "agreement_signed":
         advance(claim, "identity_verified")
 
@@ -230,6 +238,7 @@ The Claimant wishes to recover the surplus funds described above. {company} will
 
 3. THE ATTORNEY
 The Attorney represents the Claimant and is solely responsible for the legal work, including the preparation, accuracy and filing of the claim and any court appearance. The Attorney exercises independent professional judgment and is not directed by {company}. The Claimant may ask for a different attorney at any time before the claim is filed.
+3.1 Payment of the Attorney by {company}. {company} pays the Attorney for this claim out of the fee in section 4. The Claimant consents to this arrangement. {company} will not interfere with the Attorney's independent professional judgment or with the attorney-client relationship, and information relating to the representation remains confidential between the Claimant and the Attorney except as needed to administer this Agreement. The Attorney will confirm the scope of the representation to the Claimant.
 
 4. FEE
 4.1 No fee is payable unless funds are recovered.
@@ -250,13 +259,14 @@ Amounts and timelines shown in the app are estimates. The county or court decide
 To the fullest extent permitted by law, {company} is not liable for the outcome of the claim, for any act or omission of the Attorney, the county, the court or any other party, or for any indirect or consequential loss. {company}'s total liability under this Agreement will not exceed the fee it actually receives for this claim. Nothing in this Agreement limits liability that cannot be limited by law.
 
 9. CANCELLATION
-The Claimant may cancel this Agreement within three (3) business days after signing, at no cost, through the app or by writing to {config.SUPPORT_CONTACT}. After that, the Claimant may still end the Agreement before the claim is filed. Once the claim is filed, the fee in section 4 applies to any funds later paid out on it.
+The Claimant may cancel this Agreement by written notice to {config.SUPPORT_CONTACT} within three (3) business days after signing, at no cost. After that, the Claimant may end the Agreement by written notice before the claim is filed. Once the claim is filed, the fee in section 4 applies to any funds later paid out on it.
 
 10. PERSONAL INFORMATION
 The Claimant authorises {company} and the Attorney to use their identity documents and personal details only to verify their identity and pursue this claim, as described in the {company} Privacy Notice. Communications about the claim take place in the app and are kept as part of the case record.
 
 11. ELECTRONIC SIGNATURE AND RECORDS
 The Claimant agrees to sign electronically under the U.S. Electronic Signatures in Global and National Commerce Act (15 U.S.C. 7001 et seq.) and the Uniform Electronic Transactions Act as adopted in {r.state}. The Claimant's drawn signature, typed legal name, the time of signing, IP address and device identifier are recorded with a fingerprint (SHA-256) of this text as evidence of signing.
+11.1 Consumer disclosures. The Claimant may (a) receive a paper copy of this Agreement free of charge by writing to {config.SUPPORT_CONTACT}; (b) withdraw consent to receive records electronically at any time by writing to that address, without affecting the validity of this Agreement; and (c) access these records using the {company} app on a current Android device, or by asking for a PDF copy. This consent applies to this Agreement and to records about this claim.
 
 12. GOVERNING LAW
 This Agreement is governed by the law of the State of {r.state}.

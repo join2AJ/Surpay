@@ -85,9 +85,13 @@ fun PrivacyScreen(
     onExport: () -> Unit,
     onLogoutEverywhere: () -> Unit,
     onDelete: () -> Unit,
+    onChangePassword: (current: String, new: String, done: () -> Unit) -> Unit = { _, _, _ -> },
     modifier: Modifier = Modifier,
 ) {
     var confirmDelete by rememberSaveable { mutableStateOf(false) }
+    var current by rememberSaveable { mutableStateOf("") }
+    var newPassword by rememberSaveable { mutableStateOf("") }
+    var changed by rememberSaveable { mutableStateOf(false) }
     var reading by rememberSaveable { mutableStateOf<String?>(null) }
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp)) {
         Text("Privacy and data", style = MaterialTheme.typography.headlineSmall)
@@ -121,6 +125,23 @@ fun PrivacyScreen(
             OutlinedButton(onClick = { onLoadPolicies(); reading = "terms" }, modifier = Modifier.fillMaxWidth()) {
                 Text("Read the Terms of Use")
             }
+        }
+        SectionLabel("Change password")
+        androidx.compose.material3.OutlinedTextField(current, { current = it; changed = false }, label = { Text("Current password") },
+            singleLine = true, visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+            modifier = Modifier.fillMaxWidth().testTag("currentPassword"))
+        androidx.compose.material3.OutlinedTextField(newPassword, { newPassword = it; changed = false },
+            label = { Text("New password (8+ characters)") }, singleLine = true,
+            visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+            modifier = Modifier.fillMaxWidth().testTag("newPassword"))
+        OutlinedButton(
+            onClick = { onChangePassword(current, newPassword) { current = ""; newPassword = ""; changed = true } },
+            enabled = current.isNotEmpty() && newPassword.length >= 8 && !form.busy,
+            modifier = Modifier.fillMaxWidth().padding(top = 6.dp).testTag("changePassword"),
+        ) { Text("Change password") }
+        if (changed) {
+            Text("Password changed. Other devices have been signed out.", color = MaterialTheme.colorScheme.primary,
+                style = MaterialTheme.typography.bodySmall)
         }
         SectionLabel("Delete my account")
         Text("This withdraws your consent and erases your account. If you’ve signed a claim agreement, we must keep " +

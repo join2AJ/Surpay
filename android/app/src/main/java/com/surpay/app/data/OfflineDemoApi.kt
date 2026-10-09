@@ -191,11 +191,6 @@ class OfflineDemoApi : SurpayApi {
     override suspend fun counties(state: String): List<String> =
         if (state.equals("OH", ignoreCase = true)) listOf("Adams County", "Clark County", "Franklin County") else emptyList()
 
-    override suspend fun withdrawClaim(id: Int): Claim {
-        reach(id, "withdrawn")
-        return toClaim(id)
-    }
-
     override suspend fun messages(id: Int) = Chat(
         canSend = false, waitingReason = "Messages open once an attorney accepts your case.",
         counterpart = "Your attorney",
@@ -220,11 +215,14 @@ class OfflineDemoApi : SurpayApi {
     override suspend fun attorneyMe(): AttorneyProfile = offline()
     override suspend fun attorneyCases(): List<AttorneyCase> = offline()
     override suspend fun attorneyCase(id: Int): AttorneyCase = offline()
-    override suspend fun acceptCase(id: Int): AttorneyCase = offline()
+    override suspend fun acceptCase(id: Int, body: AcceptRequest): AttorneyCase = offline()
+    override suspend fun changeAttorney(id: Int): Claim = offline()
+    override suspend fun changePassword(body: PasswordChange): TokenResponse = offline()
     override suspend fun declineCase(id: Int, body: DeclineRequest): kotlinx.serialization.json.JsonObject = offline()
     override suspend fun updateCase(id: Int, body: CaseStatusRequest): AttorneyCase = offline()
     override suspend fun caseDocument(id: Int, kind: String): okhttp3.ResponseBody = offline()
 
+    override suspend fun demoAttorneyLogin(): TokenResponse = offline()
     override suspend fun signup(body: SignupRequest): TokenResponse = offline()
     override suspend fun login(body: LoginRequest): TokenResponse = offline()
 

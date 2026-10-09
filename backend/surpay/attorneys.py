@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from . import config
 from .claims import TERMINAL
-from .models import AttorneyProfile, Claim, Notification
+from .models import AttorneyProfile, Claim, ClaimEvent, Notification
 
 # Steps after which a claim is ready for (or already with) an attorney.
 READY = "identity_verified"
@@ -15,6 +15,17 @@ OPEN_STATUSES = ("identity_verified", "attorney_assigned", "filed", "hearing_pen
 ATTORNEY_STATUSES = ("filed", "hearing_pending", "approved", "paid", "denied")
 # An attorney can hand a case back until they've filed it.
 RETURNABLE = ("identity_verified", "attorney_assigned")
+# What an attorney may report next from each stage. Steps can't be skipped or reversed;
+# "paid" needs an approval first.
+NEXT_STATUS = {
+    "identity_verified": ("filed",),
+    "attorney_assigned": ("filed",),
+    "filed": ("hearing_pending", "approved", "denied"),
+    "hearing_pending": ("approved", "denied"),
+    "approved": ("paid", "denied"),
+}
+# Offers not answered within this many days go to the next attorney.
+OFFER_EXPIRY_DAYS = 3
 
 
 def _open_load(session: Session, attorney_user_id: int) -> int:
@@ -34,6 +45,7 @@ def offer(session: Session, claim: Claim) -> AttorneyProfile | None:
     candidates = [
         a for a in session.scalars(select(AttorneyProfile).where(AttorneyProfile.status == "approved"))
         if a.serves(r.county, r.state) and a.user_id not in declined and a.user_id != claim.user_id
+        and a.user.deletion_requested_at is None
     ]
     if not candidates:
         return None
@@ -60,9 +72,15 @@ def assign_ready(session: Session) -> int:
     return offered
 
 
-def decline(session: Session, claim: Claim, attorney_user_id: int) -> None:
+def decline(session: Session, claim: Claim, attorney_user_id: int, reason: str = "") -> None:
+    was_accepted = claim.assignment_status == "accepted"
     if claim.status == "attorney_assigned":
         claim.status = READY  # back in the queue; the client keeps their history
+    if was_accepted:
+        note = reason or "Your attorney handed the case back. We're finding you another attorney."
+        claim.events.append(ClaimEvent(status=claim.status, note=note, created_at=datetime.now(timezone.utc)))
+        session.add(Notification(user_id=claim.user_id, kind="claim_update", title="We're finding you a new attorney",
+                                 body=note, claim_id=claim.id))
     claim.declined_by = [*(claim.declined_by or []), attorney_user_id]
     claim.attorney_id = None
     claim.assignment_status = ""
@@ -78,3 +96,24 @@ def settle_payout(claim: Claim) -> None:
 
 def is_closed(claim: Claim) -> bool:
     return claim.status in ("paid", "denied", *TERMINAL)
+
+
+def release(session: Session, claim: Claim) -> None:
+    """Take a closed or withdrawn claim away from its attorney's case list (offers only)."""
+    if claim.assignment_status == "offered":
+        claim.attorney_id = None
+        claim.assignment_status = ""
+        claim.assigned_at = None
+
+
+def expire_offers(session: Session) -> int:
+    """Pass unanswered offers to the next attorney (run daily)."""
+    from datetime import timedelta
+    cutoff = datetime.now(timezone.utc) - timedelta(days=OFFER_EXPIRY_DAYS)
+    stale = [c for c in session.scalars(select(Claim).where(Claim.assignment_status == "offered"))
+             if c.assigned_at is not None and (c.assigned_at if c.assigned_at.tzinfo else
+                                               c.assigned_at.replace(tzinfo=timezone.utc)) < cutoff]
+    for c in stale:
+        decline(session, c, c.attorney_id)
+    session.commit()
+    return len(stale)

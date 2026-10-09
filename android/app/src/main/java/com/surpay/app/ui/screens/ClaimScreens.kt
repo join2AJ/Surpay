@@ -64,11 +64,11 @@ fun ClaimScreen(
     onSignAgreement: () -> Unit,
     onViewAgreement: () -> Unit,
     onMessages: () -> Unit = {},
-    onWithdraw: () -> Unit = {},
+    onChangeAttorney: () -> Unit = {},
     busy: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
-    var confirmWithdraw by rememberSaveable { mutableStateOf(false) }
+    var confirmChange by rememberSaveable { mutableStateOf(false) }
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp)) {
         HeroCard {
             Text("${claim.county} County, ${claim.state} · ${claim.reference}", style = MaterialTheme.typography.bodyMedium)
@@ -86,6 +86,11 @@ fun ClaimScreen(
         }
         Spacer(Modifier.height(16.dp))
 
+        if (!claim.recordListed && claim.status !in setOf("paid", "denied", "withdrawn")) {
+            NoteBox("The county no longer lists this money. It may have been paid out or moved. Your attorney (or our " +
+                "team) will check with the county and update you here.")
+            Spacer(Modifier.height(12.dp))
+        }
         NextActionCard(claim, onVerifyIdentity, onSignAgreement)
 
         if (claim.estimatedCompletionEnd != null && claim.status !in setOf("paid", "denied", "withdrawn")) {
@@ -126,6 +131,22 @@ fun ClaimScreen(
                         Text("   Messages with your attorney")
                     }
                 }
+                if (claim.status == "attorney_assigned") {
+                    if (!confirmChange) {
+                        TextButton(onClick = { confirmChange = true }, modifier = Modifier.testTag("changeAttorney")) {
+                            Text("Ask for a different attorney")
+                        }
+                    } else {
+                        Text("You can choose a different attorney any time before your claim is filed. We’ll offer your " +
+                            "case to another licensed attorney in the county; your previous conversation stays private.",
+                            style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
+                        Row {
+                            TextButton(onClick = { onChangeAttorney(); confirmChange = false }, enabled = !busy,
+                                modifier = Modifier.testTag("confirmChangeAttorney")) { Text("Yes, find another attorney") }
+                            TextButton(onClick = { confirmChange = false }) { Text("Keep this attorney") }
+                        }
+                    }
+                }
             }
         }
         Spacer(Modifier.height(20.dp))
@@ -139,21 +160,6 @@ fun ClaimScreen(
         if (claim.status !in setOf("requested", "identity_submitted")) {
             OutlinedButton(onClick = onViewAgreement, modifier = Modifier.fillMaxWidth()) { Text("View signed agreement") }
         }
-        if (claim.status in setOf("requested", "identity_submitted", "agreement_signed", "identity_verified", "attorney_assigned")) {
-            if (!confirmWithdraw) {
-                TextButton(onClick = { confirmWithdraw = true }, modifier = Modifier.testTag("withdraw")) {
-                    Text("Cancel this claim", color = MaterialTheme.colorScheme.error)
-                }
-            } else {
-                NoteBox("Cancel this claim? You won’t owe anything. You can still claim the money yourself from the county.")
-                Row {
-                    TextButton(onClick = { onWithdraw(); confirmWithdraw = false }, enabled = !busy,
-                        modifier = Modifier.testTag("confirmWithdraw")) { Text("Yes, cancel it", color = MaterialTheme.colorScheme.error) }
-                    TextButton(onClick = { confirmWithdraw = false }) { Text("Keep my claim") }
-                }
-            }
-        }
-
         Spacer(Modifier.height(16.dp))
         Text(
             claim.disclaimer.ifBlank { "All amounts and dates are approximate estimates, not a promise or guarantee." },

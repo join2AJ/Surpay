@@ -25,10 +25,14 @@ def _key(secret: str) -> Fernet:
 
 
 def _fernet() -> MultiFernet:
-    keys = [_key(config.ENCRYPTION_KEY)]
-    if config.ENCRYPTION_KEY_OLD:
-        keys.append(_key(config.ENCRYPTION_KEY_OLD))
-    return MultiFernet(keys)
+    # Newest first. SECRET_KEY stays as a last fallback because it was the encryption key until
+    # SURPAY_ENCRYPTION_KEY was set: data stored before then still opens, and `rotate-keys`
+    # re-encrypts it under the current key.
+    secrets_ = []
+    for k in (config.ENCRYPTION_KEY, config.ENCRYPTION_KEY_OLD, config.SECRET_KEY):
+        if k and k not in secrets_:
+            secrets_.append(k)
+    return MultiFernet([_key(k) for k in secrets_])
 
 
 def encrypt(data: bytes) -> bytes:
@@ -71,7 +75,9 @@ class EncryptedText(TypeDecorator):
         try:
             return decrypt(value.encode()).decode()
         except InvalidToken:
-            return value
+            raise RuntimeError(
+                "Stored data can't be decrypted with the configured keys. If SURPAY_ENCRYPTION_KEY was changed, "
+                "set the previous value as SURPAY_ENCRYPTION_KEY_OLD.") from None
 
 
 class EncryptedDate(EncryptedText):
@@ -83,3 +89,45 @@ class EncryptedDate(EncryptedText):
     def process_result_value(self, value, dialect):
         text = super().process_result_value(value, dialect)
         return date.fromisoformat(text[:10]) if text else None
+
+
+def _current_only() -> Fernet:
+    return _key(config.ENCRYPTION_KEY)
+
+
+def needs_rotation(token: bytes | str) -> bool:
+    try:
+        _current_only().decrypt(token.encode() if isinstance(token, str) else token)
+        return False
+    except InvalidToken:
+        return True
+
+
+def rotate_all(session) -> int:
+    """Re-encrypt values not yet under the current key. Safe to run on every start; returns rows changed."""
+    from sqlalchemy import LargeBinary, select, text
+    from sqlalchemy.orm.attributes import flag_modified
+
+    from . import models
+
+    changed = 0
+    for model in (models.IdentityVerification, models.AttorneyProfile, models.Relative, models.Agreement,
+                  models.Message):
+        table = model.__table__
+        cols = [c for c in table.columns if isinstance(c.type, (LargeBinary, EncryptedText))]
+        names = ", ".join(c.name for c in cols)
+        stale = [row[0] for row in session.execute(text(f"SELECT id, {names} FROM {table.name}"))
+                 if any(v is not None and (not isinstance(v, str) or is_token(v)) and needs_rotation(v)
+                        for v in row[1:])]
+        for obj in session.scalars(select(model).where(model.id.in_(stale))) if stale else []:
+            for c in cols:
+                value = getattr(obj, c.key)
+                if value is None:
+                    continue
+                if isinstance(c.type, LargeBinary):
+                    setattr(obj, c.key, rotate(value))
+                else:
+                    flag_modified(obj, c.key)  # written back with the current key
+            changed += 1
+    session.commit()
+    return changed

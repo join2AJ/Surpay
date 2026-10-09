@@ -170,6 +170,8 @@ class ClaimOut(BaseModel):
     # Chat with the attorney: open once they accept; they write first.
     chat_open: bool = False
     unread_messages: int = 0
+    # False once the county no longer lists the money (often paid out to someone else).
+    record_listed: bool = True
 
 
 class IdentityIn(BaseModel):
@@ -208,6 +210,11 @@ class AgreementOut(BaseModel):
     document_sha256: str = ""
 
 
+class PasswordChangeIn(BaseModel):
+    current_password: str
+    new_password: str = Field(min_length=8, max_length=128)
+
+
 class SignIn(BaseModel):
     signature_name: str = Field(min_length=3, max_length=255)
     agreed: bool
@@ -240,6 +247,11 @@ class AttorneyPublic(BaseModel):
     firm: str
     phone: str = ""
     bar: str
+
+
+class CaseAcceptIn(BaseModel):
+    # Rule 1.7: the attorney confirms they checked for conflicts of interest before taking the case.
+    conflict_checked: bool = False
 
 
 class AttorneyApplyIn(BaseModel):
@@ -295,6 +307,8 @@ class CaseOut(BaseModel):
     filing_guide: dict = Field(default_factory=dict)
     chat_open: bool = False
     unread_messages: int = 0
+    # Other accounts that also started a claim on this record (co-owner, heir... or fraud).
+    other_claimants: int = 0
     # After accepting:
     claimant: dict | None = None
     agreement: dict | None = None

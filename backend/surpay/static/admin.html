@@ -107,6 +107,8 @@ function render(c) {
       el("div", {}, "Listed owner"), el("div", {}, c.owner_name),
       el("div", {}, "Address on record"), el("div", {}, c.owner_address || "—"),
       el("div", {}, "Amount"), el("div", {}, money(c.amount_cents))),
+    ...(c.other_claimants ? [el("p", { class: "pill pending" }, `${c.other_claimants} other account(s) also claim this record: co-owner, other heir, or a false claim.`)] : []),
+    ...(c.record_listed === false ? [el("p", { class: "pill rejected" }, "The county no longer lists this record. Check whether it was paid out.")] : []),
     el("h3", {}, "Homes the claimant listed"),
     el("ol", {}, ...c.user.addresses.map(a => el("li", {}, `${a.street}, ${a.city}, ${a.state} ${a.zip} (${a.county || "county not given"})`))),
   );
@@ -208,6 +210,8 @@ function renderIdentity(p) {
     el("div", { class: "row" }, el("h2", {}, `ID review · ${id.legal_name}`), el("span", { class: "pill pending" }, "waiting"),
       el("span", { class: "pill" }, `${p.possible_matches} possible match${p.possible_matches === 1 ? "" : "es"}`)),
     el("div", { class: "muted" }, `${u.email} · submitted ${when(id.submitted_at)}`),
+    ...(p.possible_duplicates && p.possible_duplicates.length ? [el("p", { class: "pill rejected" },
+      `Same date of birth and name or SSN digits as: ${p.possible_duplicates.join(", ")}. Check it isn't a second account or someone else's ID.`)] : []),
     el("div", { class: "grid" },
       el("div", {}, "Legal name"), el("div", {}, id.legal_name),
       el("div", {}, "Other names"), el("div", {}, u.other_names.join(", ") || "—"),

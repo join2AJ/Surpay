@@ -137,6 +137,19 @@ class SurpayRepository(private val remote: SurpayApi, private val tokens: TokenS
         return response.user
     }
 
+    /** Testing only: the shared fictional attorney, approved, with one demo case offered. Needs the server. */
+    suspend fun demoAttorneyLogin(): Profile {
+        isOfflineDemo = false
+        val response = try {
+            remote.demoAttorneyLogin()
+        } catch (e: Exception) {
+            if (e.isNoServer()) throw IllegalStateException("The attorney demo needs the Surpay server. Try again in a minute.")
+            throw e
+        }
+        tokens.save(response.token)
+        return response.user
+    }
+
     suspend fun logout() {
         tokens.clear()
         isOfflineDemo = false
@@ -153,7 +166,6 @@ class SurpayRepository(private val remote: SurpayApi, private val tokens: TokenS
     suspend fun agreement(claimId: Int): AgreementDoc = api.agreement(claimId)
     suspend fun signAgreement(claimId: Int, name: String, signaturePng: ByteArray): Claim = api.signAgreement(
         claimId, SignRequest(name, true, java.util.Base64.getEncoder().encodeToString(signaturePng)))
-    suspend fun withdrawClaim(claimId: Int): Claim = api.withdrawClaim(claimId)
     suspend fun messages(claimId: Int): Chat = api.messages(claimId)
     suspend fun sendMessage(claimId: Int, body: String): Chat = api.sendMessage(claimId, MessageRequest(body))
     suspend fun notifications(afterId: Int = 0): Notifications = api.notifications(afterId)
@@ -183,7 +195,11 @@ class SurpayRepository(private val remote: SurpayApi, private val tokens: TokenS
     }
     suspend fun attorneyCases(): List<AttorneyCase> = remote.attorneyCases()
     suspend fun attorneyCase(id: Int): AttorneyCase = remote.attorneyCase(id)
-    suspend fun acceptCase(id: Int): AttorneyCase = remote.acceptCase(id)
+    suspend fun acceptCase(id: Int): AttorneyCase = remote.acceptCase(id, AcceptRequest(conflictChecked = true))
+    suspend fun changeAttorney(claimId: Int): Claim = api.changeAttorney(claimId)
+    /** New password; the server signs out other devices and returns a fresh token for this one. */
+    suspend fun changePassword(current: String, new: String): Profile =
+        remote.changePassword(PasswordChange(current, new)).also { tokens.save(it.token) }.user
     suspend fun declineCase(id: Int, reason: String) { remote.declineCase(id, DeclineRequest(reason)) }
     suspend fun updateCase(id: Int, status: String, note: String): AttorneyCase = remote.updateCase(id, CaseStatusRequest(status, note))
     suspend fun caseDocument(id: Int, kind: String): ByteArray = remote.caseDocument(id, kind).use { it.bytes() }

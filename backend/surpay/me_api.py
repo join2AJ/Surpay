@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session, object_session
 
-from . import audit
+from . import audit, config
 from .audit import ClientInfo
 from .deps import Client, CurrentUser, DbSession, encrypt_image
 from .models import AuditLog, Consent, Message, Notification, PreviousAddress, Relative, User
@@ -107,6 +107,8 @@ def add_relative(body: RelativeIn, user: CurrentUser, session: DbSession, client
     """
     if user.identity is None or user.identity.review_status != "approved":
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Verify your own identity first")
+    if not terms_current(user):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Please accept the updated Terms of Use and Privacy Notice")
     if not body.consent:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Please confirm the documents are genuine")
     if body.basis == "heir" and (not body.death_certificate_b64 or body.date_of_death is None):
@@ -140,8 +142,9 @@ def remove_relative(relative_id: int, user: CurrentUser, session: DbSession, cli
     rel = next((r for r in user.relatives if r.id == relative_id), None)
     if rel is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found")
-    if any(c.relative_id == rel.id for c in user.claims):
-        raise HTTPException(status.HTTP_409_CONFLICT, "There's a claim for this family member; withdraw it first")
+    if any(c.relative_id == rel.id and c.status != "withdrawn" for c in user.claims):
+        raise HTTPException(status.HTTP_409_CONFLICT,
+                            f"There's an active claim for this family member. Contact {config.SUPPORT_CONTACT} to close it first.")
     user.addresses = [a for a in user.addresses if a.relative_id != rel.id]
     user.relatives.remove(rel)
     audit.record(session, "relative.removed", actor_id=user.id, entity_type="relative", entity_id=relative_id,
@@ -206,7 +209,10 @@ def delete_my_account(user: CurrentUser, session: DbSession, client: Client) -> 
     for c in session.scalars(select(Consent).where(Consent.user_id == user.id, Consent.withdrawn_at.is_(None))):
         c.withdrawn_at = now
     user.token_version = (user.token_version or 0) + 1  # signs out every device
-    if any(c.status in _KEEP_STATUSES or c.agreement is not None for c in user.claims):
+    from .models import Claim
+    worked_cases = session.scalar(select(Claim.id).where(Claim.attorney_id == user.id).limit(1)) is not None
+    # Signed claims, and any attorney's case files, must be kept for the retention period.
+    if worked_cases or any(c.status in _KEEP_STATUSES or c.agreement is not None for c in user.claims):
         user.deletion_requested_at = now
         audit.record(session, "account.deletion_requested", actor_id=user.id, entity_type="user",
                      entity_id=user.id, client=client)

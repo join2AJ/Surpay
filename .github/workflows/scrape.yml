@@ -27,6 +27,12 @@ jobs:
         env:
           SURPAY_DATABASE_URL: ${{ secrets.SURPAY_DATABASE_URL }}
           SURPAY_SECRET_KEY: ${{ secrets.SURPAY_SECRET_KEY }}
+      - name: Housekeeping (expire unanswered offers, erase accounts past retention)
+        run: python -m surpay.cli purge
+        env:
+          SURPAY_DATABASE_URL: ${{ secrets.SURPAY_DATABASE_URL }}
+          SURPAY_SECRET_KEY: ${{ secrets.SURPAY_SECRET_KEY }}
+          SURPAY_ENCRYPTION_KEY: ${{ secrets.SURPAY_ENCRYPTION_KEY }}
       - name: Report county lists that changed
         if: always()
         run: python -m surpay.cli check-sources

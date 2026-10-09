@@ -8,9 +8,9 @@ import pytest
 from surpay import config
 from surpay.ingest import upsert
 from surpay.scrapers.base import RecordIn
-from tests.conftest import SIGNATURE_PNG, verify_identity
+from tests.conftest import SIGNATURE_PNG, real_image, verify_identity
 
-JPEG = base64.b64encode(b"\xff\xd8\xff\xe0" + b"0" * 300).decode()
+JPEG = real_image()
 
 
 @pytest.fixture
@@ -80,7 +80,7 @@ def test_attorney_enrollment_and_case_flow(client, session, admin):
     assert client.get(f"/attorney/cases/{case['id']}/documents/selfie", headers=ah).status_code == 403
 
     # Accept: full details, documents, agreement
-    case = client.post(f"/attorney/cases/{case['id']}/accept", headers=ah).json()
+    case = client.post(f"/attorney/cases/{case['id']}/accept", headers=ah, json={"conflict_checked": True}).json()
     assert case["claimant"]["name"] == "Jane Sample" and case["claimant"]["ssn_last4"] == "1234"
     assert case["agreement"]["signature_name"] == "Jane Sample"
     assert case["legal"]["law"] == "Texas Tax Code §§ 34.03 and 34.04"

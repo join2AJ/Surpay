@@ -30,7 +30,26 @@ def encrypt_image(b64: str, label: str) -> bytes:
         raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, f"{label}: image is too large (max 6 MB)")
     if not (data.startswith(b"\xff\xd8\xff") or data.startswith(b"\x89PNG")):
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"{label}: must be a JPEG or PNG photo")
-    return crypto.encrypt(data)
+    return crypto.encrypt(clean_image(data, label))
+
+
+def clean_image(data: bytes, label: str) -> bytes:
+    """Re-encode the photo: drops hidden metadata (GPS location, device serials) and anything
+    that isn't really an image."""
+    import io
+
+    from PIL import Image, ImageOps, UnidentifiedImageError
+
+    try:
+        with Image.open(io.BytesIO(data)) as img:
+            img = ImageOps.exif_transpose(img)  # keep it the right way up once EXIF is gone
+            if img.width * img.height > 40_000_000:
+                raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, f"{label}: image is too large")
+            out = io.BytesIO()
+            img.convert("RGB").save(out, format="JPEG", quality=90)
+            return out.getvalue()
+    except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"{label}: couldn't read this photo, please retake it") from None
 
 
 def require_admin(x_admin_token: Annotated[str | None, Header()] = None) -> None:
@@ -43,6 +62,19 @@ def require_admin(x_admin_token: Annotated[str | None, Header()] = None) -> None
 Admin = Annotated[None, Depends(require_admin)]
 
 
+def client_ip(request: Request) -> str:
+    """The address that connected to our hosting provider's edge.
+
+    Render's proxy appends the real peer to X-Forwarded-For, so the rightmost entry is the one
+    a client can't forge (anything to its left is whatever the client sent).
+    """
+    forwarded = [h.strip() for h in request.headers.get("x-forwarded-for", "").split(",") if h.strip()]
+    if forwarded:
+        # SURPAY_PROXY_HOPS: how many proxies we sit behind (each appends one entry).
+        return forwarded[max(0, len(forwarded) - config.PROXY_HOPS)][:64]
+    return request.client.host if request.client else ""
+
+
 def client_info(request: Request) -> ClientInfo:
     """IP address and device details for the audit trail. The app sends the X-Device-* headers."""
     h = request.headers
@@ -51,7 +83,7 @@ def client_info(request: Request) -> ClientInfo:
     install = h.get("x-install-id", "")
     device_id = h.get("x-device-id", "")
     return ClientInfo(
-        ip=request.client.host if request.client else "",
+        ip=client_ip(request),
         user_agent=h.get("user-agent", ""),
         device_id=f"{device_id}/{install}" if install else device_id,
         device_info=device,

@@ -67,6 +67,8 @@ def main(argv: list[str] | None = None) -> int:
     f.add_argument("--partial", action="store_true",
                    help="file is not the county's complete list; don't delist missing records")
     sub.add_parser("stats")
+    sub.add_parser("rotate-keys", help="re-encrypt stored documents and details under SURPAY_ENCRYPTION_KEY")
+    sub.add_parser("purge", help="erase accounts past their retention period (run daily)")
     sub.add_parser("sync-counties")
     sub.add_parser("check-sources")
     sub.add_parser("counties")
@@ -127,6 +129,12 @@ def main(argv: list[str] | None = None) -> int:
         elif args.cmd == "seed-demo":
             run = upsert(session, "demo", [] if args.remove else demo.demo_records(), full_snapshot=True)
             print(f"demo: +{run.added} new, {run.updated} updated, {run.delisted} removed")
+        elif args.cmd == "rotate-keys":
+            from . import crypto
+            print(f"re-encrypted {crypto.rotate_all(session)} rows under the current key")
+        elif args.cmd == "purge":
+            from .maintenance import purge
+            print(purge(session))
         elif args.cmd == "stats":
             rows = session.execute(
                 select(SurplusRecord.state, SurplusRecord.county, func.count(), func.sum(SurplusRecord.amount_cents))

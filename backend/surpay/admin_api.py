@@ -67,6 +67,7 @@ def admin_page():
 
 def admin_claim(c: Claim) -> dict:
     from .api import claim_out
+    from .attorney_api import other_claimants
     u = c.user
     a = c.agreement
     return {
@@ -92,6 +93,8 @@ def admin_claim(c: Claim) -> dict:
             "has_signature_image": a.signature_image is not None,
         },
         "messages": len(c.messages),
+        "other_claimants": other_claimants(c),
+        "record_listed": c.record.status == "listed",
         "history": [{"status": e.status, "note": e.note, "at": e.created_at.isoformat()} for e in c.events],
     }
 
@@ -118,6 +121,8 @@ def admin_set_status(claim_id: int, body: AdminStatusIn, _: Admin, session: DbSe
     except ValueError as e:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(e)) from None
     attorneys.settle_payout(claim)
+    if body.status == "withdrawn":
+        attorneys.release(session, claim)  # an offered case leaves the attorney's list
     _log(session, "admin.claim_status", client, "claim", claim.id, status=body.status, note=body.note)
     session.commit()
     attorneys.assign_ready(session)
@@ -212,11 +217,24 @@ def admin_identities(_: Admin, session: DbSession, review_status: str = "pending
         select(IdentityVerification).where(IdentityVerification.review_status == review_status)
         .order_by(IdentityVerification.submitted_at)
     )
+    everyone = session.scalars(select(IdentityVerification)).all()
+
+    def duplicates(i: IdentityVerification) -> list[str]:
+        """Other accounts with the same person's details: a second account, or someone using their ID."""
+        same = []
+        for o in everyone:
+            if o.id == i.id or o.date_of_birth != i.date_of_birth:
+                continue
+            if o.ssn_last4 == i.ssn_last4 or claims.names_match(o.legal_name, i.legal_name):
+                same.append(o.user.email)
+        return same
+
     return [{
         "user": {"id": i.user.id, "email": i.user.email, "full_name": i.user.full_name,
                  "other_names": i.user.other_names or [], "addresses": _addresses(i.user)},
         "identity": _identity(i),
         "possible_matches": len(find_matches(session, i.user)),
+        "possible_duplicates": duplicates(i),
     } for i in rows]
 
 
@@ -238,14 +256,18 @@ def admin_review_identity(user_id: int, body: AdminIdentityIn, _: Admin, session
     user.identity.reviewed_at = _now()
     if body.decision == "approved":
         user.full_name = user.identity.legal_name  # searches use the verified name from now on
+    reset = 0
     for c in user.claims:
         if body.decision == "approved":
             claims.sync_with_identity(c, user)
         elif c.status in ("identity_submitted", "agreement_signed"):
             # Send them back to re-upload; a signed agreement stays on file.
             claims.set_status(c, "requested", f"ID needs to be resubmitted: {body.note}")
+            reset += 1
     from .models import Notification
-    if not any(c.status == "identity_verified" for c in user.claims):  # those claims already notify
+    # Claims that moved already sent their own notification; don't send the same news twice.
+    already = (any(c.status == "identity_verified" for c in user.claims) if body.decision == "approved" else reset > 0)
+    if not already:
         session.add(Notification(
             user_id=user.id, kind="identity",
             title="Your identity is verified" if body.decision == "approved" else "Please resubmit your ID",
@@ -336,6 +358,13 @@ def admin_review_attorney(user_id: int, body: AdminAttorneyIn, _: Admin, session
     user.attorney.status = body.decision
     user.attorney.review_note = body.note
     user.attorney.reviewed_at = _now()
+    if body.decision == "rejected":
+        # A suspended attorney's open cases go to someone else rather than waiting forever.
+        for c in session.scalars(select(Claim).where(Claim.attorney_id == user_id,
+                                                     Claim.assignment_status.in_(("offered", "accepted")))):
+            if not attorneys.is_closed(c):
+                attorneys.decline(session, c, user_id,
+                                  reason="Your attorney is no longer available. We're finding you another one.")
     _log(session, f"admin.attorney_{body.decision}", client, "attorney", user.attorney.id, note=body.note)
     session.commit()
     offered = attorneys.assign_ready(session)  # cases waiting in their counties go out now

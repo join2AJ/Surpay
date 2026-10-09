@@ -169,4 +169,22 @@ class EndToEndTest {
         compose.onNodeWithText("Name & address match").assertExists()
         shot("7_demo_matches")
     }
+
+    @Test fun attorneyDemoOneTap() {
+        val url = System.getProperty("surpay.e2eUrl")
+        assumeTrue("set -Pe2eUrl to run", !url.isNullOrBlank())
+
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val tokens = TokenStore(context).also { runBlocking { it.clear() } }
+        val server = ServerStore(context, url!!)
+        val vm = SurpayViewModel(SurpayRepository(SurpayApi.create({ server.current }, { tokens.cached }), tokens), server)
+        compose.setContent { SurpayTheme { Surface { SurpayApp(vm) } } }
+
+        compose.waitUntilAtLeastOneExists(hasTestTag("demoAttorneyLogin"), 15_000)
+        compose.onNodeWithTag("demoAttorneyLogin").performScrollTo().performClick()
+        // Straight to the case list, with a verified demo client's case waiting
+        compose.waitUntilAtLeastOneExists(hasText("New cases: accept or decline"), 15_000)
+        compose.onNodeWithText("Demo County, OH", substring = true).assertExists()
+        shot("11_attorney_demo")
+    }
 }

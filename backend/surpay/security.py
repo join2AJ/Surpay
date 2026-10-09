@@ -24,6 +24,35 @@ class SecurityHeaders(BaseHTTPMiddleware):
         return response
 
 
+class BodySizeLimit(BaseHTTPMiddleware):
+    """Reject oversized requests before reading them (ID photos are the biggest: ~6 MB each)."""
+
+    def __init__(self, app, max_bytes: int = 30 * 1024 * 1024):
+        super().__init__(app)
+        self.max_bytes = max_bytes
+
+    async def dispatch(self, request: Request, call_next):
+        size = request.headers.get("content-length")
+        if size and size.isdigit() and int(size) > self.max_bytes:
+            from starlette.responses import JSONResponse
+            return JSONResponse({"detail": "Upload too large"}, status_code=413)
+        return await call_next(request)
+
+
+# The most common leaked passwords (lower-cased); refused at sign-up and password change.
+COMMON_PASSWORDS = {
+    "password", "password1", "password123", "12345678", "123456789", "1234567890", "qwertyuiop",
+    "qwerty123", "11111111", "iloveyou", "abc12345", "letmein1", "welcome1", "sunshine1", "football1",
+    "baseball1", "princess1", "admin123", "passw0rd", "p@ssw0rd", "monkey123", "dragon123", "000000000",
+}
+
+
+def check_password(password: str) -> None:
+    if password.lower() in COMMON_PASSWORDS or len(set(password)) < 4:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            "That password is too easy to guess. Please choose a stronger one.")
+
+
 class RateLimiter:
     """At most `limit` failures per key in `window` seconds (per server process)."""
 

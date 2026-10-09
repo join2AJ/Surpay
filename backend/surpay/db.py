@@ -43,6 +43,7 @@ _ADDED_COLUMNS = [
     ("agreements", "device_id", "VARCHAR(128) NOT NULL DEFAULT ''"),
     ("agreements", "device_info", "VARCHAR(255) NOT NULL DEFAULT ''"),
     ("agreements", "legal_name_on_id", "VARCHAR(255) NOT NULL DEFAULT ''"),
+    ("messages", "attorney_id", "INTEGER"),
 ]
 
 # Identity details that became encrypted: their columns must hold ciphertext (Postgres only;

@@ -65,6 +65,7 @@ fun AuthScreen(
     onLogin: (email: String, password: String) -> Unit,
     onClearError: () -> Unit,
     onDemoLogin: () -> Unit = {},
+    onDemoAttorneyLogin: () -> Unit = {},
     onServerSettings: () -> Unit = {},
     policies: Policies? = null,
     onLoadPolicies: () -> Unit = {},
@@ -91,9 +92,9 @@ fun AuthScreen(
         }
         Spacer(Modifier.height(20.dp))
         when (path) {
-            null -> ChooseRole(coverage, showDemo, form, onChoose = { path = it; onClearError() }, onDemoLogin = {
-                onClearError(); onDemoLogin()
-            })
+            null -> ChooseRole(coverage, showDemo, form, onChoose = { path = it; onClearError() },
+                onDemoLogin = { onClearError(); onDemoLogin() },
+                onDemoAttorneyLogin = { onClearError(); onDemoAttorneyLogin() })
             else -> AccountForm(
                 path = path!!, form = form, policies = policies, onLoadPolicies = onLoadPolicies,
                 onSwitch = { path = it; onClearError() }, onSignup = onSignup, onLogin = onLogin, onClearError = onClearError,
@@ -118,7 +119,14 @@ fun AuthScreen(
 }
 
 @Composable
-private fun ColumnScope.ChooseRole(coverage: Coverage?, showDemo: Boolean, form: FormState, onChoose: (String) -> Unit, onDemoLogin: () -> Unit) {
+private fun ColumnScope.ChooseRole(
+    coverage: Coverage?,
+    showDemo: Boolean,
+    form: FormState,
+    onChoose: (String) -> Unit,
+    onDemoLogin: () -> Unit,
+    onDemoAttorneyLogin: () -> Unit,
+) {
     Text("The county won’t tell you they owe you money. We will.", style = MaterialTheme.typography.headlineMedium)
     Spacer(Modifier.height(10.dp))
     Text(
@@ -148,14 +156,23 @@ private fun ColumnScope.ChooseRole(coverage: Coverage?, showDemo: Boolean, form:
     }
     if (showDemo) {
         Spacer(Modifier.height(8.dp))
-        OutlinedButton(onClick = onDemoLogin, enabled = !form.busy,
-            modifier = Modifier.fillMaxWidth().height(48.dp).testTag("demoLogin")) {
-            if (form.busy) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
-            else Text("Try the demo account (testing)")
+        Text("Testing? Try a demo account", style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(6.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = onDemoLogin, enabled = !form.busy,
+                modifier = Modifier.weight(1f).height(48.dp).testTag("demoLogin")) {
+                if (form.busy) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp) else Text("Claimant demo")
+            }
+            OutlinedButton(onClick = onDemoAttorneyLogin, enabled = !form.busy,
+                modifier = Modifier.weight(1f).height(48.dp).testTag("demoAttorneyLogin")) {
+                if (form.busy) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp) else Text("Attorney demo")
+            }
         }
-        Text("Signs in as “Jordan Testwell”, a made-up person with demo matches.",
+        Text("Made-up people: “Jordan Testwell” with two matches, and attorney “Avery Counsel” with a verified case " +
+            "waiting. Both reset each time.",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.align(Alignment.CenterHorizontally).padding(top = 4.dp))
+            modifier = Modifier.padding(top = 4.dp))
         form.error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 6.dp).testTag("error")) }
     }
 }

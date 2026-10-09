@@ -9,7 +9,9 @@ from . import attorneys, audit, chat, claims, config, crypto, packet
 from .deps import Client, CurrentUser, DbSession, encrypt_image
 from .legal import filing_guide, legal_basis
 from .models import AttorneyProfile, Claim, ClaimEvent, User
-from .schemas import AttorneyApplyIn, AttorneyProfileOut, CaseDeclineIn, CaseOut, CaseStatusIn, ChatOut, MessageIn
+from .schemas import (
+    AttorneyApplyIn, AttorneyProfileOut, CaseAcceptIn, CaseDeclineIn, CaseOut, CaseStatusIn, ChatOut, MessageIn,
+)
 
 router = APIRouter(prefix="/attorney", tags=["attorney"])
 
@@ -112,6 +114,17 @@ def me(user: CurrentUser):
     return _profile_out(_require_attorney(user, approved=False))
 
 
+def other_claimants(c: Claim) -> int:
+    """Other accounts claiming the same county record: co-owners, other heirs, or a false claim."""
+    from sqlalchemy import func
+    from sqlalchemy.orm import object_session
+    session = object_session(c)
+    if session is None:
+        return 0
+    return session.scalar(select(func.count()).select_from(Claim).where(
+        Claim.record_id == c.record_id, Claim.id != c.id, Claim.status != "withdrawn")) or 0
+
+
 def case_out(c: Claim, full: bool) -> CaseOut:
     r = c.record
     out = CaseOut(
@@ -120,7 +133,8 @@ def case_out(c: Claim, full: bool) -> CaseOut:
         fee_cents=c.attorney_fee_cents, payout_status=c.payout_status, assigned_at=c.assigned_at,
         accepted_at=c.accepted_at, source_url=r.source_url, legal=legal_basis(r.state),
         filing_guide=filing_guide(r.state), chat_open=chat.thread_open(c),
-        unread_messages=sum(1 for m in c.messages if m.sender_role == "claimant" and m.read_at is None),
+        unread_messages=sum(1 for m in chat.thread(c) if m.sender_role == "claimant" and m.read_at is None),
+        other_claimants=other_claimants(c),
     )
     if full:
         from .api import on_behalf_of
@@ -154,7 +168,8 @@ def case_out(c: Claim, full: bool) -> CaseOut:
 
 def _my_case(user: User, session, case_id: int) -> Claim:
     c = session.get(Claim, case_id)
-    if c is None or c.attorney_id != user.id or c.assignment_status not in ("offered", "accepted"):
+    if (c is None or c.attorney_id != user.id or c.assignment_status not in ("offered", "accepted")
+            or c.status == "withdrawn"):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Case not found")
     return c
 
@@ -177,17 +192,21 @@ def get_case(case_id: int, user: CurrentUser, session: DbSession):
 
 
 @router.post("/cases/{case_id}/accept", response_model=CaseOut)
-def accept_case(case_id: int, user: CurrentUser, session: DbSession, client: Client):
+def accept_case(case_id: int, user: CurrentUser, session: DbSession, client: Client,
+                body: CaseAcceptIn | None = None):
     _require_attorney(user)
     c = _my_case(user, session, case_id)
     if c.assignment_status != "accepted":
+        if body is None or not body.conflict_checked:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
+                                "Confirm you've run a conflict check (no conflict with the client or other parties)")
         c.assignment_status = "accepted"
         c.accepted_at = datetime.now(timezone.utc)
         if not claims.advance(c, "attorney_assigned", f"{user.attorney.full_name} accepted your case"):
             c.events.append(ClaimEvent(status=c.status, note=f"Attorney {user.attorney.full_name} took your case",
                                        created_at=datetime.now(timezone.utc)))
         audit.record(session, "case.accepted", actor_type="attorney", actor_id=user.id, entity_type="claim",
-                     entity_id=c.id, client=client)
+                     entity_id=c.id, client=client, details={"conflict_checked": True})
         session.commit()
     return case_out(c, full=True)
 
@@ -200,7 +219,7 @@ def decline_case(case_id: int, body: CaseDeclineIn, user: CurrentUser, session: 
         raise HTTPException(status.HTTP_409_CONFLICT, "Already filed; contact Surpay to hand it over")
     audit.record(session, "case.declined", actor_type="attorney", actor_id=user.id, entity_type="claim",
                  entity_id=c.id, client=client, details={"reason": body.reason})
-    attorneys.decline(session, c, user.id)
+    attorneys.decline(session, c, user.id, reason="")
     session.commit()
     return {"ok": True}
 
@@ -213,6 +232,10 @@ def update_case(case_id: int, body: CaseStatusIn, user: CurrentUser, session: Db
         raise HTTPException(status.HTTP_409_CONFLICT, "Accept the case first")
     if attorneys.is_closed(c):
         raise HTTPException(status.HTTP_409_CONFLICT, "This case is already closed")
+    allowed = attorneys.NEXT_STATUS.get(c.status, ())
+    if body.status not in allowed:
+        nice = ", ".join(allowed) or "nothing (the case is closed)"
+        raise HTTPException(status.HTTP_409_CONFLICT, f"From “{c.status}” the next update can be: {nice}")
     claims.set_status(c, body.status, body.note)
     attorneys.settle_payout(c)
     audit.record(session, "case.status", actor_type="attorney", actor_id=user.id, entity_type="claim",

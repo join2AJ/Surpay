@@ -181,6 +181,8 @@ data class Claim(
     /** Messages with the attorney: open once they accept the case. */
     @SerialName("chat_open") val chatOpen: Boolean = false,
     @SerialName("unread_messages") val unreadMessages: Int = 0,
+    /** False once the county stops listing the money (often already paid to someone). */
+    @SerialName("record_listed") val recordListed: Boolean = true,
 )
 
 @Serializable
@@ -299,6 +301,8 @@ data class AttorneyCase(
     @SerialName("filing_guide") val filingGuide: FilingGuide = FilingGuide(),
     @SerialName("chat_open") val chatOpen: Boolean = false,
     @SerialName("unread_messages") val unreadMessages: Int = 0,
+    /** Other accounts claiming the same record: co-owners, other heirs, or a false claim. */
+    @SerialName("other_claimants") val otherClaimants: Int = 0,
     val claimant: CaseClaimant? = null,
     val agreement: CaseAgreement? = null,
     val record: CaseRecord? = null,
@@ -310,6 +314,15 @@ data class CaseStatusRequest(val status: String, val note: String = "")
 
 @Serializable
 data class DeclineRequest(val reason: String = "")
+
+@Serializable
+data class AcceptRequest(@SerialName("conflict_checked") val conflictChecked: Boolean)
+
+@Serializable
+data class PasswordChange(
+    @SerialName("current_password") val currentPassword: String,
+    @SerialName("new_password") val newPassword: String,
+)
 
 @Serializable
 data class IdentityRequest(
@@ -458,6 +471,7 @@ interface SurpayApi {
     @POST("auth/signup") suspend fun signup(@Body body: SignupRequest): TokenResponse
     @POST("auth/login") suspend fun login(@Body body: LoginRequest): TokenResponse
     @POST("auth/demo") suspend fun demoLogin(): TokenResponse
+    @POST("auth/demo-attorney") suspend fun demoAttorneyLogin(): TokenResponse
     @GET("me") suspend fun me(): Profile
     @PUT("me") suspend fun updateMe(@Body body: ProfileUpdate): Profile
     @GET("me/matches") suspend fun matches(): MatchesResponse
@@ -469,7 +483,8 @@ interface SurpayApi {
     @GET("me/claims/{id}/agreement") suspend fun agreement(@Path("id") id: Int): AgreementDoc
     @POST("me/claims/{id}/agreement") suspend fun signAgreement(@Path("id") id: Int, @Body body: SignRequest): Claim
     @GET("counties") suspend fun counties(@Query("state") state: String): List<String>
-    @POST("me/claims/{id}/withdraw") suspend fun withdrawClaim(@Path("id") id: Int): Claim
+    @POST("me/claims/{id}/change-attorney") suspend fun changeAttorney(@Path("id") id: Int): Claim
+    @POST("auth/change-password") suspend fun changePassword(@Body body: PasswordChange): TokenResponse
     @GET("me/claims/{id}/messages") suspend fun messages(@Path("id") id: Int): Chat
     @POST("me/claims/{id}/messages") suspend fun sendMessage(@Path("id") id: Int, @Body body: MessageRequest): Chat
 
@@ -492,7 +507,7 @@ interface SurpayApi {
     @GET("attorney/me") suspend fun attorneyMe(): AttorneyProfile
     @GET("attorney/cases") suspend fun attorneyCases(): List<AttorneyCase>
     @GET("attorney/cases/{id}") suspend fun attorneyCase(@Path("id") id: Int): AttorneyCase
-    @POST("attorney/cases/{id}/accept") suspend fun acceptCase(@Path("id") id: Int): AttorneyCase
+    @POST("attorney/cases/{id}/accept") suspend fun acceptCase(@Path("id") id: Int, @Body body: AcceptRequest): AttorneyCase
     @POST("attorney/cases/{id}/decline") suspend fun declineCase(@Path("id") id: Int, @Body body: DeclineRequest): kotlinx.serialization.json.JsonObject
     @POST("attorney/cases/{id}/status") suspend fun updateCase(@Path("id") id: Int, @Body body: CaseStatusRequest): AttorneyCase
     @GET("attorney/cases/{id}/documents/{kind}") suspend fun caseDocument(@Path("id") id: Int, @Path("kind") kind: String): okhttp3.ResponseBody

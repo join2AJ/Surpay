@@ -33,7 +33,7 @@ def test_new_stages_chat_and_notifications(client, session, admin):  # noqa: F81
     # Chat isn't open before the attorney accepts
     assert client.post(f"/me/claims/{claim['id']}/messages", headers=ch, json={"body": "hi"}).status_code == 409
 
-    case = client.post(f"/attorney/cases/{case['id']}/accept", headers=ah).json()
+    case = client.post(f"/attorney/cases/{case['id']}/accept", headers=ah, json={"conflict_checked": True}).json()
     assert case["status"] == "attorney_assigned" and case["chat_open"]
     assert "email" not in case["claimant"] and "phone" not in case["claimant"]
     assert case["filing_guide"]["online"].startswith("Online") and len(case["filing_guide"]["steps"]) >= 5
@@ -77,7 +77,7 @@ def test_new_stages_chat_and_notifications(client, session, admin):  # noqa: F81
 
 def test_attorney_can_hand_back_until_filed(client, session, admin):  # noqa: F811
     ah, ch, claim, case = offered_and_accepted(client, session, admin)
-    client.post(f"/attorney/cases/{case['id']}/accept", headers=ah)
+    client.post(f"/attorney/cases/{case['id']}/accept", headers=ah, json={"conflict_checked": True})
     assert client.post(f"/attorney/cases/{case['id']}/decline", headers=ah, json={}).status_code == 200
     assert client.get(f"/me/claims/{claim['id']}", headers=ch).json()["status"] == "identity_verified"
 
@@ -201,12 +201,6 @@ def test_privacy_export_and_delete(client, session, admin):  # noqa: F811
     assert [d["email"] for d in client.get("/admin/deletion-requests", headers=admin).json()] == ["jane@example.com"]
 
 
-def test_withdraw_before_filing(client, session):
-    ch, claim = claimant_with_claim(client, session)
-    c = client.post(f"/me/claims/{claim['id']}/withdraw", headers=ch).json()
-    assert c["status"] == "withdrawn"
-
-
 def test_security_controls(client):
     h = signup(client, "sec@example.com", "Sec Person")
     r = client.get("/health")
@@ -233,3 +227,20 @@ def test_signature_evidence_for_staff(client, session, admin):  # noqa: F811
     sig = client.get(f"/admin/claims/{claim['id']}/signature", headers=admin)
     assert sig.status_code == 200 and sig.content == base64.b64decode(
         __import__("tests.conftest", fromlist=["SIGNATURE_PNG"]).SIGNATURE_PNG)
+
+
+def test_demo_attorney_login(client, monkeypatch):
+    from surpay import config
+    monkeypatch.setattr(config, "DEMO_ENABLED", True)
+    for _ in range(2):  # resets cleanly each time
+        r = client.post("/auth/demo-attorney")
+        assert r.status_code == 200 and r.json()["user"]["role"] == "attorney"
+        h = {"Authorization": f"Bearer {r.json()['token']}"}
+        assert client.get("/attorney/me", headers=h).json()["status"] == "approved"
+        [case] = client.get("/attorney/cases", headers=h).json()
+        assert case["assignment_status"] == "offered" and case["county"] == "Demo" and case["status"] == "identity_verified"
+    case = client.post(f"/attorney/cases/{case['id']}/accept", headers=h, json={"conflict_checked": True}).json()
+    assert case["claimant"]["name"] == "Casey Placeholder" and case["agreement"]["has_signature_image"]
+    assert client.get(f"/attorney/cases/{case['id']}/packet", headers=h).content.startswith(b"%PDF")
+    monkeypatch.setattr(config, "DEMO_ENABLED", False)
+    assert client.post("/auth/demo-attorney").status_code == 404

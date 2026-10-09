@@ -52,7 +52,13 @@ def _now() -> datetime:
 
 
 def thread_open(claim: Claim) -> bool:
-    return claim.attorney_id is not None and claim.assignment_status == "accepted"
+    return (claim.attorney_id is not None and claim.assignment_status == "accepted"
+            and claim.status not in ("withdrawn",))
+
+
+def thread(claim: Claim) -> list[Message]:
+    """Messages with the current attorney only: a handed-back case starts a fresh conversation."""
+    return [m for m in claim.messages if m.attorney_id in (claim.attorney_id, None)]
 
 
 def send(session: Session, claim: Claim, sender: User, role: str, body: str) -> Message:
@@ -61,12 +67,13 @@ def send(session: Session, claim: Claim, sender: User, role: str, body: str) -> 
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Type a message")
     if not thread_open(claim):
         raise HTTPException(status.HTTP_409_CONFLICT, "Messages open once an attorney accepts the case")
-    if role == "claimant" and not any(m.sender_role == "attorney" for m in claim.messages):
+    if role == "claimant" and not any(m.sender_role == "attorney" for m in thread(claim)):
         raise HTTPException(status.HTTP_409_CONFLICT,
                             "Your attorney will send the first message. You can reply after that.")
     if (reason := blocked_reason(body)) is not None:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, reason)
-    msg = Message(claim_id=claim.id, sender_id=sender.id, sender_role=role, body=body, created_at=_now())
+    msg = Message(claim_id=claim.id, sender_id=sender.id, sender_role=role, body=body, created_at=_now(),
+                  attorney_id=claim.attorney_id)
     claim.messages.append(msg)
     recipient = claim.attorney_id if role == "claimant" else claim.user_id
     who = "Your client" if role == "claimant" else "Your attorney"
@@ -76,7 +83,7 @@ def send(session: Session, claim: Claim, sender: User, role: str, body: str) -> 
 
 
 def mark_read(claim: Claim, reader_role: str) -> None:
-    for m in claim.messages:
+    for m in thread(claim):
         if m.sender_role != reader_role and m.read_at is None:
             m.read_at = _now()
 

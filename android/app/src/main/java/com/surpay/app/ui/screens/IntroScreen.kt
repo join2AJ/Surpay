@@ -127,6 +127,16 @@ fun IntroScreen(onDone: () -> Unit) {
 
 /** What changed in each version, newest first. Shown once after an update. */
 val CHANGELOG: List<Pair<Int, List<String>>> = listOf(
+    3 to listOf(
+        "One-tap attorney demo next to the claimant demo, for testing",
+        "Ask for a different attorney any time before your claim is filed",
+        "Change your password under Account, Privacy and data",
+        "Attorneys confirm a conflict check before accepting a case",
+        "Claim steps can only move forward in order; no skipping straight to “paid”",
+        "Photos are cleaned of hidden location and device details before they’re stored",
+        "You’re signed out safely if your session ends on another device",
+        "A warning if the county stops listing your money",
+    ),
     2 to listOf(
         "A short intro on first launch, and this “What’s new” after each update",
         "Clear start: choose “Find my money” or “I’m an attorney”",

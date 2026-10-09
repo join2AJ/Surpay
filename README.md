@@ -12,6 +12,7 @@ Find and reclaim foreclosure and tax-sale surplus funds. Free search, contingenc
 | `docs/STRATEGY.md` | Market, compliance constraints, and the roadmap |
 | `docs/COUNTIES.md` | Which counties publish surplus lists, in what format, and which are worth tracking |
 | `docs/DEPLOY.md` | Hosting on Render + Neon + GitHub Actions (no local server) |
+| `docs/AUDIT.md` | October 2026 audit: security, product and legal findings and what was fixed |
 | `docs/COMPLIANCE.md` | Encryption, audit trail, consent and data rights; DPDP / ISO 27001 / NIST CSF mapping |
 | `backend/data/county_sources.csv` | The county database: all 3,143 US counties and their research status |
 

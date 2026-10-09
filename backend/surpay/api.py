@@ -12,7 +12,7 @@ from .attorney_api import router as attorney_router
 from .auth import create_token, hash_password, verify_password
 from .claims import ESTIMATE_DISCLAIMER
 from .db import init_db
-from .demo import reset_demo_user
+from .demo import reset_demo_attorney, reset_demo_user
 from .deps import Client, CurrentUser, DbSession, encrypt_image
 from .legal import deadline_for, legal_basis
 from .matching import find_all_matches, find_matches
@@ -21,9 +21,10 @@ from .models import Agreement, Claim, CountySource, IdentityVerification, Notifi
 from .policies import PRIVACY_VERSION, TERMS_VERSION
 from .schemas import (
     AddressOut, AgreementOut, AttorneyPublic, ChatOut, ClaimIn, ClaimOut, CoverageOut, IdentityIn, LoginIn,
-    MatchesOut, MatchOut, MatchPreviewOut, MessageIn, ProfileIn, ProfileOut, SignIn, SignupIn, TokenOut,
+    MatchesOut, MatchOut, MatchPreviewOut, MessageIn, PasswordChangeIn, ProfileIn, ProfileOut, SignIn, SignupIn,
+    TokenOut,
 )
-from .security import SecurityHeaders, login_limiter
+from .security import BodySizeLimit, SecurityHeaders, check_password, login_limiter
 
 
 @asynccontextmanager
@@ -34,6 +35,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(title="Surpay API", version="0.2.0", lifespan=lifespan)
 app.add_middleware(SecurityHeaders)
+app.add_middleware(BodySizeLimit)
 app.include_router(attorney_router)
 app.include_router(me_router)
 app.include_router(admin_router)
@@ -112,6 +114,7 @@ def signup(body: SignupIn, session: DbSession, client: Client):
     if not body.accept_terms:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
                             "Please accept the Terms of Use and Privacy Notice to continue")
+    check_password(body.password)
     user = User(email=body.email.lower(), password_hash=hash_password(body.password),
                 full_name=body.full_name.strip(), phone=body.phone, other_names=[], role=body.role)
     session.add(user)
@@ -134,15 +137,42 @@ def login(body: LoginIn, session: DbSession, client: Client):
     keys = (f"ip:{client.ip}", f"email:{email}")
     login_limiter.check(*keys)
     user = session.scalar(select(User).where(User.email == email))
-    if user is None or not verify_password(body.password, user.password_hash):
+    # Check a dummy hash for unknown emails too, so response time doesn't reveal who has an account.
+    ok = verify_password(body.password, user.password_hash if user else _DUMMY_HASH)
+    if user is None or not ok:
         login_limiter.fail(*keys)
         audit.record(session, "auth.login_failed", actor_type="anonymous", client=client,
                      details={"email_sha256": crypto.sha256_hex(email)})
         session.commit()
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Wrong email or password")
+    if user.deletion_requested_at is not None:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "This account was closed at your request. Contact support to reopen it.")
     audit.record(session, "auth.login", actor_id=user.id, entity_type="user", entity_id=user.id, client=client)
     session.commit()
     return TokenOut(token=create_token(user), user=_profile(user))
+
+
+_DUMMY_HASH = hash_password("not-a-real-password-just-for-timing")
+
+
+@app.post("/auth/change-password", response_model=TokenOut)
+def change_password(body: PasswordChangeIn, user: CurrentUser, session: DbSession, client: Client):
+    """New password; every other signed-in device is signed out."""
+    if not verify_password(body.current_password, user.password_hash):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Your current password isn't right")
+    check_password(body.new_password)
+    user.password_hash = hash_password(body.new_password)
+    user.token_version = (user.token_version or 0) + 1
+    audit.record(session, "auth.password_changed", actor_id=user.id, entity_type="user", entity_id=user.id,
+                 client=client)
+    session.commit()
+    return TokenOut(token=create_token(user), user=_profile(user))
+
+
+def require_terms(user: User) -> None:
+    """The app asks again when the Terms change; the API enforces it too."""
+    if not terms_current(user):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Please accept the updated Terms of Use and Privacy Notice")
 
 
 @app.post("/auth/logout-all")
@@ -163,6 +193,20 @@ def demo_login(session: DbSession, client: Client):
     for kind, version in (("terms", TERMS_VERSION), ("privacy", PRIVACY_VERSION)):
         record_consent(session, user, kind, version, client)
     audit.record(session, "auth.demo_login", actor_id=user.id, entity_type="user", entity_id=user.id, client=client)
+    session.commit()
+    return TokenOut(token=create_token(user), user=_profile(user))
+
+
+@app.post("/auth/demo-attorney", response_model=TokenOut)
+def demo_attorney_login(session: DbSession, client: Client):
+    """One-tap sign-in as a shared, fictional, already-verified attorney with a demo case waiting."""
+    if not config.DEMO_ENABLED:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Demo login is turned off on this server")
+    user = reset_demo_attorney(session)
+    for kind, version in (("terms", TERMS_VERSION), ("privacy", PRIVACY_VERSION)):
+        record_consent(session, user, kind, version, client)
+    audit.record(session, "auth.demo_login", actor_type="attorney", actor_id=user.id, entity_type="user",
+                 entity_id=user.id, client=client)
     session.commit()
     return TokenOut(token=create_token(user), user=_profile(user))
 
@@ -267,7 +311,8 @@ def claim_out(c: Claim) -> ClaimOut:
         deadline_date=deadline_for(r.state, r.sale_date),
         on_behalf_of=on_behalf_of(c.relative),
         chat_open=chat.thread_open(c),
-        unread_messages=sum(1 for m in c.messages if m.sender_role == "attorney" and m.read_at is None),
+        unread_messages=sum(1 for m in chat.thread(c) if m.sender_role == "attorney" and m.read_at is None),
+        record_listed=r.status == "listed",
     )
 
 
@@ -288,6 +333,7 @@ def _my_claim(user: User, claim_id: int) -> Claim:
 @app.post("/me/claims", response_model=ClaimOut, status_code=status.HTTP_201_CREATED)
 def start_claim(body: ClaimIn, user: CurrentUser, session: DbSession, client: Client):
     require_verified(user)
+    require_terms(user)
     # Only allow claiming records the matcher actually linked to this user (or a verified relative).
     match = next((m for m in find_all_matches(session, user) if m.record.id == body.record_id), None)
     if match is None:
@@ -299,7 +345,11 @@ def start_claim(body: ClaimIn, user: CurrentUser, session: DbSession, client: Cl
     claim.record = match.record
     claim.relative_id = match.relative.id if match.relative else None
     fees.for_claim(session, claim)
-    session.flush()
+    try:
+        session.flush()
+    except IntegrityError:  # the same claim started twice at once
+        session.rollback()
+        return claim_out(session.scalar(select(Claim).where(Claim.user_id == user.id, Claim.record_id == body.record_id)))
     audit.record(session, "claim.started", actor_id=user.id, entity_type="claim", entity_id=claim.id, client=client,
                  details={"record_id": body.record_id, "fee_pct": claim.fee_pct, "relative_id": claim.relative_id})
     session.commit()
@@ -321,15 +371,19 @@ def my_claim(claim_id: int, user: CurrentUser, session: DbSession):
     return out
 
 
-@app.post("/me/claims/{claim_id}/withdraw", response_model=ClaimOut)
-def withdraw_claim(claim_id: int, user: CurrentUser, session: DbSession, client: Client):
-    """Cancel a claim before it's filed (free within 3 business days of signing, per the agreement)."""
+@app.post("/me/claims/{claim_id}/change-attorney", response_model=ClaimOut)
+def change_attorney(claim_id: int, user: CurrentUser, session: DbSession, client: Client):
+    """The client's right (agreement section 3) to a different attorney, any time before filing."""
     claim = _my_claim(user, claim_id)
-    if claim.status in ("filed", "hearing_pending", "approved", "paid", "denied", "withdrawn"):
+    if claim.attorney_id is None or claim.status not in attorneys.RETURNABLE:
         raise HTTPException(status.HTTP_409_CONFLICT,
-                            "This claim has already been filed. Message your attorney or contact support.")
-    claims.set_status(claim, "withdrawn", "Withdrawn by you")
-    audit.record(session, "claim.withdrawn", actor_id=user.id, entity_type="claim", entity_id=claim.id, client=client)
+                            "You can ask for a different attorney once one is assigned and before your claim is filed")
+    old = claim.attorney_id
+    session.add(Notification(user_id=old, kind="claim_update", title="A client asked for a different attorney",
+                             body=f"Case #{claim.id} has been reassigned at the client's request.", claim_id=claim.id))
+    attorneys.decline(session, claim, old, reason="You asked for a different attorney. We're finding you another one.")
+    audit.record(session, "claim.attorney_change_requested", actor_id=user.id, entity_type="claim",
+                 entity_id=claim.id, client=client, details={"previous_attorney": old})
     session.commit()
     return claim_out(claim)
 
@@ -337,6 +391,7 @@ def withdraw_claim(claim_id: int, user: CurrentUser, session: DbSession, client:
 @app.post("/me/identity", response_model=list[ClaimOut])
 def submit_identity(body: IdentityIn, user: CurrentUser, session: DbSession, client: Client):
     """Submit ID for review. Shared by all of the user's claims; resubmit after a rejection."""
+    require_terms(user)
     if not body.consent:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Please confirm the information is yours and correct")
     if user.identity is not None and user.identity.review_status != "rejected":
@@ -410,6 +465,7 @@ def _signature_png(b64: str) -> bytes:
 @app.post("/me/claims/{claim_id}/agreement", response_model=ClaimOut)
 def sign_agreement(claim_id: int, body: SignIn, user: CurrentUser, session: DbSession, client: Client):
     claim = _my_claim(user, claim_id)
+    require_terms(user)
     if claim.agreement is not None:
         return claim_out(claim)
     if claim.status != "identity_submitted":
@@ -438,7 +494,11 @@ def sign_agreement(claim_id: int, body: SignIn, user: CurrentUser, session: DbSe
                  client=client, details={"document_sha256": digest, "signature_sha256": crypto.sha256_hex(png),
                                          "typed_name": body.signature_name.strip(), "legal_name": legal,
                                          "fee_pct": pct, "version": claims.AGREEMENT_VERSION})
-    session.commit()
+    try:
+        session.commit()
+    except IntegrityError:  # signed twice at once: the first one counts
+        session.rollback()
+        return claim_out(_my_claim(user, claim_id))
     attorneys.assign_ready(session)
     session.refresh(claim)
     return claim_out(claim)
@@ -447,7 +507,7 @@ def sign_agreement(claim_id: int, body: SignIn, user: CurrentUser, session: DbSe
 # --- Messages with the attorney ------------------------------------------------------------------
 
 def chat_out(claim: Claim, viewer_role: str) -> ChatOut:
-    has_attorney_msg = any(m.sender_role == "attorney" for m in claim.messages)
+    has_attorney_msg = any(m.sender_role == "attorney" for m in chat.thread(claim))
     open_ = chat.thread_open(claim)
     if viewer_role == "claimant":
         can_send = open_ and has_attorney_msg
@@ -460,7 +520,7 @@ def chat_out(claim: Claim, viewer_role: str) -> ChatOut:
         can_send, waiting = open_, ""
         rel = claim.relative
         counterpart = legal_name(claim.user) + (f" (for {rel.full_name})" if rel else "")
-    return ChatOut(messages=[chat.message_out(m) for m in claim.messages], can_send=can_send,
+    return ChatOut(messages=[chat.message_out(m) for m in chat.thread(claim)], can_send=can_send,
                    waiting_reason=waiting, counterpart=counterpart, code_of_conduct=chat.CODE_OF_CONDUCT)
 
 
@@ -475,6 +535,7 @@ def my_messages(claim_id: int, user: CurrentUser, session: DbSession):
 @app.post("/me/claims/{claim_id}/messages", response_model=ChatOut)
 def send_my_message(claim_id: int, body: MessageIn, user: CurrentUser, session: DbSession, client: Client):
     claim = _my_claim(user, claim_id)
+    require_terms(user)
     msg = chat.send(session, claim, user, "claimant", body.body)
     session.flush()
     audit.record(session, "message.sent", actor_id=user.id, entity_type="message", entity_id=msg.id, client=client,

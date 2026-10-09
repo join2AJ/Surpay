@@ -153,10 +153,24 @@ class SurpayViewModel(
                 block()
                 _form.value = FormState()
             } catch (e: Exception) {
+                if (sessionExpired(e)) return@launch
                 _form.value = FormState(error = e.userMessage())
             }
         }
     }
+
+    /** Signed out elsewhere (password changed, "sign out everywhere", account closed): go back to sign-in. */
+    private fun sessionExpired(e: Throwable): Boolean {
+        val expired = e is retrofit2.HttpException && e.code() == 401 && _session.value is SessionState.SignedIn
+        if (expired) {
+            logout()
+            _form.value = FormState(error = "You've been signed out. Please sign in again.")
+        }
+        return expired
+    }
+
+    /** Bumped on sign-out so answers to requests sent before it are dropped, not shown to the next user. */
+    @Volatile private var generation = 0
 
     fun clearFormError() = _form.update { it.copy(error = null) }
 
@@ -174,6 +188,10 @@ class SurpayViewModel(
         _session.value = SessionState.SignedIn(profile, offlineDemo = repo.isOfflineDemo)
     }
 
+    fun demoAttorneyLogin() = submit {
+        _session.value = SessionState.SignedIn(repo.demoAttorneyLogin())
+    }
+
     fun saveProfile(update: ProfileUpdate, onSaved: () -> Unit) = submit {
         val profile = repo.updateProfile(update)
         _session.value = SessionState.SignedIn(profile, offlineDemo = repo.isOfflineDemo)
@@ -182,8 +200,13 @@ class SurpayViewModel(
     }
 
     fun logout() {
+        generation++
         viewModelScope.launch {
             repo.logout()
+            prefs?.setLastNotification(0)
+            _preview.value = null
+            _agreement.value = null
+            _terms.value = null
             _matches.value = MatchesState()
             _claims.value = null
             _attorney.value = AttorneyState()
@@ -198,12 +221,13 @@ class SurpayViewModel(
 
     fun refreshMatches() {
         _matches.update { it.copy(loading = true, error = null) }
+        val gen = generation
         viewModelScope.launch {
             try {
                 val data = repo.matches()
-                _matches.update { it.copy(loading = false, data = data) }
+                if (gen == generation) _matches.update { it.copy(loading = false, data = data) }
             } catch (e: Exception) {
-                _matches.update { it.copy(loading = false, error = e.userMessage()) }
+                if (!sessionExpired(e)) _matches.update { it.copy(loading = false, error = e.userMessage()) }
             }
         }
     }
@@ -218,9 +242,21 @@ class SurpayViewModel(
     val agreement: StateFlow<AgreementDoc?> = _agreement.asStateFlow()
 
     fun refreshClaims() {
+        val gen = generation
         viewModelScope.launch {
-            runCatching { repo.claims() }.onSuccess { _claims.value = it }
+            runCatching { repo.claims() }
+                .onSuccess { if (gen == generation) _claims.value = it }
+                .onFailure { sessionExpired(it) }
         }
+    }
+
+    /** The client's right to a different attorney before the claim is filed. */
+    fun changeAttorney(claimId: Int) = submit { upsertClaims(listOf(repo.changeAttorney(claimId))) }
+
+    fun changePassword(current: String, new: String, onDone: () -> Unit) = submit {
+        val profile = repo.changePassword(current, new)
+        (_session.value as? SessionState.SignedIn)?.let { _session.value = it.copy(profile = profile) }
+        onDone()
     }
 
     private fun upsertClaims(updated: List<Claim>) {
@@ -289,7 +325,6 @@ class SurpayViewModel(
         onDone()
     }
 
-    fun withdrawClaim(claimId: Int) = submit { upsertClaims(listOf(repo.withdrawClaim(claimId))) }
 
     // --- Messages with the attorney (claimant side and attorney side) ---------------------------
 
@@ -300,9 +335,11 @@ class SurpayViewModel(
     private fun isAttorney() = (_session.value as? SessionState.SignedIn)?.profile?.role == "attorney"
 
     fun loadChat(id: Int) {
+        val gen = generation
         viewModelScope.launch {
             runCatching { if (isAttorney()) repo.caseMessages(id) else repo.messages(id) }
-                .onSuccess { c -> _chats.update { it + (id to c) } }
+                .onSuccess { c -> if (gen == generation) _chats.update { it + (id to c) } }
+                .onFailure { sessionExpired(it) }
         }
     }
 
@@ -428,11 +465,12 @@ class SurpayViewModel(
     }
 
     fun loadCases() {
+        val gen = generation
         viewModelScope.launch {
             try {
-                _cases.value = repo.attorneyCases()
+                repo.attorneyCases().let { if (gen == generation) _cases.value = it }
             } catch (e: Exception) {
-                _form.value = FormState(error = e.userMessage())
+                if (!sessionExpired(e)) _form.value = FormState(error = e.userMessage())
             }
         }
     }

@@ -9,10 +9,10 @@ from surpay import claims, config, crypto
 from surpay.ingest import upsert
 from surpay.models import IdentityVerification
 from surpay.scrapers.base import RecordIn
-from tests.conftest import SIGNATURE_PNG, verify_identity
+from tests.conftest import SIGNATURE_PNG, real_image, verify_identity
 
-JPEG = base64.b64encode(b"\xff\xd8\xff\xe0" + b"0" * 400).decode()
-PNG = base64.b64encode(b"\x89PNG\r\n\x1a\n" + b"0" * 400).decode()
+JPEG = real_image()
+PNG = real_image("PNG", (200, 30, 30))
 ADDRESS = {"street": "412 Maple Ridge Rd", "city": "Springfield", "state": "OH", "zip": "45501",
            "county": "Demo County"}
 IDENTITY = {
@@ -64,8 +64,9 @@ def test_full_flow_verify_first(client, session, unverified, admin):
     # 1. ID first: stored encrypted, pending review, results stay locked
     assert client.post("/me/identity", headers=h, json=IDENTITY).json() == []
     stored = session.query(IdentityVerification).one()
-    assert stored.state == "OH" and crypto.decrypt(stored.id_front) == base64.b64decode(JPEG)
-    assert stored.id_front != base64.b64decode(JPEG)  # encrypted at rest
+    plain = crypto.decrypt(stored.id_front)
+    assert stored.state == "OH" and plain.startswith(b"\xff\xd8\xff")  # re-encoded JPEG, metadata stripped
+    assert base64.b64decode(JPEG)[:20] not in stored.id_front  # encrypted at rest
     assert client.get("/me", headers=h).json()["other_names"] == ["Jordan Oldname"]
     assert client.get("/me/matches", headers=h).status_code == 403
     assert client.get("/me/matches/preview", headers=h).json()["possible_matches"] == 2
@@ -77,7 +78,7 @@ def test_full_flow_verify_first(client, session, unverified, admin):
     uid = client.get("/me", headers=h).json()["id"]
     assert pending["user"]["id"] == uid
     doc = client.get(f"/admin/users/{uid}/documents/selfie", headers=admin)
-    assert doc.status_code == 200 and doc.headers["content-type"] == "image/png"
+    assert doc.status_code == 200 and doc.headers["content-type"] == "image/jpeg"
     client.post(f"/admin/users/{uid}/identity", headers=admin, json={"decision": "approved"})
     me = client.get("/me", headers=h).json()
     assert me["identity_status"] == "approved" and me["full_name"] == "Jordan Testwell"

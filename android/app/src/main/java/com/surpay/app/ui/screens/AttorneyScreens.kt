@@ -375,8 +375,21 @@ fun CaseDetailScreen(
                 Text("The client’s identity is verified and the agreement is signed. Their details and documents appear once " +
                     "you accept.", Modifier.padding(12.dp), style = MaterialTheme.typography.bodyMedium)
             }
+            if (case.otherClaimants > 0) {
+                Spacer(Modifier.height(8.dp))
+                NoteBox("${case.otherClaimants} other person(s) have also claimed this record (a co-owner, another heir, " +
+                    "or a disputed claim). Consider this in your conflict check.")
+            }
             Spacer(Modifier.height(12.dp))
-            Button(onClick = onAccept, enabled = !form.busy, modifier = Modifier.fillMaxWidth().height(50.dp).testTag("acceptCase")) {
+            var conflictChecked by rememberSaveable { mutableStateOf(false) }
+            Row(verticalAlignment = Alignment.Top) {
+                Checkbox(conflictChecked, { conflictChecked = it }, modifier = Modifier.testTag("conflictChecked"))
+                Text("I’ve run a conflict check and have no conflict with this client, the former owner, other " +
+                    "claimants or lienholders (Rule 1.7).", style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(top = 12.dp))
+            }
+            Button(onClick = onAccept, enabled = conflictChecked && !form.busy,
+                modifier = Modifier.fillMaxWidth().height(50.dp).testTag("acceptCase")) {
                 Text("Accept case", fontWeight = FontWeight.Bold)
             }
             OutlinedButton(onClick = { dialog = "decline" }, enabled = !form.busy, modifier = Modifier.fillMaxWidth()) { Text("Decline") }

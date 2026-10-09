@@ -77,3 +77,88 @@ def reset_demo_user(session: Session) -> User:
     session.commit()
     session.refresh(user)
     return user
+
+
+DEMO_ATTORNEY_EMAIL = "attorney-demo@surpay.test"
+DEMO_ATTORNEY_NAME = "Avery Counsel"
+DEMO_CLIENT_EMAIL = "client-demo@surpay.test"
+DEMO_CLIENT_NAME = "Casey Placeholder"
+DEMO_CLIENT_ADDRESS = {"street": "19 Elm St", "city": "Springfield", "state": "OH", "zip": "45503",
+                       "county": "Clark County"}
+# A valid 1x1 white PNG standing in for the demo client's drawn signature.
+_PNG = bytes.fromhex(
+    "89504e470d0a1a0a0000000d4948445200000001000000010802000000907753de0000000c4944415408d763f8ffff3f0005fe02fe"
+    "a7d6a4510000000049454e44ae426082")
+
+
+def _demo_user(session: Session, email: str, name: str, role: str) -> User:
+    user = session.scalar(select(User).where(User.email == email))
+    if user is None:
+        user = User(email=email, password_hash=hash_password(secrets.token_urlsafe(24)), full_name=name,
+                    other_names=[], phone="", role=role)
+        session.add(user)
+        session.flush()
+    user.full_name, user.role, user.token_version = name, role, user.token_version or 0
+    return user
+
+
+def reset_demo_attorney(session: Session) -> User:
+    """The shared demo attorney: approved for Demo County, OH, with one fresh verified case offered.
+
+    The case belongs to a second fictional person (Casey Placeholder) who has verified their ID
+    and signed, so testers see exactly what a real attorney receives.
+    """
+    from . import attorneys, claims, fees
+    from .models import Agreement, AttorneyProfile, Claim
+
+    if not session.scalar(select(SurplusRecord.id).where(SurplusRecord.source == "demo",
+                                                         SurplusRecord.status == "listed").limit(1)):
+        upsert(session, "demo", demo_records(), full_snapshot=True)
+    placeholder = crypto.encrypt(b"\xff\xd8\xff\xe0demo-placeholder")
+
+    lawyer = _demo_user(session, DEMO_ATTORNEY_EMAIL, DEMO_ATTORNEY_NAME, "attorney")
+    if lawyer.attorney is None:
+        lawyer.attorney = AttorneyProfile(
+            full_name=DEMO_ATTORNEY_NAME, bar_state="OH", bar_number="0000000 (demo)", firm="Demo Counsel LLP",
+            phone="555-010-0100", office_address="1 Court St, Springfield, OH 45501", counties=["Demo County"],
+            bar_card=placeholder)
+    lawyer.attorney.status, lawyer.attorney.review_note = "approved", "Demo attorney"
+    lawyer.attorney.counties = ["Demo County"]
+    for n in session.scalars(select(Notification).where(Notification.user_id == lawyer.id)):
+        session.delete(n)
+
+    client = _demo_user(session, DEMO_CLIENT_EMAIL, DEMO_CLIENT_NAME, "claimant")
+    client.addresses = [PreviousAddress(**DEMO_CLIENT_ADDRESS)]
+    client.claims = []
+    if client.identity is not None:
+        session.delete(client.identity)
+    session.flush()
+    client.identity = IdentityVerification(
+        legal_name=DEMO_CLIENT_NAME, date_of_birth=date(1975, 9, 14), ssn_last4="0000", phone="555-010-0003",
+        street=DEMO_CLIENT_ADDRESS["street"], city="Springfield", state="OH", zip="45503",
+        id_type="drivers_license", id_front=placeholder, selfie=placeholder,
+        review_status="approved", review_note="Demo account",
+    )
+    session.flush()
+
+    record = session.scalar(select(SurplusRecord).where(SurplusRecord.source == "demo",
+                                                        SurplusRecord.source_key == "D-1003"))
+    claim = claims.new_claim(session, client, record.id)
+    claim.record = record
+    fees.for_claim(session, claim)
+    text = claims.agreement_text(claim, client, claim.fee_pct)
+    claim.agreement = Agreement(
+        version=claims.AGREEMENT_VERSION, text=text, fee_pct=claim.fee_pct, signature_name=DEMO_CLIENT_NAME,
+        legal_name_on_id=DEMO_CLIENT_NAME, document_sha256=crypto.sha256_hex(text),
+        signature_image=crypto.encrypt(_PNG), ip_address="demo", device_info="Demo device")
+    claims.advance(claim, "agreement_signed")
+    claims.advance(claim, "identity_verified")
+    session.flush()
+    # Offer it to the demo attorney directly, whoever else serves Demo County.
+    others = [a.user_id for a in session.scalars(select(AttorneyProfile).where(AttorneyProfile.status == "approved"))
+              if a.user_id != lawyer.id]
+    claim.declined_by = others
+    attorneys.offer(session, claim)
+    session.commit()
+    session.refresh(lawyer)
+    return lawyer

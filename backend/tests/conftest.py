@@ -37,8 +37,19 @@ def client():
         yield c
 
 
-SIGNATURE_PNG = __import__("base64").b64encode(b"\x89PNG\r\n\x1a\n" + b"s" * 200).decode()
-TEST_JPEG = __import__("base64").b64encode(b"\xff\xd8\xff\xe0" + b"0" * 200).decode()
+def real_image(fmt: str = "JPEG", color=(30, 110, 80), size=(64, 40)) -> str:
+    """A small, genuine image as base64 (uploads are decoded and re-encoded, so fakes are refused)."""
+    import base64
+    import io
+
+    from PIL import Image
+    out = io.BytesIO()
+    Image.new("RGB", size, color).save(out, format=fmt)
+    return base64.b64encode(out.getvalue()).decode()
+
+
+SIGNATURE_PNG = real_image("PNG", (255, 255, 255), (120, 40))
+TEST_JPEG = real_image()
 
 
 def verify_identity(client, headers, legal_name, approve=True):
