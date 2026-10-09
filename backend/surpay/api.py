@@ -33,7 +33,7 @@ async def lifespan(_app: FastAPI):
     yield
 
 
-app = FastAPI(title="Surpay API", version="0.2.0", lifespan=lifespan)
+app = FastAPI(title="Surpay API", version="0.3.0", lifespan=lifespan)
 app.add_middleware(SecurityHeaders)
 app.add_middleware(BodySizeLimit)
 app.include_router(attorney_router)
@@ -89,6 +89,22 @@ def _covered_counties(session: Session) -> list[str]:
         .order_by(SurplusRecord.state, SurplusRecord.county)
     ).all()
     return [f"{c} County, {s}" for c, s in rows]
+
+
+@app.get("/", include_in_schema=False)
+def home(session: DbSession):
+    """A plain status page for anyone who opens the server's address in a browser."""
+    from fastapi.responses import HTMLResponse
+    count = session.scalar(select(func.count()).select_from(SurplusRecord).where(SurplusRecord.status == "listed"))
+    demo = "on (testing)" if config.DEMO_ENABLED else "off"
+    return HTMLResponse(f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex"><title>Surpay API</title>
+<style>body{{font:16px/1.5 system-ui,sans-serif;max-width:560px;margin:40px auto;padding:0 16px;color:#0f172a}}
+.ok{{color:#0b6e4f;font-weight:700}}td{{padding:4px 12px 4px 0}}</style></head><body>
+<h1>Surpay API</h1><p class="ok">&#10003; Running (version {app.version})</p>
+<table><tr><td>Records tracked</td><td>{count:,}</td></tr><tr><td>Demo login</td><td>{demo}</td></tr></table>
+<p>This is the server behind the Surpay app; there is nothing to use here directly.
+Staff review: <a href="/admin">/admin</a></p></body></html>""")
 
 
 @app.get("/health")
