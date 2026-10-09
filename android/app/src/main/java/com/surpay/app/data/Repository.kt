@@ -211,7 +211,12 @@ class SurpayRepository(private val remote: SurpayApi, private val tokens: TokenS
 
 /** The server isn't there: unreachable, or a host that has no Surpay API behind it. */
 private fun Exception.isNoServer(): Boolean = this is IOException ||
-    (this is HttpException && (code() == 404 || code() >= 500))
+    (this is HttpException && (code() >= 500 || (code() == 404 && !hasSurpayDetail())))
+
+/** A Surpay server answers errors with JSON {"detail": ...}; a bare 404 means nothing is deployed there. */
+private fun HttpException.hasSurpayDetail(): Boolean = runCatching {
+    response()?.errorBody()?.source()?.peek()?.readUtf8()?.contains("\"detail\"") == true
+}.getOrDefault(false)
 
 /** Turn a network/HTTP failure into a sentence a person can act on. */
 fun Throwable.userMessage(): String = when (this) {
