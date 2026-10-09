@@ -60,6 +60,6 @@ COMPANY_NAME = os.environ.get("SURPAY_COMPANY_NAME", "Surpay")
 PRIVACY_CONTACT = os.environ.get("SURPAY_PRIVACY_CONTACT", "privacy@surpay.app")
 SUPPORT_CONTACT = os.environ.get("SURPAY_SUPPORT_CONTACT", "support@surpay.app")
 
-# Proxies in front of the API that append to X-Forwarded-For (Render: 1). Used to find the
+# Proxies in front of the API that append to X-Forwarded-For (Render: 2, its edge and its load balancer). Used to find the
 # caller's real IP for rate limits and the audit trail without trusting client-sent values.
-PROXY_HOPS = int(os.environ.get("SURPAY_PROXY_HOPS", "1"))
+PROXY_HOPS = int(os.environ.get("SURPAY_PROXY_HOPS", "2"))

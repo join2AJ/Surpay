@@ -132,13 +132,13 @@ def test_closed_accounts_and_passwords(client, session):
 
 
 def test_spoofed_forwarded_for_is_ignored(client):
-    client.post("/auth/signup", headers={"X-Forwarded-For": "6.6.6.6, 203.0.113.9"},
+    client.post("/auth/signup", headers={"X-Forwarded-For": "6.6.6.6, 203.0.113.9, 10.0.0.7"},
                 json={"email": "ip@example.com", "password": "correct horse", "full_name": "Ip Person",
                       "accept_terms": True})
     from surpay.db import SessionLocal
     with SessionLocal() as s:
         entry = s.query(AuditLog).filter_by(action="account.created").one()
-        assert entry.ip_address == "203.0.113.9"  # the hop the platform proxy added, not the forged one
+        assert entry.ip_address == "203.0.113.9"  # what Render's edge saw, not the forged or internal hop
 
 
 def test_photo_metadata_is_stripped(client, session):
