@@ -3,6 +3,7 @@ package com.surpay.app.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.surpay.app.data.AgreementDoc
+import com.surpay.app.ui.screens.requestedFileKey
 import com.surpay.app.data.AppNotification
 import com.surpay.app.data.AppPrefs
 import com.surpay.app.data.Chat
@@ -253,6 +254,29 @@ class SurpayViewModel(
             runCatching { repo.claims() }
                 .onSuccess { if (gen == generation) _claims.value = it }
                 .onFailure { sessionExpired(it) }
+        }
+    }
+
+    fun uploadDocument(claimId: Int, requestId: Int, jpeg: ByteArray) =
+        submit { upsertClaims(listOf(repo.uploadDocument(claimId, requestId, jpeg))) }
+
+    fun updateAttorney(body: com.surpay.app.data.AttorneyUpdate, onDone: () -> Unit = {}) = submit {
+        _attorney.value = AttorneyState(loaded = true, profile = repo.updateAttorney(body))
+        onDone()
+    }
+
+    fun requestDocument(caseId: Int, kind: String, note: String) =
+        submit { replaceCase(repo.requestDocument(caseId, kind, note)) }
+
+    fun reviewDocument(caseId: Int, requestId: Int, accept: Boolean, note: String) =
+        submit { replaceCase(repo.reviewDocument(caseId, requestId, accept, note)) }
+
+    /** Uploaded document images, keyed by [requestedFileKey]; a new upload gets a new key. */
+    fun loadRequestedFile(caseId: Int, request: com.surpay.app.data.DocumentRequest) {
+        val key = requestedFileKey(caseId, request)
+        if (key in _documents.value || !request.hasFile) return
+        viewModelScope.launch {
+            runCatching { repo.requestedFile(caseId, request.id) }.onSuccess { b -> _documents.update { it + (key to b) } }
         }
     }
 

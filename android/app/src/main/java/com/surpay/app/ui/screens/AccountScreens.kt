@@ -12,6 +12,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Logout
+import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.FamilyRestroom
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Notifications
@@ -48,6 +49,7 @@ fun AccountScreen(
     onNotifications: () -> Unit,
     onPrivacy: () -> Unit,
     onLogout: () -> Unit,
+    onHelp: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp)) {
@@ -67,6 +69,8 @@ fun AccountScreen(
             onClick = onNotifications, modifier = Modifier.testTag("navNotifications"))
         NavRow(Icons.Outlined.PrivacyTip, "Privacy and data", "Download your data, delete your account",
             onClick = onPrivacy, modifier = Modifier.testTag("navPrivacy"))
+        NavRow(Icons.Outlined.Description, "Help and FAQ", "Costs, timing, payment, your attorney",
+            onClick = onHelp, modifier = Modifier.testTag("navHelp"))
         Spacer(Modifier.height(8.dp))
         TextButton(onClick = onLogout, modifier = Modifier.align(Alignment.CenterHorizontally).testTag("signOut")) {
             Text("Sign out")

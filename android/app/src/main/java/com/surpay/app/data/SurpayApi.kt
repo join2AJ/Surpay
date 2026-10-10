@@ -183,6 +183,42 @@ data class Claim(
     @SerialName("unread_messages") val unreadMessages: Int = 0,
     /** False once the county stops listing the money (often already paid to someone). */
     @SerialName("record_listed") val recordListed: Boolean = true,
+    /** "SP-000123": quote it to support. */
+    @SerialName("reference_code") val referenceCode: String = "",
+    @SerialName("document_requests") val documentRequests: List<DocumentRequest> = emptyList(),
+)
+
+/** A document the attorney asked the client for (W-9, deed...). */
+@Serializable
+data class DocumentRequest(
+    val id: Int,
+    val kind: String,
+    val label: String,
+    val hint: String = "",
+    val note: String = "",
+    /** requested | uploaded | accepted | rejected */
+    val status: String,
+    @SerialName("review_note") val reviewNote: String = "",
+    @SerialName("has_file") val hasFile: Boolean = false,
+    @SerialName("uploaded_at") val uploadedAt: String? = null,
+)
+
+@Serializable
+data class DocumentRequestBody(val kind: String, val note: String = "")
+
+@Serializable
+data class DocumentUpload(@SerialName("image_b64") val imageB64: String)
+
+@Serializable
+data class DocumentReview(val decision: String, val note: String = "")
+
+@Serializable
+data class AttorneyUpdate(
+    val firm: String? = null,
+    val phone: String? = null,
+    @SerialName("office_address") val officeAddress: String? = null,
+    val counties: List<String>? = null,
+    val available: Boolean? = null,
 )
 
 @Serializable
@@ -215,6 +251,8 @@ data class AttorneyProfile(
     @SerialName("review_note") val reviewNote: String = "",
     @SerialName("fee_per_case_cents") val feePerCaseCents: Long = 0,
     val terms: String = "",
+    /** False while the attorney has paused new case offers. */
+    val available: Boolean = true,
 )
 
 @Serializable
@@ -303,6 +341,8 @@ data class AttorneyCase(
     @SerialName("unread_messages") val unreadMessages: Int = 0,
     /** Other accounts claiming the same record: co-owners, other heirs, or a false claim. */
     @SerialName("other_claimants") val otherClaimants: Int = 0,
+    @SerialName("reference_code") val referenceCode: String = "",
+    @SerialName("document_requests") val documentRequests: List<DocumentRequest> = emptyList(),
     val claimant: CaseClaimant? = null,
     val agreement: CaseAgreement? = null,
     val record: CaseRecord? = null,
@@ -487,6 +527,7 @@ interface SurpayApi {
     @GET("me/claims/{id}/agreement") suspend fun agreement(@Path("id") id: Int): AgreementDoc
     @POST("me/claims/{id}/agreement") suspend fun signAgreement(@Path("id") id: Int, @Body body: SignRequest): Claim
     @GET("counties") suspend fun counties(@Query("state") state: String): List<String>
+    @POST("me/claims/{id}/documents/{rid}") suspend fun uploadDocument(@Path("id") id: Int, @Path("rid") rid: Int, @Body body: DocumentUpload): Claim
     @POST("me/claims/{id}/change-attorney") suspend fun changeAttorney(@Path("id") id: Int): Claim
     @POST("auth/change-password") suspend fun changePassword(@Body body: PasswordChange): TokenResponse
     @GET("me/claims/{id}/messages") suspend fun messages(@Path("id") id: Int): Chat
@@ -515,6 +556,10 @@ interface SurpayApi {
     @POST("attorney/cases/{id}/decline") suspend fun declineCase(@Path("id") id: Int, @Body body: DeclineRequest): kotlinx.serialization.json.JsonObject
     @POST("attorney/cases/{id}/status") suspend fun updateCase(@Path("id") id: Int, @Body body: CaseStatusRequest): AttorneyCase
     @GET("attorney/cases/{id}/documents/{kind}") suspend fun caseDocument(@Path("id") id: Int, @Path("kind") kind: String): okhttp3.ResponseBody
+    @PUT("attorney/me") suspend fun updateAttorney(@Body body: AttorneyUpdate): AttorneyProfile
+    @POST("attorney/cases/{id}/document-requests") suspend fun requestDocument(@Path("id") id: Int, @Body body: DocumentRequestBody): AttorneyCase
+    @GET("attorney/cases/{id}/document-requests/{rid}/file") suspend fun requestedFile(@Path("id") id: Int, @Path("rid") rid: Int): okhttp3.ResponseBody
+    @POST("attorney/cases/{id}/document-requests/{rid}/review") suspend fun reviewDocument(@Path("id") id: Int, @Path("rid") rid: Int, @Body body: DocumentReview): AttorneyCase
     @GET("attorney/cases/{id}/packet") suspend fun casePacket(@Path("id") id: Int): okhttp3.ResponseBody
     @GET("attorney/cases/{id}/messages") suspend fun caseMessages(@Path("id") id: Int): Chat
     @POST("attorney/cases/{id}/messages") suspend fun sendCaseMessage(@Path("id") id: Int, @Body body: MessageRequest): Chat

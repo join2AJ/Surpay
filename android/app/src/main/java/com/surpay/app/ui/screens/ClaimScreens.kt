@@ -65,6 +65,7 @@ fun ClaimScreen(
     onViewAgreement: () -> Unit,
     onMessages: () -> Unit = {},
     onChangeAttorney: () -> Unit = {},
+    onUploadDocument: (requestId: Int, jpeg: ByteArray) -> Unit = { _, _ -> },
     busy: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
@@ -73,6 +74,9 @@ fun ClaimScreen(
         HeroCard {
             Text("${claim.county} County, ${claim.state} · ${claim.reference}", style = MaterialTheme.typography.bodyMedium)
             Text(dollars(claim.amountCents), style = MaterialTheme.typography.displaySmall)
+            if (claim.referenceCode.isNotBlank()) {
+                Text("Claim ${claim.referenceCode}", style = MaterialTheme.typography.labelMedium, modifier = Modifier.testTag("claimRef"))
+            }
             Text("About ${dollars(claim.estimatedNetCents)} to you after the ${pct(claim.feePct)} fee (estimate)",
                 style = MaterialTheme.typography.bodyMedium)
             claim.onBehalfOf?.let {
@@ -92,6 +96,10 @@ fun ClaimScreen(
             Spacer(Modifier.height(12.dp))
         }
         NextActionCard(claim, onVerifyIdentity, onSignAgreement)
+        if (claim.documentRequests.isNotEmpty()) {
+            Spacer(Modifier.height(12.dp))
+            ClaimDocumentsCard(claim.documentRequests, busy, onUploadDocument)
+        }
 
         if (claim.estimatedCompletionEnd != null && claim.status !in setOf("paid", "denied", "withdrawn")) {
             Spacer(Modifier.height(12.dp))

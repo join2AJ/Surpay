@@ -44,6 +44,9 @@ _ADDED_COLUMNS = [
     ("agreements", "device_info", "VARCHAR(255) NOT NULL DEFAULT ''"),
     ("agreements", "legal_name_on_id", "VARCHAR(255) NOT NULL DEFAULT ''"),
     ("messages", "attorney_id", "INTEGER"),
+    ("users", "suspended_at", "TIMESTAMP WITH TIME ZONE"),
+    ("users", "suspended_reason", "TEXT NOT NULL DEFAULT ''"),
+    ("attorney_profiles", "available", "BOOLEAN NOT NULL DEFAULT TRUE"),
 ]
 
 # Identity details that became encrypted: their columns must hold ciphertext (Postgres only;

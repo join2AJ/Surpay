@@ -70,6 +70,9 @@ class User(Base):
     token_version: Mapped[int] = mapped_column(Integer, default=0)
     # Set when the person asks for their account and data to be erased.
     deletion_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Set by staff to block an account (fraud, a broker posing as an owner, abuse).
+    suspended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    suspended_reason: Mapped[str] = mapped_column(Text, default="")
 
     addresses: Mapped[list["PreviousAddress"]] = relationship(
         back_populates="user", cascade="all, delete-orphan", order_by="PreviousAddress.id"
@@ -147,6 +150,9 @@ class Claim(Base):
         back_populates="claim", cascade="all, delete-orphan", uselist=False)
     messages: Mapped[list["Message"]] = relationship(
         back_populates="claim", cascade="all, delete-orphan", order_by="Message.id")
+    document_requests: Mapped[list["DocumentRequest"]] = relationship(
+        cascade="all, delete-orphan", order_by="DocumentRequest.id")
+    staff_notes: Mapped[list["StaffNote"]] = relationship(cascade="all, delete-orphan", order_by="StaffNote.id")
 
 
 class ClaimEvent(Base):
@@ -269,6 +275,8 @@ class AttorneyProfile(Base):
     review_note: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # The attorney can pause new offers (holiday, full caseload) without losing their cases.
+    available: Mapped[bool] = mapped_column(default=True)
 
     user: Mapped[User] = relationship(back_populates="attorney")
 
@@ -414,3 +422,33 @@ class FeeBand(Base):
     # Applies to amounts up to and including this; None = everything above the other bands.
     up_to_cents: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     pct: Mapped[float] = mapped_column(Float)
+
+
+class StaffNote(Base):
+    """Internal note on a claim, seen only by staff (calls with the county, fraud concerns...)."""
+
+    __tablename__ = "staff_notes"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    claim_id: Mapped[int] = mapped_column(ForeignKey("claims.id", ondelete="CASCADE"), index=True)
+    body: Mapped[str] = mapped_column(EncryptedText)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class DocumentRequest(Base):
+    """A document the attorney asks the client for (W-9, deed, utility bill...), and the upload."""
+
+    __tablename__ = "document_requests"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    claim_id: Mapped[int] = mapped_column(ForeignKey("claims.id", ondelete="CASCADE"), index=True)
+    attorney_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # w9 | deed | tax_bill | utility_bill | bank_statement | death_certificate | probate | notarized_affidavit | other
+    kind: Mapped[str] = mapped_column(String(32))
+    note: Mapped[str] = mapped_column(Text, default="")
+    # requested -> uploaded -> accepted | rejected (rejected: the client uploads again)
+    status: Mapped[str] = mapped_column(String(16), default="requested")
+    review_note: Mapped[str] = mapped_column(Text, default="")
+    file: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)  # encrypted image
+    requested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    uploaded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

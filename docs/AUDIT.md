@@ -69,3 +69,14 @@ This audit reviewed the backend, the Android app and the legal set-up of Surpay,
    - add `SURPAY_ENCRYPTION_KEY` as a GitHub secret too, for the daily job;
    - set `SURPAY_SEED_DEMO=false`.
 4. Single sign-on in front of `/admin`, an email service for password reset, and Neon point-in-time restore.
+
+## v0.4 follow-up: small gaps closed
+
+- Staff can see how many county records Surpay holds, by county and size, and whether every scraper is healthy.
+- Records browser and CSV exports for records and claims; private staff notes; account suspension that
+  revokes sessions and reassigns an attorney's cases.
+- Attorneys request specific documents (W-9, deed, death certificate, notarized affidavit...) and accept or
+  reject uploads with a reason; accepted documents go into the claim packet as exhibits.
+- Attorneys manage their own firm, office and counties, and can pause new offers.
+- Every claim has a reference number (SP-000123) shown to the client, attorney and staff.
+- Help and FAQ in the app for both roles; quick replies in attorney chat.

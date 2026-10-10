@@ -45,7 +45,7 @@ def offer(session: Session, claim: Claim) -> AttorneyProfile | None:
     candidates = [
         a for a in session.scalars(select(AttorneyProfile).where(AttorneyProfile.status == "approved"))
         if a.serves(r.county, r.state) and a.user_id not in declined and a.user_id != claim.user_id
-        and a.user.deletion_requested_at is None
+        and a.user.deletion_requested_at is None and a.user.suspended_at is None and a.available
     ]
     if not candidates:
         return None

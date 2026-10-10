@@ -44,4 +44,6 @@ def current_user(
     # Signing out everywhere bumps token_version, which retires every older token.
     if user is None or payload.get("v", 0) != (user.token_version or 0):
         raise unauthorized
+    if user.suspended_at is not None:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "This account is suspended. Contact support.")
     return user

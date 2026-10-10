@@ -1,7 +1,7 @@
 """Staff review (enabled by SURPAY_ADMIN_TOKEN): identities, family claims, claims, attorneys,
 fee rules, the audit trail and signing evidence."""
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Response, status
@@ -506,3 +506,292 @@ def admin_deletion_requests(scope: Admin, session: DbSession) -> list[dict]:
     rows = session.scalars(select(User).where(User.deletion_requested_at.is_not(None)))
     return [{"user_id": u.id, "email": u.email, "requested_at": u.deletion_requested_at.isoformat(),
              "claims": [{"id": c.id, "status": c.status} for c in u.claims]} for u in rows]
+
+
+# --- Overview: how much we track, how the pipeline is doing, what needs attention -------------------------
+
+def _aware(dt: datetime | None) -> datetime | None:
+    return None if dt is None else (dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc))
+
+
+@router.get("/admin/overview")
+def admin_overview(scope: Admin, session: DbSession) -> dict:
+    """Headline numbers for the dashboard. County lists are public, so record totals are shown in the demo too;
+    people and claims are counted for the demo data only."""
+    from collections import Counter
+
+    from . import counties
+    from .models import ScrapeRun, SurplusRecord
+    from .scrapers import SOURCES
+
+    now = _now()
+    listed = select(SurplusRecord).where(SurplusRecord.status == "listed")
+    records = session.scalars(listed).all()
+    by_county: dict[tuple[str, str], list[int]] = {}
+    for r in records:
+        by_county.setdefault((r.state, r.county), []).append(r.amount_cents)
+    counties_rows = sorted(
+        [{"state": s, "county": c, "records": len(v), "total_cents": sum(v), "largest_cents": max(v)}
+         for (s, c), v in by_county.items()], key=lambda x: -x["total_cents"])
+    bands = Counter("under $5k" if r.amount_cents < 500_000 else "$5k-$25k" if r.amount_cents < 2_500_000
+                    else "$25k-$100k" if r.amount_cents < 10_000_000 else "$100k+" for r in records)
+    delisted = session.scalar(select(func.count()).select_from(SurplusRecord).where(SurplusRecord.status != "listed"))
+    new_7d = sum(1 for r in records if _aware(r.first_seen) and _aware(r.first_seen) > now - timedelta(days=7))
+
+    sources = []
+    for name, cls in SOURCES.items():
+        last = session.scalars(select(ScrapeRun).where(ScrapeRun.source == name).order_by(ScrapeRun.id.desc()).limit(1)).first()
+        last_ok = session.scalars(select(ScrapeRun).where(ScrapeRun.source == name, ScrapeRun.ok.is_(True))
+                                  .order_by(ScrapeRun.id.desc()).limit(1)).first()
+        n = session.scalar(select(func.count()).select_from(SurplusRecord).where(
+            SurplusRecord.source == name, SurplusRecord.status == "listed"))
+        age_h = (now - _aware(last_ok.finished_at or last_ok.started_at)).total_seconds() / 3600 if last_ok else None
+        sources.append({"source": name, "description": cls.description, "records": n,
+                        "last_run": _aware(last.started_at).isoformat() if last else None,
+                        "last_ok": bool(last and last.ok), "last_error": (last.error if last and not last.ok else "")[:300],
+                        "hours_since_success": round(age_h, 1) if age_h is not None else None,
+                        "healthy": age_h is not None and age_h < 48 and bool(last and last.ok)})
+
+    claims_q = session.scalars(select(Claim)).all()
+    if scope.demo:
+        claims_q = [c for c in claims_q if is_demo_claim(c)]
+    funnel = Counter(c.status for c in claims_q)
+    active = [c for c in claims_q if c.status not in ("paid", "denied", "withdrawn")]
+    pipeline_fees = sum(fees.fee_cents(c.record.amount_cents, c.fee_pct or 0) for c in active)
+    recovered = sum(c.record.amount_cents for c in claims_q if c.status == "paid")
+    payouts_due = sum(c.attorney_fee_cents for c in claims_q if c.payout_status == "due")
+
+    users = session.scalars(select(User)).all()
+    if scope.demo:
+        users = [u for u in users if is_demo_user(u) or (u.attorney is not None and is_demo_attorney(u.attorney))]
+    ids = [u.identity for u in users if u.identity is not None]
+    lawyers = [u.attorney for u in users if u.attorney is not None]
+
+    alerts = []
+    stale_ids = [i for i in ids if i.review_status == "pending" and _aware(i.submitted_at) < now - timedelta(days=1)]
+    if stale_ids:
+        alerts.append(f"{len(stale_ids)} ID review(s) waiting more than 1 day")
+    stale_offers = [c for c in claims_q if c.assignment_status == "offered" and _aware(c.assigned_at)
+                    and _aware(c.assigned_at) < now - timedelta(days=2)]
+    if stale_offers:
+        alerts.append(f"{len(stale_offers)} case offer(s) unanswered for more than 2 days")
+    unassigned = [c for c in claims_q if c.status == "identity_verified" and not c.attorney_id]
+    if unassigned:
+        alerts.append(f"{len(unassigned)} verified claim(s) with no attorney serving the county")
+    silent = [c for c in claims_q if c.assignment_status == "accepted" and _aware(c.accepted_at)
+              and _aware(c.accepted_at) < now - timedelta(days=3) and not any(m.sender_role == "attorney" for m in chat.thread(c))
+              and c.status not in ("paid", "denied", "withdrawn")]
+    if silent:
+        alerts.append(f"{len(silent)} accepted case(s) where the attorney hasn't messaged the client in 3 days")
+    unhealthy = [s["source"] for s in sources if not s["healthy"] and s["source"] != "demo"]
+    if unhealthy:
+        alerts.append(f"Scraper needs attention: {', '.join(unhealthy)}")
+    if payouts_due:
+        alerts.append(f"Attorney payouts due: ${payouts_due / 100:,.2f}")
+
+    return {
+        "demo": scope.demo,
+        "records": {"listed": len(records), "total_cents": sum(r.amount_cents for r in records),
+                    "counties": len(by_county), "delisted": delisted, "new_last_7_days": new_7d,
+                    "by_size": dict(bands), "by_county": counties_rows},
+        "registry": {k: dict(v) if hasattr(v, "items") else v for k, v in counties.summary(session).items()},
+        "sources": sources,
+        "people": {"accounts": len(users), "claimants": sum(1 for u in users if u.role == "claimant"),
+                   "ids_pending": sum(1 for i in ids if i.review_status == "pending"),
+                   "ids_approved": sum(1 for i in ids if i.review_status == "approved"),
+                   "attorneys_approved": sum(1 for a in lawyers if a.status == "approved"),
+                   "attorneys_pending": sum(1 for a in lawyers if a.status == "pending"),
+                   "suspended": sum(1 for u in users if u.suspended_at is not None)},
+        "claims": {"total": len(claims_q), "by_status": dict(funnel), "active": len(active),
+                   "pipeline_fee_cents": pipeline_fees, "recovered_cents": recovered, "payouts_due_cents": payouts_due},
+        "alerts": alerts,
+    }
+
+
+# --- Records browser ---------------------------------------------------------------------------------------
+
+def _records_query(q: str, state: str, county: str, status_: str, min_cents: int):
+    from .models import SurplusRecord
+    from .normalize import normalize_name
+    stmt = select(SurplusRecord)
+    if status_:
+        stmt = stmt.where(SurplusRecord.status == status_)
+    if state:
+        stmt = stmt.where(SurplusRecord.state == state.upper())
+    if county:
+        stmt = stmt.where(func.lower(SurplusRecord.county) == county.lower().removesuffix(" county").strip())
+    if min_cents:
+        stmt = stmt.where(SurplusRecord.amount_cents >= min_cents)
+    if q.strip():
+        like = f"%{normalize_name(q)}%"
+        stmt = stmt.where((SurplusRecord.owner_name_norm.like(like)) | (SurplusRecord.reference.ilike(f"%{q.strip()}%")))
+    return stmt
+
+
+def _record_row(r, claimed: dict) -> dict:
+    from .legal import deadline_for
+    d = deadline_for(r.state, r.sale_date)
+    return {"id": r.id, "state": r.state, "county": r.county, "reference": r.reference, "owner_name": r.owner_name,
+            "owner_address": r.owner_address, "amount_cents": r.amount_cents, "sale_type": r.sale_type,
+            "sale_date": r.sale_date.isoformat() if r.sale_date else None, "status": r.status, "source": r.source,
+            "first_seen": _aware(r.first_seen).isoformat(), "last_seen": _aware(r.last_seen).isoformat(),
+            "deadline": d.isoformat() if d else None, "claims": claimed.get(r.id, 0), "source_url": r.source_url}
+
+
+@router.get("/admin/records")
+def admin_records(scope: Admin, session: DbSession, q: str = "", state: str = "", county: str = "",
+                  status_: str = "listed", min_cents: int = 0, sort: str = "amount", page: int = 1,
+                  per_page: int = 50) -> dict:
+    """County surplus records (public data). Search by owner or reference; filter and sort."""
+    from .models import SurplusRecord
+    stmt = _records_query(q, state, county, status_, min_cents)
+    total = session.scalar(select(func.count()).select_from(stmt.subquery()))
+    order = {"amount": SurplusRecord.amount_cents.desc(), "newest": SurplusRecord.first_seen.desc(),
+             "sale_date": SurplusRecord.sale_date.asc(), "owner": SurplusRecord.owner_name_norm.asc()}.get(sort)
+    per_page = max(1, min(per_page, 200))
+    rows = session.scalars(stmt.order_by(order if order is not None else SurplusRecord.id)
+                           .offset((max(page, 1) - 1) * per_page).limit(per_page)).all()
+    claimed = dict(session.execute(select(Claim.record_id, func.count()).where(
+        Claim.record_id.in_([r.id for r in rows])).group_by(Claim.record_id)).all()) if rows else {}
+    return {"total": total, "page": page, "per_page": per_page, "records": [_record_row(r, claimed) for r in rows]}
+
+
+def _csv(rows: list[dict], name: str) -> Response:
+    import csv
+    import io
+    out = io.StringIO()
+    if rows:
+        w = csv.DictWriter(out, fieldnames=list(rows[0].keys()))
+        w.writeheader()
+        for r in rows:
+            w.writerow({k: (", ".join(map(str, v)) if isinstance(v, list) else v) for k, v in r.items()})
+    return Response(out.getvalue(), media_type="text/csv",
+                    headers={"Content-Disposition": f'attachment; filename="{name}"', "Cache-Control": "no-store"})
+
+
+@router.get("/admin/records.csv")
+def admin_records_csv(scope: Admin, session: DbSession, client: Client, q: str = "", state: str = "",
+                      county: str = "", status_: str = "listed", min_cents: int = 0):
+    rows = session.scalars(_records_query(q, state, county, status_, min_cents)).all()
+    claimed = dict(session.execute(select(Claim.record_id, func.count()).group_by(Claim.record_id)).all())
+    _log(session, "admin.records_exported", client, rows=len(rows))
+    session.commit()
+    return _csv([_record_row(r, claimed) for r in rows], "surpay-records.csv")
+
+
+@router.get("/admin/claims.csv")
+def admin_claims_csv(scope: Admin, session: DbSession, client: Client):
+    """One row per claim (no ID numbers or documents)."""
+    rows = []
+    for c in session.scalars(select(Claim).order_by(Claim.id)):
+        if scope.demo and not is_demo_claim(c):
+            continue
+        shown = not scope.demo or is_demo_user(c.user)
+        lawyer = c.attorney.attorney if c.attorney is not None and c.attorney.attorney is not None else None
+        rows.append({"ref": f"SP-{c.id:06d}", "status": c.status, "created": _aware(c.created_at).date().isoformat(),
+                     "claimant": c.user.full_name if shown else "(tester)", "email": c.user.email if shown else "",
+                     "county": f"{c.record.county} County, {c.record.state}", "record": c.record.reference,
+                     "amount": c.record.amount_cents / 100, "fee_pct": c.fee_pct,
+                     "attorney": lawyer.full_name if lawyer else "", "assignment": c.assignment_status,
+                     "attorney_fee": c.attorney_fee_cents / 100, "payout": c.payout_status,
+                     "for_relative": c.relative.full_name if c.relative and shown else ""})
+    _log(session, "admin.claims_exported", client, rows=len(rows))
+    session.commit()
+    return _csv(rows, "surpay-claims.csv")
+
+
+@router.post("/admin/sources/{name}/scrape")
+def admin_scrape_now(name: str, scope: Admin, session: DbSession, client: Client) -> dict:
+    """Refresh one county list now (runs in the background; check the overview in a minute)."""
+    import threading
+
+    from .db import SessionLocal
+    from .ingest import run_source
+    from .scrapers import SOURCES
+    scope.read_only()
+    if name not in SOURCES:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Unknown source")
+
+    def work():
+        with SessionLocal() as s:
+            run_source(s, name)
+
+    threading.Thread(target=work, daemon=True).start()
+    _log(session, "admin.scrape_started", client, source=name)
+    session.commit()
+    return {"ok": True, "message": f"Refreshing {name}. Reload the overview in a minute."}
+
+
+# --- People: search, suspend --------------------------------------------------------------------------------
+
+def _user_row(u: User) -> dict:
+    i = u.identity
+    return {"id": u.id, "email": u.email, "name": u.full_name, "role": u.role,
+            "created": _aware(u.created_at).date().isoformat(),
+            "identity": i.review_status if i else None, "claims": len(u.claims),
+            "attorney": None if u.attorney is None else {"status": u.attorney.status, "bar": f"{u.attorney.bar_state} #{u.attorney.bar_number}",
+                                                         "counties": u.attorney.counties, "available": u.attorney.available},
+            "suspended": u.suspended_at is not None, "suspended_reason": u.suspended_reason,
+            "deletion_requested": u.deletion_requested_at is not None}
+
+
+@router.get("/admin/users")
+def admin_users(scope: Admin, session: DbSession, q: str = "", role: str = "", limit: int = 100) -> list[dict]:
+    stmt = select(User).order_by(User.id.desc())
+    if role:
+        stmt = stmt.where(User.role == role)
+    if q.strip():
+        like = f"%{q.strip().lower()}%"
+        stmt = stmt.where(func.lower(User.email).like(like) | func.lower(User.full_name).like(like))
+    rows = session.scalars(stmt.limit(min(limit, 500))).all()
+    if scope.demo:
+        rows = [u for u in rows if is_demo_user(u) or (u.attorney is not None and is_demo_attorney(u.attorney))]
+    return [_user_row(u) for u in rows]
+
+
+@router.post("/admin/users/{user_id}/suspend")
+def admin_suspend(user_id: int, body: AdminIdentityIn, scope: Admin, session: DbSession, client: Client) -> dict:
+    """decision "approved" = lift the suspension, "rejected" = suspend (signs them out everywhere)."""
+    user = session.get(User, user_id)
+    if user is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found")
+    scope.check(is_demo_user(user) or (user.attorney is not None and is_demo_attorney(user.attorney)))
+    if body.decision == "rejected":
+        if not body.note.strip():
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Give a reason (kept in the audit log)")
+        user.suspended_at, user.suspended_reason = _now(), body.note.strip()
+        user.token_version = (user.token_version or 0) + 1
+        if user.attorney is not None:  # their open cases go to another attorney
+            for c in session.scalars(select(Claim).where(Claim.attorney_id == user.id,
+                                                         Claim.assignment_status.in_(("offered", "accepted")))):
+                if not attorneys.is_closed(c):
+                    attorneys.decline(session, c, user.id,
+                                      reason="Your attorney is no longer available. We're finding you another one.")
+    else:
+        user.suspended_at, user.suspended_reason = None, ""
+    _log(session, "admin.user_suspended" if body.decision == "rejected" else "admin.user_reinstated", client,
+         "user", user.id, reason=body.note)
+    session.commit()
+    attorneys.assign_ready(session)
+    return _user_row(user)
+
+
+# --- Staff-only notes on a claim ---------------------------------------------------------------------------
+
+@router.get("/admin/claims/{claim_id}/notes")
+def admin_notes(claim_id: int, scope: Admin, session: DbSession) -> list[dict]:
+    claim = _claim(session, claim_id, scope)
+    return [{"id": n.id, "body": n.body, "at": _aware(n.created_at).isoformat()} for n in claim.staff_notes]
+
+
+@router.post("/admin/claims/{claim_id}/notes")
+def admin_add_note(claim_id: int, body: AdminStatusIn, scope: Admin, session: DbSession, client: Client) -> list[dict]:
+    """Uses the note field only. Never shown to the client or the attorney."""
+    from .models import StaffNote
+    claim = _claim(session, claim_id, scope)
+    if not body.note.strip():
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Write a note")
+    claim.staff_notes.append(StaffNote(body=body.note.strip()[:2000], created_at=_now()))
+    _log(session, "admin.note_added", client, "claim", claim.id)
+    session.commit()
+    return admin_notes(claim_id, scope, session)

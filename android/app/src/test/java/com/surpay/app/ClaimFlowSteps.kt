@@ -75,3 +75,10 @@ val SIGNATURE_PNG_B64: String by lazy {
     Canvas(bmp).drawColor(Color.WHITE)
     java.util.Base64.getEncoder().encodeToString(ByteArrayOutputStream().also { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }.toByteArray())
 }
+
+/** A small real JPEG as base64, for API calls that upload a photo. */
+val JPEG_B64: String by lazy {
+    val bmp = Bitmap.createBitmap(120, 80, Bitmap.Config.ARGB_8888)
+    Canvas(bmp).drawColor(Color.rgb(200, 200, 190))
+    java.util.Base64.getEncoder().encodeToString(ByteArrayOutputStream().also { bmp.compress(Bitmap.CompressFormat.JPEG, 85, it) }.toByteArray())
+}

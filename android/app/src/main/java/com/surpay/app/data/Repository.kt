@@ -200,6 +200,14 @@ class SurpayRepository(private val remote: SurpayApi, private val tokens: TokenS
     suspend fun attorneyCase(id: Int): AttorneyCase = remote.attorneyCase(id)
     suspend fun acceptCase(id: Int): AttorneyCase = remote.acceptCase(id, AcceptRequest(conflictChecked = true))
     suspend fun changeAttorney(claimId: Int): Claim = api.changeAttorney(claimId)
+    suspend fun uploadDocument(claimId: Int, requestId: Int, jpeg: ByteArray): Claim =
+        api.uploadDocument(claimId, requestId, DocumentUpload(java.util.Base64.getEncoder().encodeToString(jpeg)))
+    suspend fun updateAttorney(body: AttorneyUpdate): AttorneyProfile = remote.updateAttorney(body)
+    suspend fun requestDocument(caseId: Int, kind: String, note: String): AttorneyCase =
+        remote.requestDocument(caseId, DocumentRequestBody(kind, note))
+    suspend fun requestedFile(caseId: Int, requestId: Int): ByteArray = remote.requestedFile(caseId, requestId).use { it.bytes() }
+    suspend fun reviewDocument(caseId: Int, requestId: Int, accept: Boolean, note: String): AttorneyCase =
+        remote.reviewDocument(caseId, requestId, DocumentReview(if (accept) "accepted" else "rejected", note))
     /** New password; the server signs out other devices and returns a fresh token for this one. */
     suspend fun changePassword(current: String, new: String): Profile =
         remote.changePassword(PasswordChange(current, new)).also { tokens.save(it.token) }.user

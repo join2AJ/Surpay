@@ -95,6 +95,7 @@ private object Routes {
     const val ADD_RELATIVE = "family/add"
     const val NOTIFICATIONS = "notifications"
     const val PRIVACY = "privacy"
+    const val HELP = "help"
     const val DETAIL = "match/{id}"
     const val CLAIM = "claim/{id}"
     const val IDENTITY = "claim/{id}/identity"
@@ -271,6 +272,7 @@ private fun SignedInApp(vm: SurpayViewModel, session: SessionState.SignedIn) {
                                 Routes.ADD_RELATIVE -> "Add a family member"
                                 Routes.NOTIFICATIONS -> "Notifications"
                                 Routes.PRIVACY -> "Privacy and data"
+                                Routes.HELP -> "Help"
                                 Routes.DETAIL -> "Surplus details"
                                 Routes.CLAIMS -> "My claims"
                                 Routes.CLAIM -> "Claim status"
@@ -374,9 +376,11 @@ private fun SignedInApp(vm: SurpayViewModel, session: SessionState.SignedIn) {
                     onFamily = { nav.navigate(Routes.FAMILY) },
                     onNotifications = { nav.navigate(Routes.NOTIFICATIONS) },
                     onPrivacy = { nav.navigate(Routes.PRIVACY) },
+                    onHelp = { nav.navigate(Routes.HELP) },
                     onLogout = vm::logout,
                 )
             }
+            composable(Routes.HELP) { com.surpay.app.ui.screens.HelpScreen(attorney = false) }
             composable(Routes.DETAILS) {
                 ProfileScreen(
                     profile = session.profile, form = form, firstRun = false,
@@ -438,6 +442,7 @@ private fun SignedInApp(vm: SurpayViewModel, session: SessionState.SignedIn) {
                         onViewAgreement = { nav.navigate(Routes.agreement(id)) },
                         onMessages = { nav.navigate(Routes.chat(id)) },
                         onChangeAttorney = { vm.changeAttorney(id) },
+                        onUploadDocument = { rid, bytes -> vm.uploadDocument(id, rid, bytes) },
                         busy = form.busy,
                     )
                 }
@@ -560,6 +565,8 @@ private fun AttorneyApp(vm: SurpayViewModel, session: SessionState.SignedIn) {
                         TopAppBar(
                             title = {
                                 Text(when {
+                                    screen == "profile" -> "Your profile"
+                                    screen == "help" -> "Help"
                                     showingNotifications -> "Notifications"
                                     current != null && screen == "chat" -> "Messages · case #${current.id}"
                                     current != null -> "Case #${current.id}"
@@ -567,9 +574,11 @@ private fun AttorneyApp(vm: SurpayViewModel, session: SessionState.SignedIn) {
                                 })
                             },
                             navigationIcon = {
-                                if (current != null || showingNotifications) {
+                                if (current != null || showingNotifications || screen in setOf("profile", "help")) {
                                     IconButton(onClick = {
                                         when {
+                                            screen == "help" -> screen = "profile"
+                                            screen == "profile" -> screen = "case"
                                             showingNotifications -> screen = "case"
                                             screen == "chat" -> { screen = "case"; current?.let { vm.reloadCase(it.id) } }
                                             else -> openCase = null
@@ -583,13 +592,23 @@ private fun AttorneyApp(vm: SurpayViewModel, session: SessionState.SignedIn) {
                                 if (!showingNotifications) {
                                     NotificationBell(session.profile.unreadNotifications) { screen = "notifications" }
                                 }
-                                if (current == null && !showingNotifications) TextButton(onClick = vm::logout) { Text("Sign out") }
+                                if (current == null && !showingNotifications && screen == "case") {
+                                    IconButton(onClick = { screen = "profile" }, modifier = Modifier.testTag("attorneyProfile")) {
+                                        Icon(Icons.Filled.Person, contentDescription = "Your profile")
+                                    }
+                                }
                             },
                             colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
                         )
                     },
                 ) { padding ->
                     when {
+                        screen == "profile" -> com.surpay.app.ui.screens.AttorneySettingsScreen(
+                            profile = profile, form = form, counties = counties[profile.barState].orEmpty(),
+                            onLoadCounties = { vm.loadCounties(profile.barState) },
+                            onSave = { vm.updateAttorney(it) }, onHelp = { screen = "help" }, onLogout = vm::logout,
+                            modifier = Modifier.padding(padding))
+                        screen == "help" -> com.surpay.app.ui.screens.HelpScreen(attorney = true, modifier = Modifier.padding(padding))
                         showingNotifications -> NotificationsScreen(
                             notifications, onLoad = vm::loadNotifications, onMarkRead = vm::markNotificationsRead,
                             onOpen = { n -> n.claimId?.let { id -> openCase = id; vm.reloadCase(id); screen = if (n.kind == "message") "chat" else "case" } },
@@ -611,6 +630,9 @@ private fun AttorneyApp(vm: SurpayViewModel, session: SessionState.SignedIn) {
                                 vm.downloadPacket(current.id) { openOrShare(context, it, "surpay-case-${current.id}.pdf", "application/pdf") }
                             },
                             onMessages = { screen = "chat" },
+                            onLoadRequested = { r -> vm.loadRequestedFile(current.id, r) },
+                            onRequestDocument = { kind, note -> vm.requestDocument(current.id, kind, note) },
+                            onReviewDocument = { rid, ok, note -> vm.reviewDocument(current.id, rid, ok, note) },
                             modifier = Modifier.padding(padding),
                         )
                     }

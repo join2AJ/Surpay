@@ -17,6 +17,12 @@
   button.secondary { background:transparent; color:var(--text); border:1px solid var(--line); }
   button.danger { background:var(--bad); }
   main:empty { display:none; }
+  .kpis { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:10px; }
+  .kpi { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px; }
+  .kpi b { display:block; font-size:22px; } .kpi span { color:var(--muted); font-size:12px; }
+  table { width:100%; border-collapse:collapse; font-size:13px; } th, td { text-align:left; padding:6px 4px; border-bottom:1px solid var(--line); vertical-align:top; }
+  .alert { background:#fff1d6; color:#6b4a00; border-radius:10px; padding:8px 12px; margin:4px 0; font-size:14px; }
+  .bar { height:8px; background:var(--brand); border-radius:4px; }
   main { padding:16px; max-width:900px; margin:0 auto; display:grid; gap:16px; }
   .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px; }
   .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
@@ -40,8 +46,11 @@
   <input id="token" type="password" placeholder="Admin token" autocomplete="off">
   <button id="load">Load</button>
   <select id="view">
+    <option value="overview">Overview</option>
     <option value="reviews">Reviews (attorneys, IDs, family)</option>
     <option value="claims">Claims</option>
+    <option value="records">County records</option>
+    <option value="users">People</option>
     <option value="fees">Fee rules</option>
     <option value="audit">Audit trail</option>
   </select>
@@ -58,6 +67,9 @@
 <main id="pending"></main>
 <main id="relatives"></main>
 <main id="list"></main>
+<main id="overview"></main>
+<main id="records"></main>
+<main id="users"></main>
 <main id="fees"></main>
 <main id="audit"></main>
 
@@ -137,6 +149,23 @@ function render(c) {
         el("button", { class: "danger", onclick: () => review(c, "rejected") }, "Reject ID (ask to resubmit)")),
     );
   }
+  card.prepend(el("div", { class: "muted" }, `Reference ${c.reference_code || ""}`));
+  if ((c.document_requests || []).length) {
+    card.append(el("h3", {}, "Documents requested by the attorney"),
+      el("ol", {}, ...c.document_requests.map(d => el("li", {}, `${d.label}: ${d.status}${d.note ? " · " + d.note : ""}`))));
+  }
+  const notesBox = el("div", {});
+  const noteIn = el("input", { placeholder: "Staff-only note (never shown to client or attorney)", style: "flex:1" });
+  const loadNotes = async () => {
+    try { const n = await (await api(`/admin/claims/${c.id}/notes`)).json();
+      notesBox.replaceChildren(...n.map(x => el("div", { class: "muted" }, `${when(x.at)}: ${x.body}`))); } catch {}
+  };
+  card.append(el("h3", {}, "Staff notes"), notesBox, el("div", { class: "row" }, noteIn,
+    el("button", { class: "secondary", onclick: async () => {
+      if (!noteIn.value.trim()) return;
+      try { await api(`/admin/claims/${c.id}/notes`, { method: "POST", body: JSON.stringify({ status: "", note: noteIn.value }) }); noteIn.value = ""; loadNotes(); }
+      catch (e) { alert(e.message); } } }, "Add note")));
+  loadNotes();
   const fb = c.fee_basis || {};
   const feeIn = el("input", { type: "number", step: "0.5", min: "0", max: "50", value: c.fee_pct, style: "width:90px" });
   card.append(el("h3", {}, "Fee"),
@@ -346,6 +375,120 @@ async function loadAudit() {
       el("ol", {}, ...rows.map(e => el("li", {}, `#${e.id} ${e.at} · ${e.actor_type}${e.actor_id ? " " + e.actor_id : ""} · ${e.action}${e.entity_type ? " · " + e.entity_type + " " + (e.entity_id ?? "") : ""} · ${e.ip || "-"} · ${e.device_info || e.user_agent || "-"}`)))));
 }
 
+async function download(path, name) {
+  try {
+    const blob = await (await api(path)).blob();
+    const a = el("a", { href: URL.createObjectURL(blob), download: name });
+    document.body.append(a); a.click(); a.remove();
+  } catch (e) { alert(e.message); }
+}
+
+const kpi = (label, value) => el("div", { class: "kpi" }, el("b", {}, value), el("span", {}, label));
+
+async function loadOverview() {
+  const o = await (await api("/admin/overview")).json();
+  const r = o.records, p = o.people, c = o.claims;
+  const maxCounty = Math.max(1, ...r.by_county.map(x => x.total_cents));
+  const order = ["requested","identity_submitted","agreement_signed","identity_verified","attorney_assigned","filed","hearing_pending","approved","paid","denied","withdrawn"];
+  $("#overview").replaceChildren(
+    el("section", { class: "card" }, el("h2", {}, "County records we track"),
+      el("div", { class: "kpis" },
+        kpi("records listed now", r.listed.toLocaleString()), kpi("total surplus", money(r.total_cents)),
+        kpi("counties with records", r.counties), kpi("new in last 7 days", r.new_last_7_days),
+        kpi("no longer listed", r.delisted), kpi("counties in registry", (o.registry.total || 0).toLocaleString())),
+      el("h3", {}, "By county"),
+      el("table", {}, el("tr", {}, el("th", {}, "County"), el("th", {}, "Records"), el("th", {}, "Total"), el("th", {}, "Largest"), el("th", {}, "")),
+        ...r.by_county.map(x => el("tr", {}, el("td", {}, `${x.county} County, ${x.state}`), el("td", {}, x.records),
+          el("td", {}, money(x.total_cents)), el("td", {}, money(x.largest_cents)),
+          el("td", { style: "width:30%" }, el("div", { class: "bar", style: `width:${Math.round(100 * x.total_cents / maxCounty)}%` }))))),
+      el("h3", {}, "By amount"),
+      el("div", { class: "row" }, ...Object.entries(r.by_size).map(([k, v]) => el("span", { class: "pill" }, `${k}: ${v}`))),
+      el("div", { class: "row", style: "margin-top:8px" },
+        el("button", { class: "secondary", onclick: () => { $("#view").value = "records"; load(); } }, "Browse records"),
+        el("button", { class: "secondary", onclick: () => download("/admin/records.csv", "surpay-records.csv") }, "Export records (CSV)"))),
+    el("section", { class: "card" }, el("h2", {}, "Needs attention"),
+      ...(o.alerts.length ? o.alerts.map(a => el("div", { class: "alert" }, a)) : [el("p", { class: "muted" }, "Nothing urgent.")])),
+    el("section", { class: "card" }, el("h2", {}, "Claims"),
+      el("div", { class: "kpis" }, kpi("claims", c.total), kpi("active", c.active), kpi("fees in pipeline", money(c.pipeline_fee_cents)),
+        kpi("recovered for clients", money(c.recovered_cents)), kpi("attorney payouts due", money(c.payouts_due_cents))),
+      el("h3", {}, "By stage"),
+      el("table", {}, ...order.filter(s => c.by_status[s]).map(s => el("tr", {}, el("td", {}, s.replace(/_/g, " ")), el("td", {}, c.by_status[s])))),
+      el("button", { class: "secondary", onclick: () => download("/admin/claims.csv", "surpay-claims.csv") }, "Export claims (CSV)")),
+    el("section", { class: "card" }, el("h2", {}, "People"),
+      el("div", { class: "kpis" }, kpi("accounts", p.accounts), kpi("claimants", p.claimants), kpi("IDs waiting", p.ids_pending),
+        kpi("IDs verified", p.ids_approved), kpi("attorneys approved", p.attorneys_approved), kpi("attorneys waiting", p.attorneys_pending),
+        kpi("suspended", p.suspended))),
+    el("section", { class: "card" }, el("h2", {}, "County data sources"),
+      el("table", {}, el("tr", {}, el("th", {}, "Source"), el("th", {}, "Records"), el("th", {}, "Last success"), el("th", {}, "")),
+        ...o.sources.map(s => el("tr", {},
+          el("td", {}, el("b", {}, s.healthy ? "✓ " : "⚠ "), s.description || s.source, s.last_error ? el("div", { class: "muted" }, s.last_error) : null),
+          el("td", {}, s.records), el("td", {}, s.hours_since_success == null ? "never" : `${s.hours_since_success} h ago`),
+          el("td", {}, el("button", { class: "secondary", onclick: async () => {
+            try { alert((await (await api(`/admin/sources/${s.source}/scrape`, { method: "POST" })).json()).message); } catch (e) { alert(e.message); } } }, "Refresh now"))))),
+      el("h3", {}, "County registry (all US counties)"),
+      el("div", { class: "row" }, ...Object.entries(o.registry.by_status || {}).map(([k, v]) => el("span", { class: "pill" }, `${k.replace(/_/g, " ")}: ${v}`)))),
+  );
+}
+
+let recPage = 1;
+async function loadRecords() {
+  const f = { q: $("#rq")?.value || "", state: $("#rstate")?.value || "", county: $("#rcounty")?.value || "",
+              min: $("#rmin")?.value || "", sort: $("#rsort")?.value || "amount", status_: $("#rstatus")?.value || "listed" };
+  const qs = new URLSearchParams({ q: f.q, state: f.state, county: f.county, min_cents: Math.round((Number(f.min) || 0) * 100),
+                                   sort: f.sort, status_: f.status_, page: recPage, per_page: 50 });
+  const d = await (await api(`/admin/records?${qs}`)).json();
+  const inp = (id, ph, v, w) => el("input", { id, placeholder: ph, value: v, style: `width:${w}` });
+  const sel = (id, opts, v) => { const s = el("select", { id }, ...opts.map(([k, t]) => { const o = el("option", { value: k }, t); if (k === v) o.selected = true; return o; })); return s; };
+  const go = () => { recPage = 1; loadRecords(); };
+  const pages = Math.max(1, Math.ceil(d.total / d.per_page));
+  $("#records").replaceChildren(el("section", { class: "card" },
+    el("h2", {}, `County records (${d.total.toLocaleString()})`),
+    el("div", { class: "row" }, inp("rq", "Owner name or reference", f.q, "200px"), inp("rstate", "State", f.state, "70px"),
+      inp("rcounty", "County", f.county, "130px"), inp("rmin", "Min $", f.min, "90px"),
+      sel("rsort", [["amount", "Largest first"], ["newest", "Newest"], ["sale_date", "Oldest sale (deadline)"], ["owner", "Owner A-Z"]], f.sort),
+      sel("rstatus", [["listed", "Listed"], ["delisted", "No longer listed"], ["", "All"]], f.status_),
+      el("button", { onclick: go }, "Search"),
+      el("button", { class: "secondary", onclick: () => download(`/admin/records.csv?${qs}`, "surpay-records.csv") }, "Export CSV")),
+    el("table", {}, el("tr", {}, el("th", {}, "Amount"), el("th", {}, "Owner"), el("th", {}, "County"), el("th", {}, "Sale / deadline"), el("th", {}, "Claims")),
+      ...d.records.map(r => el("tr", {}, el("td", {}, el("b", {}, money(r.amount_cents))),
+        el("td", {}, r.owner_name, el("div", { class: "muted" }, r.owner_address || "")),
+        el("td", {}, `${r.county}, ${r.state}`, el("div", { class: "muted" }, r.reference)),
+        el("td", {}, r.sale_date || "?", el("div", { class: "muted" }, r.deadline ? "claim by " + r.deadline : "")),
+        el("td", {}, r.claims ? el("span", { class: "pill approved" }, r.claims) : "")))),
+    el("div", { class: "row", style: "margin-top:8px" },
+      el("button", { class: "secondary", onclick: () => { if (recPage > 1) { recPage--; loadRecords(); } } }, "Previous"),
+      el("span", { class: "muted" }, `Page ${d.page} of ${pages}`),
+      el("button", { class: "secondary", onclick: () => { if (recPage < pages) { recPage++; loadRecords(); } } }, "Next"))));
+  $("#rq").addEventListener("keydown", e => { if (e.key === "Enter") go(); });
+}
+
+async function loadUsers() {
+  const q = $("#uq")?.value || "", role = $("#urole")?.value || "";
+  const rows = await (await api(`/admin/users?${new URLSearchParams({ q, role })}`)).json();
+  const qIn = el("input", { id: "uq", placeholder: "Email or name", value: q });
+  const roleSel = el("select", { id: "urole" }, ...[["", "Everyone"], ["claimant", "Claimants"], ["attorney", "Attorneys"]].map(([k, t]) => {
+    const o = el("option", { value: k }, t); if (k === role) o.selected = true; return o; }));
+  const suspend = async (u, decision) => {
+    const note = decision === "rejected" ? prompt(`Suspend ${u.email}? Reason (kept in the audit log):`) : "";
+    if (decision === "rejected" && !note) return;
+    try { await api(`/admin/users/${u.id}/suspend`, { method: "POST", body: JSON.stringify({ decision, note }) }); loadUsers(); }
+    catch (e) { alert(e.message); }
+  };
+  $("#users").replaceChildren(el("section", { class: "card" }, el("h2", {}, `People (${rows.length})`),
+    el("div", { class: "row" }, qIn, roleSel, el("button", { onclick: loadUsers }, "Search")),
+    el("table", {}, el("tr", {}, el("th", {}, "Person"), el("th", {}, "Role / ID"), el("th", {}, "Claims"), el("th", {}, "")),
+      ...rows.map(u => el("tr", {},
+        el("td", {}, el("b", {}, u.name), el("div", { class: "muted" }, `${u.email} · joined ${u.created}`),
+          u.suspended ? el("div", { class: "pill rejected" }, "Suspended: " + u.suspended_reason) : null,
+          u.deletion_requested ? el("div", { class: "pill pending" }, "Asked to close account") : null),
+        el("td", {}, u.role, u.attorney ? el("div", { class: "muted" }, `${u.attorney.status} · ${u.attorney.bar} · ${u.attorney.counties.join(", ")}${u.attorney.available ? "" : " · paused"}`)
+          : el("div", { class: "muted" }, `ID: ${u.identity || "not submitted"}`)),
+        el("td", {}, u.claims),
+        el("td", {}, u.suspended ? el("button", { class: "secondary", onclick: () => suspend(u, "approved") }, "Reinstate")
+          : el("button", { class: "danger", onclick: () => suspend(u, "rejected") }, "Suspend")))))));
+  $("#uq").addEventListener("keydown", e => { if (e.key === "Enter") loadUsers(); });
+}
+
 async function claimAction(c, path, msg) {
   if (!confirm(msg)) return;
   try { await api(`/admin/claims/${c.id}/${path}`, { method: "POST" }); load(); } catch (e) { alert(e.message); }
@@ -355,20 +498,28 @@ async function load() {
   try { sessionStorage.setItem("surpay-admin", tokenInput.value); } catch {}
   $("#msg").textContent = "Loading…";
   const view = $("#view").value;
-  for (const id of ["#list", "#pending", "#lawyers", "#relatives", "#fees", "#audit"]) $(id).replaceChildren();
+  for (const id of ["#list", "#pending", "#lawyers", "#relatives", "#fees", "#audit", "#overview", "#records", "#users"]) $(id).replaceChildren();
   $("#filter").style.display = view === "claims" ? "" : "none";
   try {
     const who = await (await api("/admin/whoami")).json();
     const banner = $("#banner");
     banner.style.display = who.demo ? "block" : "none";
     banner.textContent = who.demo ? "Admin demo: you see and act only on demo data (Demo County, the demo accounts, and Demo County attorneys). Real people's records stay hidden. Fee settings are read-only." : "";
+    if (view === "overview") { await loadOverview(); $("#msg").textContent = ""; return; }
+    if (view === "records") { await loadRecords(); $("#msg").textContent = ""; return; }
+    if (view === "users") { await loadUsers(); $("#msg").textContent = ""; return; }
     if (view === "fees") { await loadFees(); $("#msg").textContent = ""; return; }
     if (view === "audit") { await loadAudit(); $("#msg").textContent = ""; return; }
     if (view === "claims") {
       const all = await (await api("/admin/claims")).json();
       const f = $("#filter").value;
-      const rows = f ? all.filter(c => f.split(",").includes(c.status)) : all;
-      $("#list").replaceChildren(...rows.map(render));
+      const term = ($("#cq")?.value || "").trim().toLowerCase();
+      const rows = (f ? all.filter(c => f.split(",").includes(c.status)) : all).filter(c => !term ||
+        [c.reference_code, c.user.full_name, c.user.email, c.reference, c.county, c.attorney?.name].join(" ").toLowerCase().includes(term));
+      const search = el("input", { id: "cq", placeholder: "Search name, email, SP- reference, county, attorney", value: term, style: "width:100%" });
+      search.addEventListener("keydown", e => { if (e.key === "Enter") load(); });
+      $("#list").replaceChildren(el("div", { class: "row" }, search,
+        el("button", { class: "secondary", onclick: () => download("/admin/claims.csv", "surpay-claims.csv") }, "Export CSV")), ...rows.map(render));
       $("#msg").textContent = `${rows.length} of ${all.length} claims`;
       return;
     }
@@ -389,7 +540,7 @@ async function load() {
 }
 $("#load").addEventListener("click", load);
 $("#filter").addEventListener("change", load);
-$("#view").addEventListener("change", load);
+$("#view").addEventListener("change", () => { recPage = 1; load(); });
 if (tokenInput.value) load();
 </script>
 </body>

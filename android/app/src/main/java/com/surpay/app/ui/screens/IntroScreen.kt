@@ -127,6 +127,14 @@ fun IntroScreen(onDone: () -> Unit) {
 
 /** What changed in each version, newest first. Shown once after an update. */
 val CHANGELOG: List<Pair<Int, List<String>>> = listOf(
+    5 to listOf(
+        "Every claim now has a reference number, like SP-000123, to quote when you contact us",
+        "Your attorney can ask for documents (a W-9, a deed, a bank statement) and you upload them right in your claim",
+        "Help and FAQ for claimants and attorneys, under Account",
+        "Attorneys: edit your firm, office and counties, and pause new cases when you’re busy",
+        "Attorneys: quick replies in chat, and a warning when others claim the same money",
+        "Staff: overview with how many county records we hold, records browser, CSV exports, private case notes and account suspension",
+    ),
     4 to listOf(
         "Admin demo: one tap opens the staff dashboard, limited to demo data, for testing",
         "“Surpay staff? Open the review dashboard” link on the welcome screen",

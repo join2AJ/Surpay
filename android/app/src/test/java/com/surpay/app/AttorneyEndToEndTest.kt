@@ -154,6 +154,22 @@ class AttorneyEndToEndTest {
         compose.onNodeWithTag("back").performClick()
         compose.waitUntilAtLeastOneExists(hasTestTag("status_filed"), timeout)
 
+        // 6b. Ask the client for a W-9; they upload a photo; the attorney accepts it
+        compose.onNodeWithTag("docNote").performScrollTo().performTextInput("Please sign and date it")
+        compose.onNodeWithTag("requestDoc").performScrollTo().performClick()
+        compose.waitUntilAtLeastOneExists(hasText("Needed"), timeout)
+        val req = call("${url}me/claims/$claimId", headers = claimant).jsonObject["document_requests"]!!.jsonArray[0].jsonObject
+        assertEquals("\"IRS Form W-9\"", req["label"].toString())
+        val rid = req["id"]!!.jsonPrimitive.int
+        call("${url}me/claims/$claimId/documents/$rid", "POST", """{"image_b64":"$JPEG_B64"}""", claimant)
+        compose.onNodeWithTag("back").performClick()
+        compose.waitUntilAtLeastOneExists(hasTestTag("case$claimId"), timeout)
+        compose.onNodeWithTag("case$claimId").performClick()
+        compose.waitUntilAtLeastOneExists(hasTestTag("acceptDoc$rid"), timeout)
+        compose.onNodeWithTag("acceptDoc$rid").performScrollTo().performClick()
+        compose.waitUntilAtLeastOneExists(hasText("Accepted"), timeout)
+        shot("4c_documents")
+
         // 7. Mark filed; the client's timeline shows it and names the attorney
         compose.onNodeWithTag("status_filed").performScrollTo().performClick()
         compose.onNodeWithTag("dialogNote").performScrollTo().performTextInput("Filed with Demo County, case 2026-CV-123")

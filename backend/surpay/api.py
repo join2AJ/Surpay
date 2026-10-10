@@ -6,7 +6,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, object_session
 
-from . import attorneys, audit, chat, claims, config, crypto, fees
+from . import attorneys, audit, chat, claims, config, crypto, documents, fees
 from .admin_api import router as admin_router
 from .attorney_api import router as attorney_router
 from .auth import create_token, hash_password, verify_password
@@ -21,7 +21,7 @@ from .models import Agreement, Claim, CountySource, IdentityVerification, Notifi
 from .policies import PRIVACY_VERSION, TERMS_VERSION
 from .schemas import (
     AddressOut, AgreementOut, AttorneyPublic, ChatOut, ClaimIn, ClaimOut, CoverageOut, IdentityIn, LoginIn,
-    MatchesOut, MatchOut, MatchPreviewOut, MessageIn, PasswordChangeIn, ProfileIn, ProfileOut, SignIn, SignupIn,
+    DocumentUploadIn, MatchesOut, MatchOut, MatchPreviewOut, MessageIn, PasswordChangeIn, ProfileIn, ProfileOut, SignIn, SignupIn,
     TokenOut,
 )
 from .security import BodySizeLimit, SecurityHeaders, check_password, login_limiter
@@ -163,6 +163,8 @@ def login(body: LoginIn, session: DbSession, client: Client):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Wrong email or password")
     if user.deletion_requested_at is not None:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "This account was closed at your request. Contact support to reopen it.")
+    if user.suspended_at is not None:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "This account is suspended. Contact support.")
     audit.record(session, "auth.login", actor_id=user.id, entity_type="user", entity_id=user.id, client=client)
     session.commit()
     return TokenOut(token=create_token(user), user=_profile(user))
@@ -345,6 +347,8 @@ def claim_out(c: Claim) -> ClaimOut:
         chat_open=chat.thread_open(c),
         unread_messages=sum(1 for m in chat.thread(c) if m.sender_role == "attorney" and m.read_at is None),
         record_listed=r.status == "listed",
+        reference_code=f"SP-{c.id:06d}",
+        document_requests=[documents.request_out(d) for d in c.document_requests],
     )
 
 
@@ -401,6 +405,22 @@ def my_claim(claim_id: int, user: CurrentUser, session: DbSession):
     out = claim_out(_my_claim(user, claim_id))
     session.commit()
     return out
+
+
+@app.post("/me/claims/{claim_id}/documents/{request_id}", response_model=ClaimOut)
+def upload_requested_document(claim_id: int, request_id: int, body: DocumentUploadIn, user: CurrentUser,
+                              session: DbSession, client: Client):
+    """Answer the attorney's request for a document (W-9, deed...) with a photo."""
+    claim = _my_claim(user, claim_id)
+    r = next((d for d in claim.document_requests if d.id == request_id), None)
+    if r is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Request not found")
+    documents.upload(session, claim, r, encrypt_image(body.image_b64, documents.KINDS.get(r.kind, ("Document",))[0]))
+    audit.record(session, "document.uploaded", actor_id=user.id, entity_type="claim", entity_id=claim.id,
+                 client=client, details={"request_id": r.id, "kind": r.kind,
+                                         "sha256": crypto.sha256_hex(body.image_b64)})
+    session.commit()
+    return claim_out(claim)
 
 
 @app.post("/me/claims/{claim_id}/change-attorney", response_model=ClaimOut)

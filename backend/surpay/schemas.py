@@ -172,6 +172,10 @@ class ClaimOut(BaseModel):
     unread_messages: int = 0
     # False once the county no longer lists the money (often paid out to someone else).
     record_listed: bool = True
+    # "SP-000123": quote this to support.
+    reference_code: str = ""
+    # Documents the attorney asked for (W-9, deed...), and their status.
+    document_requests: list[dict] = Field(default_factory=list)
 
 
 class IdentityIn(BaseModel):
@@ -249,6 +253,28 @@ class AttorneyPublic(BaseModel):
     bar: str
 
 
+class DocumentRequestIn(BaseModel):
+    kind: str = Field(max_length=32)
+    note: str = Field(default="", max_length=500)
+
+
+class DocumentUploadIn(BaseModel):
+    image_b64: str = Field(min_length=100)
+
+
+class DocumentReviewIn(BaseModel):
+    decision: str = Field(pattern=r"^(accepted|rejected)$")
+    note: str = Field(default="", max_length=500)
+
+
+class AttorneyUpdateIn(BaseModel):
+    firm: str | None = Field(default=None, max_length=255)
+    phone: str | None = Field(default=None, min_length=7, max_length=32)
+    office_address: str | None = Field(default=None, min_length=5, max_length=255)
+    counties: list[str] | None = Field(default=None, min_length=1, max_length=254)
+    available: bool | None = None
+
+
 class CaseAcceptIn(BaseModel):
     # Rule 1.7: the attorney confirms they checked for conflicts of interest before taking the case.
     conflict_checked: bool = False
@@ -272,6 +298,7 @@ class AttorneyApplyIn(BaseModel):
 
 
 class AttorneyProfileOut(BaseModel):
+    available: bool = True
     full_name: str
     bar_state: str
     bar_number: str
@@ -309,6 +336,8 @@ class CaseOut(BaseModel):
     unread_messages: int = 0
     # Other accounts that also started a claim on this record (co-owner, heir... or fraud).
     other_claimants: int = 0
+    reference_code: str = ""
+    document_requests: list[dict] = Field(default_factory=list)
     # After accepting:
     claimant: dict | None = None
     agreement: dict | None = None

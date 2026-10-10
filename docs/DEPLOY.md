@@ -123,7 +123,19 @@ claims, the fictional demo accounts, and attorneys who serve only Demo County. R
 and fee settings stay out of reach, so the button is safe to leave in test builds. Real staff use the
 "Surpay staff? Open the review dashboard" link and the real `SURPAY_ADMIN_TOKEN`.
 
-### Fees, family claims, audit (the dropdown at the top of `/admin`)
+### The staff dashboard views (the dropdown at the top of `/admin`)
+
+- **Overview** (opens first): how many county records are listed, their total value, new this week, by size
+  and by county; claims by stage, fees in the pipeline, money recovered, payouts due; people counts; each
+  scraper's last success. Alerts at the top show what needs doing today (stale scrapers, IDs waiting,
+  unassigned claims, deletion requests).
+- **County records**: search every record by name, address, state, county, amount or status, with its claim
+  deadline and how many claims it has. **Download CSV** exports the filtered list. **Run now** on a source
+  re-scrapes that county.
+- **Claims**: search by name or SP- reference, export to CSV, private **staff notes** (never shown to the
+  client or attorney), and the status of documents the attorney asked for.
+- **People**: find any account. **Suspend** (a reason is required) signs them out everywhere and blocks
+  login; a suspended attorney's open cases go back to the queue. **Reinstate** undoes it.
 
 - **Fee rules**: the client's fee is the average of the county's usual rate and the rate for the amount
   (bands), capped at the legal maximum you enter for the state or county. Users only see the result. You can

@@ -143,6 +143,7 @@ fun ChatScreen(
             return@Column
         }
         Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+            if (me == "attorney") QuickReplies { draft = it }
             (warning ?: form.error)?.let {
                 Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.padding(bottom = 4.dp).testTag("chatWarning"))

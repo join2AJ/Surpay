@@ -5,12 +5,13 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Response, status
 from sqlalchemy import select
 
-from . import attorneys, audit, chat, claims, config, crypto, packet
+from . import attorneys, audit, chat, claims, config, crypto, documents, packet
 from .deps import Client, CurrentUser, DbSession, encrypt_image
 from .legal import filing_guide, legal_basis
 from .models import AttorneyProfile, Claim, ClaimEvent, User
 from .schemas import (
-    AttorneyApplyIn, AttorneyProfileOut, CaseAcceptIn, CaseDeclineIn, CaseOut, CaseStatusIn, ChatOut, MessageIn,
+    AttorneyApplyIn, AttorneyProfileOut, AttorneyUpdateIn, CaseAcceptIn, CaseDeclineIn, CaseOut, CaseStatusIn, ChatOut,
+    DocumentRequestIn, DocumentReviewIn, MessageIn,
 )
 
 router = APIRouter(prefix="/attorney", tags=["attorney"])
@@ -61,6 +62,7 @@ def _profile_out(a: AttorneyProfile) -> AttorneyProfileOut:
         full_name=a.full_name, bar_state=a.bar_state, bar_number=a.bar_number, firm=a.firm, phone=a.phone,
         office_address=a.office_address, counties=a.counties or [], status=a.status, review_note=a.review_note,
         fee_per_case_cents=config.attorney_fee_for(a.bar_state), terms=terms_text(a.bar_state),
+        available=a.available if a.available is not None else True,
     )
 
 
@@ -114,6 +116,33 @@ def me(user: CurrentUser):
     return _profile_out(_require_attorney(user, approved=False))
 
 
+@router.put("/me", response_model=AttorneyProfileOut)
+def update_me(body: AttorneyUpdateIn, user: CurrentUser, session: DbSession, client: Client):
+    """Update firm, phone, office and counties, or pause new case offers. Bar details need a new application."""
+    from .models import CountySource
+    a = _require_attorney(user, approved=False)
+    changes = body.model_dump(exclude_none=True)
+    if body.counties is not None:
+        valid = set(session.scalars(select(CountySource.county).where(CountySource.state == a.bar_state)))
+        if config.DEMO_ENABLED and a.bar_state == "OH":
+            valid.add("Demo County")
+        wanted = sorted({c.strip() for c in body.counties if c.strip()})
+        unknown = [c for c in wanted if c not in valid]
+        if unknown:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
+                                f"Not a county in {a.bar_state}: {', '.join(unknown[:3])}")
+        a.counties = wanted
+    for field in ("firm", "phone", "office_address", "available"):
+        if field in changes:
+            setattr(a, field, changes[field].strip() if isinstance(changes[field], str) else changes[field])
+    audit.record(session, "attorney.profile_updated", actor_type="attorney", actor_id=user.id, entity_type="attorney",
+                 entity_id=a.id, client=client, details={k: v for k, v in changes.items()})
+    session.commit()
+    if a.available:
+        attorneys.assign_ready(session)
+    return _profile_out(a)
+
+
 def other_claimants(c: Claim) -> int:
     """Other accounts claiming the same county record: co-owners, other heirs, or a false claim."""
     from sqlalchemy import func
@@ -135,6 +164,8 @@ def case_out(c: Claim, full: bool) -> CaseOut:
         filing_guide=filing_guide(r.state), chat_open=chat.thread_open(c),
         unread_messages=sum(1 for m in chat.thread(c) if m.sender_role == "claimant" and m.read_at is None),
         other_claimants=other_claimants(c),
+        reference_code=f"SP-{c.id:06d}",
+        document_requests=[documents.request_out(d) for d in c.document_requests] if c.assignment_status == "accepted" else [],
     )
     if full:
         from .api import on_behalf_of
@@ -298,3 +329,51 @@ def send_case_message(case_id: int, body: MessageIn, user: CurrentUser, session:
                  entity_id=msg.id, client=client, details={"claim_id": c.id, "body_sha256": crypto.sha256_hex(msg.body)})
     session.commit()
     return chat_out(c, "attorney")
+
+
+# --- Documents the attorney needs from the client ----------------------------------------------------
+
+def _accepted_case(user: User, session, case_id: int) -> Claim:
+    _require_attorney(user)
+    c = _my_case(user, session, case_id)
+    if c.assignment_status != "accepted":
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Accept the case first")
+    return c
+
+
+@router.post("/cases/{case_id}/document-requests", response_model=CaseOut)
+def request_document(case_id: int, body: DocumentRequestIn, user: CurrentUser, session: DbSession, client: Client):
+    c = _accepted_case(user, session, case_id)
+    if attorneys.is_closed(c):
+        raise HTTPException(status.HTTP_409_CONFLICT, "This case is closed")
+    r = documents.create(session, c, user.id, body.kind, body.note)
+    session.flush()
+    audit.record(session, "document.requested", actor_type="attorney", actor_id=user.id, entity_type="claim",
+                 entity_id=c.id, client=client, details={"request_id": r.id, "kind": body.kind})
+    session.commit()
+    session.refresh(c)
+    return case_out(c, full=True)
+
+
+@router.get("/cases/{case_id}/document-requests/{request_id}/file")
+def requested_document_file(case_id: int, request_id: int, user: CurrentUser, session: DbSession):
+    c = _accepted_case(user, session, case_id)
+    r = next((d for d in c.document_requests if d.id == request_id), None)
+    if r is None or r.file is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Not uploaded yet")
+    data = crypto.decrypt(r.file)
+    return Response(data, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
+
+
+@router.post("/cases/{case_id}/document-requests/{request_id}/review", response_model=CaseOut)
+def review_document(case_id: int, request_id: int, body: DocumentReviewIn, user: CurrentUser, session: DbSession,
+                    client: Client):
+    c = _accepted_case(user, session, case_id)
+    r = next((d for d in c.document_requests if d.id == request_id), None)
+    if r is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Request not found")
+    documents.review(session, c, r, body.decision, body.note)
+    audit.record(session, f"document.{body.decision}", actor_type="attorney", actor_id=user.id, entity_type="claim",
+                 entity_id=c.id, client=client, details={"request_id": r.id})
+    session.commit()
+    return case_out(c, full=True)

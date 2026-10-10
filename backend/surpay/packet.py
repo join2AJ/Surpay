@@ -136,6 +136,10 @@ def build(claim: Claim) -> bytes:
             story += [_p("Exhibit C: death certificate", H2), _image(rel.death_certificate)]
         if rel.authority_document:
             story += [_p("Exhibit D: authority document", H2), _image(rel.authority_document)]
+    from .documents import KINDS
+    for n, d in enumerate([d for d in claim.document_requests if d.file is not None and d.status != "rejected"], 1):
+        story += [_p(f"Exhibit E-{n}: {KINDS.get(d.kind, KINDS['other'])[0]} (supplied by the client)", H2),
+                  _image(d.file)]
 
     buf = io.BytesIO()
     SimpleDocTemplate(buf, pagesize=LETTER, leftMargin=0.8 * inch, rightMargin=0.8 * inch,

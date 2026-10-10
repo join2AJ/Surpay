@@ -358,6 +358,9 @@ fun CaseDetailScreen(
     onLoadDocument: (String) -> Unit,
     onPacket: () -> Unit = {},
     onMessages: () -> Unit = {},
+    onLoadRequested: (com.surpay.app.data.DocumentRequest) -> Unit = {},
+    onRequestDocument: (String, String) -> Unit = { _, _ -> },
+    onReviewDocument: (Int, Boolean, String) -> Unit = { _, _, _ -> },
     modifier: Modifier = Modifier,
 ) {
     val uri = LocalUriHandler.current
@@ -365,6 +368,7 @@ fun CaseDetailScreen(
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp)) {
         Text("${case.county} County, ${case.state} · ${case.reference}", color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(dollars(case.amountCents), style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.ExtraBold)
+        if (case.referenceCode.isNotBlank()) Text("Claim ${case.referenceCode}", style = MaterialTheme.typography.labelMedium)
         Text("${saleTypeLabel(case.saleType)} on ${prettyDate(case.saleDate)} · your fee ${dollars(case.feeCents)}${payoutLabel(case.payoutStatus)}")
         if (case.sourceUrl.isNotBlank()) TextButton(onClick = { uri.openUri(case.sourceUrl) }) { Text("County list") }
         form.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
@@ -446,6 +450,7 @@ fun CaseDetailScreen(
                     }
                 }
             }
+            CaseDocumentsSection(case, form, documents, onLoadRequested, onRequestDocument, onReviewDocument)
             case.record?.let { r ->
                 Heading("County record")
                 Detail2("Listed owner", r.ownerName)
