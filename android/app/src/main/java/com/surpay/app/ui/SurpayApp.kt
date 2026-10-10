@@ -117,6 +117,7 @@ fun SurpayApp(vm: SurpayViewModel) {
     val serverUrl by vm.serverUrl.collectAsStateWithLifecycle()
     val policies by vm.policies.collectAsStateWithLifecycle()
     var showServer by rememberSaveable { mutableStateOf(false) }
+    val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
 
     when {
         !start.loaded -> LoadingScreen()
@@ -137,6 +138,8 @@ fun SurpayApp(vm: SurpayViewModel) {
                 onLogin = vm::login,
                 onDemoLogin = vm::demoLogin,
                 onDemoAttorneyLogin = vm::demoAttorneyLogin,
+                onDemoAdmin = { vm.openAdminDemo { url -> uriHandler.openUri(url) } },
+                onStaffDashboard = { uriHandler.openUri("${serverUrl.trimEnd('/')}/admin") },
                 onClearError = vm::clearFormError,
                 onServerSettings = { showServer = true },
                 policies = policies,

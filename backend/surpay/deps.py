@@ -52,14 +52,51 @@ def clean_image(data: bytes, label: str) -> bytes:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"{label}: couldn't read this photo, please retake it") from None
 
 
-def require_admin(x_admin_token: Annotated[str | None, Header()] = None) -> None:
-    if not config.ADMIN_TOKEN:
+class AdminScope:
+    """Who is using the staff dashboard: real staff (everything) or the demo admin (demo data only)."""
+
+    def __init__(self, demo: bool):
+        self.demo = demo
+
+    def check(self, allowed: bool) -> None:
+        """404 for anything outside the demo when signed in as the demo admin."""
+        if self.demo and not allowed:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Not available in the admin demo")
+
+    def read_only(self) -> None:
+        if self.demo:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Read-only in the admin demo")
+
+
+DEMO_ADMIN_HOURS = 2
+
+
+def demo_admin_token() -> str:
+    import jwt
+    from datetime import datetime, timedelta, timezone
+    exp = datetime.now(timezone.utc) + timedelta(hours=DEMO_ADMIN_HOURS)
+    return jwt.encode({"scope": "demo_admin", "exp": exp}, config.SECRET_KEY, algorithm="HS256")
+
+
+def _is_demo_admin_token(token: str) -> bool:
+    import jwt
+    try:
+        return jwt.decode(token, config.SECRET_KEY, algorithms=["HS256"]).get("scope") == "demo_admin"
+    except jwt.PyJWTError:
+        return False
+
+
+def require_admin(x_admin_token: Annotated[str | None, Header()] = None) -> AdminScope:
+    if config.ADMIN_TOKEN and x_admin_token and hmac.compare_digest(x_admin_token, config.ADMIN_TOKEN):
+        return AdminScope(demo=False)
+    if config.DEMO_ENABLED and x_admin_token and _is_demo_admin_token(x_admin_token):
+        return AdminScope(demo=True)
+    if not config.ADMIN_TOKEN and not config.DEMO_ENABLED:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found")
-    if not x_admin_token or not hmac.compare_digest(x_admin_token, config.ADMIN_TOKEN):
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Wrong admin token")
+    raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Wrong admin token")
 
 
-Admin = Annotated[None, Depends(require_admin)]
+Admin = Annotated[AdminScope, Depends(require_admin)]
 
 
 def client_ip(request: Request) -> str:

@@ -52,6 +52,7 @@
     <option value="paid,denied,withdrawn">Closed</option>
   </select>
 </header>
+<p id="banner" style="display:none;margin:0;padding:10px 16px;background:#fff1d6;color:#6b4a00;font-weight:600"></p>
 <p id="msg" class="muted"></p>
 <main id="lawyers"></main>
 <main id="pending"></main>
@@ -65,6 +66,9 @@ const STATUSES = ["requested","identity_submitted","agreement_signed","identity_
 const $ = (s) => document.querySelector(s);
 const tokenInput = $("#token");
 try { tokenInput.value = sessionStorage.getItem("surpay-admin") || ""; } catch {}
+// The app's "Admin demo" button opens /admin#demo=<pass>. Take the pass, then clear it from the address bar.
+const demoPass = (location.hash.match(/demo=([^&]+)/) || [])[1];
+if (demoPass) { tokenInput.value = decodeURIComponent(demoPass); history.replaceState(null, "", location.pathname); }
 
 function el(tag, attrs = {}, ...children) {
   const n = document.createElement(tag);
@@ -354,6 +358,10 @@ async function load() {
   for (const id of ["#list", "#pending", "#lawyers", "#relatives", "#fees", "#audit"]) $(id).replaceChildren();
   $("#filter").style.display = view === "claims" ? "" : "none";
   try {
+    const who = await (await api("/admin/whoami")).json();
+    const banner = $("#banner");
+    banner.style.display = who.demo ? "block" : "none";
+    banner.textContent = who.demo ? "Admin demo: you see and act only on demo data (Demo County, the demo accounts, and Demo County attorneys). Real people's records stay hidden. Fee settings are read-only." : "";
     if (view === "fees") { await loadFees(); $("#msg").textContent = ""; return; }
     if (view === "audit") { await loadAudit(); $("#msg").textContent = ""; return; }
     if (view === "claims") {

@@ -10,7 +10,8 @@ from sqlalchemy import func, select
 
 from . import attorneys, audit, chat, claims, config, crypto, fees
 from .audit import ClientInfo
-from .deps import Admin, Client, DbSession
+from .demo import is_demo_attorney, is_demo_claim, is_demo_user
+from .deps import Admin, AdminScope, Client, DbSession
 from .matching import find_matches, find_relative_matches
 from .models import (
     AttorneyProfile, AuditLog, Claim, ClaimEvent, FeeBand, FeeRule, IdentityVerification, Relative, User,
@@ -56,16 +57,34 @@ def _identity(i: IdentityVerification | None) -> dict | None:
 
 @router.get("/admin", response_class=HTMLResponse)
 def admin_page():
-    if not config.ADMIN_TOKEN:
+    if not config.ADMIN_TOKEN and not config.DEMO_ENABLED:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found")
     return HTMLResponse((Path(__file__).parent / "static" / "admin.html").read_text(), headers={
         "Content-Security-Policy": "default-src 'self'; img-src 'self' blob: data:; style-src 'self' 'unsafe-inline'; "
                                    "script-src 'self' 'unsafe-inline'; frame-ancestors 'none'"})
 
 
+@router.get("/admin/whoami")
+def admin_whoami(scope: Admin) -> dict:
+    return {"demo": scope.demo}
+
+
 # --- Claims -------------------------------------------------------------------------------------
 
-def admin_claim(c: Claim) -> dict:
+def admin_claim(c: Claim, scope: AdminScope | None = None) -> dict:
+    out = _admin_claim(c)
+    if scope is not None and scope.demo and not is_demo_user(c.user):
+        # A real person testing with the demo record: the demo admin never sees their details.
+        out["user"] = {"id": c.user.id, "email": "(a tester: hidden in the admin demo)", "full_name": "Tester",
+                       "phone": "", "addresses": []}
+        out["identity"] = None
+        if out.get("agreement"):
+            out["agreement"] = {**out["agreement"], "ip_address": "hidden", "device": "hidden", "device_id": "hidden",
+                                "has_signature_image": False}
+    return out
+
+
+def _admin_claim(c: Claim) -> dict:
     from .api import claim_out
     from .attorney_api import other_claimants
     u = c.user
@@ -99,23 +118,26 @@ def admin_claim(c: Claim) -> dict:
     }
 
 
-def _claim(session, claim_id: int) -> Claim:
+def _claim(session, claim_id: int, scope: AdminScope, personal: bool = False) -> Claim:
+    """The claim, if this dashboard user may see it (personal: also the claimant's own documents)."""
     claim = session.get(Claim, claim_id)
     if claim is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Claim not found")
+    scope.check(is_demo_claim(claim) and (not personal or is_demo_user(claim.user)))
     return claim
 
 
 @router.get("/admin/claims")
-def admin_claims(_: Admin, session: DbSession) -> list[dict]:
-    out = [admin_claim(c) for c in session.scalars(select(Claim).order_by(Claim.id.desc()))]
+def admin_claims(scope: Admin, session: DbSession) -> list[dict]:
+    out = [admin_claim(c, scope) for c in session.scalars(select(Claim).order_by(Claim.id.desc()))
+           if not scope.demo or is_demo_claim(c)]
     session.commit()
     return out
 
 
 @router.post("/admin/claims/{claim_id}/status")
-def admin_set_status(claim_id: int, body: AdminStatusIn, _: Admin, session: DbSession, client: Client) -> dict:
-    claim = _claim(session, claim_id)
+def admin_set_status(claim_id: int, body: AdminStatusIn, scope: Admin, session: DbSession, client: Client) -> dict:
+    claim = _claim(session, claim_id, scope)
     try:
         claims.set_status(claim, body.status, body.note)
     except ValueError as e:
@@ -126,39 +148,39 @@ def admin_set_status(claim_id: int, body: AdminStatusIn, _: Admin, session: DbSe
     _log(session, "admin.claim_status", client, "claim", claim.id, status=body.status, note=body.note)
     session.commit()
     attorneys.assign_ready(session)
-    return admin_claim(claim)
+    return admin_claim(claim, scope)
 
 
 @router.post("/admin/claims/{claim_id}/reassign")
-def admin_reassign(claim_id: int, _: Admin, session: DbSession, client: Client) -> dict:
+def admin_reassign(claim_id: int, scope: Admin, session: DbSession, client: Client) -> dict:
     """Take the case away from its current attorney (e.g. no response) and offer it to the next."""
-    claim = _claim(session, claim_id)
+    claim = _claim(session, claim_id, scope)
     if claim.attorney_id:
         attorneys.decline(session, claim, claim.attorney_id)
     else:
         attorneys.offer(session, claim)
     _log(session, "admin.claim_reassigned", client, "claim", claim.id)
     session.commit()
-    return admin_claim(claim)
+    return admin_claim(claim, scope)
 
 
 @router.post("/admin/claims/{claim_id}/payout")
-def admin_payout(claim_id: int, _: Admin, session: DbSession, client: Client) -> dict:
+def admin_payout(claim_id: int, scope: Admin, session: DbSession, client: Client) -> dict:
     """Record that the attorney's per-case fee has been paid."""
-    claim = session.get(Claim, claim_id)
-    if claim is None or claim.payout_status != "due":
+    claim = _claim(session, claim_id, scope)
+    if claim.payout_status != "due":
         raise HTTPException(status.HTTP_409_CONFLICT, "No payout due on this claim")
     claim.payout_status = "paid"
     claim.events.append(ClaimEvent(status=claim.status, note="Attorney fee paid", created_at=_now()))
     _log(session, "admin.attorney_paid", client, "claim", claim.id, cents=claim.attorney_fee_cents)
     session.commit()
-    return admin_claim(claim)
+    return admin_claim(claim, scope)
 
 
 @router.post("/admin/claims/{claim_id}/fee")
-def admin_fee_override(claim_id: int, body: AdminFeeOverrideIn, _: Admin, session: DbSession, client: Client) -> dict:
+def admin_fee_override(claim_id: int, body: AdminFeeOverrideIn, scope: Admin, session: DbSession, client: Client) -> dict:
     """Set this case's fee by hand. Only before the client signs; the signed fee never changes."""
-    claim = _claim(session, claim_id)
+    claim = _claim(session, claim_id, scope)
     if claim.agreement is not None:
         raise HTTPException(status.HTTP_409_CONFLICT, "The client has already signed at the current fee")
     _, basis = fees.quote(session, claim.record)
@@ -169,28 +191,28 @@ def admin_fee_override(claim_id: int, body: AdminFeeOverrideIn, _: Admin, sessio
     claim.fee_basis = {**basis, "final_pct": body.fee_pct, "override": True, "override_note": body.note}
     _log(session, "admin.fee_override", client, "claim", claim.id, fee_pct=body.fee_pct, note=body.note)
     session.commit()
-    return admin_claim(claim)
+    return admin_claim(claim, scope)
 
 
 @router.get("/admin/claims/{claim_id}/messages")
-def admin_messages(claim_id: int, _: Admin, session: DbSession, client: Client) -> list[dict]:
+def admin_messages(claim_id: int, scope: Admin, session: DbSession, client: Client) -> list[dict]:
     """For disputes and misuse reports only; every view is logged."""
-    claim = _claim(session, claim_id)
+    claim = _claim(session, claim_id, scope, personal=True)
     _log(session, "admin.messages_viewed", client, "claim", claim.id)
     session.commit()
     return [{**chat.message_out(m), "created_at": m.created_at.isoformat()} for m in claim.messages]
 
 
 @router.get("/admin/claims/{claim_id}/signature")
-def admin_signature(claim_id: int, _: Admin, session: DbSession):
-    claim = _claim(session, claim_id)
+def admin_signature(claim_id: int, scope: Admin, session: DbSession):
+    claim = _claim(session, claim_id, scope, personal=True)
     return _image(claim.agreement.signature_image if claim.agreement else None)
 
 
 @router.get("/admin/claims/{claim_id}/evidence")
-def admin_evidence(claim_id: int, _: Admin, session: DbSession) -> dict:
+def admin_evidence(claim_id: int, scope: Admin, session: DbSession) -> dict:
     """Certificate of signing: who signed what, when, from which device, and the proof trail."""
-    claim = _claim(session, claim_id)
+    claim = _claim(session, claim_id, scope, personal=True)
     a, u = claim.agreement, claim.user
     if a is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Not signed")
@@ -211,7 +233,7 @@ def admin_evidence(claim_id: int, _: Admin, session: DbSession) -> dict:
 # --- Identities -------------------------------------------------------------------------------------
 
 @router.get("/admin/identities")
-def admin_identities(_: Admin, session: DbSession, review_status: str = "pending") -> list[dict]:
+def admin_identities(scope: Admin, session: DbSession, review_status: str = "pending") -> list[dict]:
     """People waiting for ID review (or approved / rejected), oldest first, with what they listed."""
     rows = session.scalars(
         select(IdentityVerification).where(IdentityVerification.review_status == review_status)
@@ -229,6 +251,7 @@ def admin_identities(_: Admin, session: DbSession, review_status: str = "pending
                 same.append(o.user.email)
         return same
 
+    rows = [i for i in rows if not scope.demo or is_demo_user(i.user)]
     return [{
         "user": {"id": i.user.id, "email": i.user.email, "full_name": i.user.full_name,
                  "other_names": i.user.other_names or [], "addresses": _addresses(i.user)},
@@ -239,18 +262,20 @@ def admin_identities(_: Admin, session: DbSession, review_status: str = "pending
 
 
 @router.get("/admin/users/{user_id}/documents/{kind}")
-def admin_document(user_id: int, kind: str, _: Admin, session: DbSession):
+def admin_document(user_id: int, kind: str, scope: Admin, session: DbSession):
     user = session.get(User, user_id)
     if user is None or user.identity is None or kind not in ("id_front", "id_back", "selfie"):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found")
+    scope.check(is_demo_user(user))
     return _image(getattr(user.identity, kind))
 
 
 @router.post("/admin/users/{user_id}/identity")
-def admin_review_identity(user_id: int, body: AdminIdentityIn, _: Admin, session: DbSession, client: Client) -> dict:
+def admin_review_identity(user_id: int, body: AdminIdentityIn, scope: Admin, session: DbSession, client: Client) -> dict:
     user = session.get(User, user_id)
     if user is None or user.identity is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No identity submitted")
+    scope.check(is_demo_user(user))  # approving a real person's ID would unlock real records
     user.identity.review_status = body.decision
     user.identity.review_note = body.note
     user.identity.reviewed_at = _now()
@@ -281,9 +306,9 @@ def admin_review_identity(user_id: int, body: AdminIdentityIn, _: Admin, session
 # --- Family members (heir claims) ---------------------------------------------------------------------
 
 @router.get("/admin/relatives")
-def admin_relatives(_: Admin, session: DbSession, review_status: str = "pending") -> list[dict]:
-    rows = session.scalars(select(Relative).where(Relative.review_status == review_status)
-                           .order_by(Relative.submitted_at))
+def admin_relatives(scope: Admin, session: DbSession, review_status: str = "pending") -> list[dict]:
+    rows = [r for r in session.scalars(select(Relative).where(Relative.review_status == review_status)
+                                       .order_by(Relative.submitted_at)) if not scope.demo or is_demo_user(r.user)]
     return [{
         "id": r.id, "user": {"id": r.user.id, "email": r.user.email,
                              "verified_name": r.user.identity.legal_name if r.user.identity else r.user.full_name,
@@ -298,19 +323,21 @@ def admin_relatives(_: Admin, session: DbSession, review_status: str = "pending"
 
 
 @router.get("/admin/relatives/{relative_id}/documents/{kind}")
-def admin_relative_document(relative_id: int, kind: str, _: Admin, session: DbSession):
+def admin_relative_document(relative_id: int, kind: str, scope: Admin, session: DbSession):
     r = session.get(Relative, relative_id)
     if r is None or kind not in ("relationship_proof", "death_certificate", "authority_document"):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found")
+    scope.check(is_demo_user(r.user))
     return _image(getattr(r, kind))
 
 
 @router.post("/admin/relatives/{relative_id}")
-def admin_review_relative(relative_id: int, body: AdminIdentityIn, _: Admin, session: DbSession,
+def admin_review_relative(relative_id: int, body: AdminIdentityIn, scope: Admin, session: DbSession,
                           client: Client) -> dict:
     r = session.get(Relative, relative_id)
     if r is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found")
+    scope.check(is_demo_user(r.user))
     r.review_status, r.review_note, r.reviewed_at = body.decision, body.note, _now()
     from .models import Notification
     session.add(Notification(
@@ -325,11 +352,13 @@ def admin_review_relative(relative_id: int, body: AdminIdentityIn, _: Admin, ses
 # --- Attorneys --------------------------------------------------------------------------------------
 
 @router.get("/admin/attorneys")
-def admin_attorneys(_: Admin, session: DbSession, review_status: str = "pending") -> list[dict]:
+def admin_attorneys(scope: Admin, session: DbSession, review_status: str = "pending") -> list[dict]:
     rows = session.scalars(select(AttorneyProfile).where(AttorneyProfile.status == review_status)
                            .order_by(AttorneyProfile.created_at))
     out = []
     for a in rows:
+        if scope.demo and not is_demo_attorney(a):
+            continue
         open_cases = session.scalar(select(func.count()).select_from(Claim).where(
             Claim.attorney_id == a.user_id, Claim.assignment_status.in_(("offered", "accepted")),
             Claim.status.in_(attorneys.OPEN_STATUSES)))
@@ -343,18 +372,20 @@ def admin_attorneys(_: Admin, session: DbSession, review_status: str = "pending"
 
 
 @router.get("/admin/attorneys/{user_id}/bar-card")
-def admin_bar_card(user_id: int, _: Admin, session: DbSession):
+def admin_bar_card(user_id: int, scope: Admin, session: DbSession):
     user = session.get(User, user_id)
     if user is None or user.attorney is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found")
+    scope.check(is_demo_attorney(user.attorney))
     return _image(user.attorney.bar_card)
 
 
 @router.post("/admin/attorneys/{user_id}")
-def admin_review_attorney(user_id: int, body: AdminAttorneyIn, _: Admin, session: DbSession, client: Client) -> dict:
+def admin_review_attorney(user_id: int, body: AdminAttorneyIn, scope: Admin, session: DbSession, client: Client) -> dict:
     user = session.get(User, user_id)
     if user is None or user.attorney is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No application")
+    scope.check(is_demo_attorney(user.attorney))  # only Demo County attorneys: they can only get demo cases
     user.attorney.status = body.decision
     user.attorney.review_note = body.note
     user.attorney.reviewed_at = _now()
@@ -380,7 +411,7 @@ def _rule_out(r: FeeRule) -> dict:
 
 
 @router.get("/admin/fees")
-def admin_fees(_: Admin, session: DbSession) -> dict:
+def admin_fees(scope: Admin, session: DbSession) -> dict:
     rules = session.scalars(select(FeeRule).order_by(FeeRule.state, FeeRule.county)).all()
     bands = sorted(session.scalars(select(FeeBand)).all(),
                    key=lambda b: (b.up_to_cents is None, b.up_to_cents or 0))
@@ -391,7 +422,8 @@ def admin_fees(_: Admin, session: DbSession) -> dict:
 
 
 @router.post("/admin/fees/rules")
-def admin_save_rule(body: AdminFeeRuleIn, _: Admin, session: DbSession, client: Client) -> dict:
+def admin_save_rule(body: AdminFeeRuleIn, scope: Admin, session: DbSession, client: Client) -> dict:
+    scope.read_only()
     county = body.county.strip()
     rule = session.scalar(select(FeeRule).where(FeeRule.state == body.state, FeeRule.county == county))
     if rule is None:
@@ -406,7 +438,8 @@ def admin_save_rule(body: AdminFeeRuleIn, _: Admin, session: DbSession, client: 
 
 
 @router.delete("/admin/fees/rules/{rule_id}")
-def admin_delete_rule(rule_id: int, _: Admin, session: DbSession, client: Client) -> dict:
+def admin_delete_rule(rule_id: int, scope: Admin, session: DbSession, client: Client) -> dict:
+    scope.read_only()
     rule = session.get(FeeRule, rule_id)
     if rule is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found")
@@ -417,7 +450,8 @@ def admin_delete_rule(rule_id: int, _: Admin, session: DbSession, client: Client
 
 
 @router.put("/admin/fees/bands")
-def admin_save_bands(body: AdminFeeBandsIn, _: Admin, session: DbSession, client: Client) -> dict:
+def admin_save_bands(body: AdminFeeBandsIn, scope: Admin, session: DbSession, client: Client) -> dict:
+    scope.read_only()
     try:
         bands = [(int(b["up_to_cents"]) if b.get("up_to_cents") is not None else None, float(b["pct"]))
                  for b in body.bands]
@@ -431,11 +465,11 @@ def admin_save_bands(body: AdminFeeBandsIn, _: Admin, session: DbSession, client
     session.add_all(FeeBand(up_to_cents=up, pct=p) for up, p in bands)
     _log(session, "admin.fee_bands_saved", client, bands=body.bands)
     session.commit()
-    return admin_fees(_, session)
+    return admin_fees(scope, session)
 
 
 @router.get("/admin/fees/quote")
-def admin_fee_quote(record_id: int, _: Admin, session: DbSession) -> dict:
+def admin_fee_quote(record_id: int, scope: Admin, session: DbSession) -> dict:
     from .models import SurplusRecord
     r = session.get(SurplusRecord, record_id)
     if r is None:
@@ -447,9 +481,12 @@ def admin_fee_quote(record_id: int, _: Admin, session: DbSession) -> dict:
 # --- Audit trail and account closures --------------------------------------------------------------------
 
 @router.get("/admin/audit")
-def admin_audit(_: Admin, session: DbSession, user_id: int | None = None, claim_id: int | None = None,
+def admin_audit(scope: Admin, session: DbSession, user_id: int | None = None, claim_id: int | None = None,
                 limit: int = 200) -> list[dict]:
     q = select(AuditLog).order_by(AuditLog.id.desc()).limit(min(limit, 1000))
+    if scope.demo:  # only the fictional accounts' activity
+        demo_ids = list(session.scalars(select(User.id).where(User.email.like("%@surpay.test"))))
+        q = q.where(AuditLog.actor_id.in_(demo_ids))
     if user_id is not None:
         q = q.where(AuditLog.actor_id == user_id)
     if claim_id is not None:
@@ -458,12 +495,14 @@ def admin_audit(_: Admin, session: DbSession, user_id: int | None = None, claim_
 
 
 @router.get("/admin/audit/verify")
-def admin_audit_verify(_: Admin, session: DbSession) -> dict:
+def admin_audit_verify(scope: Admin, session: DbSession) -> dict:
     return audit.verify(session)
 
 
 @router.get("/admin/deletion-requests")
-def admin_deletion_requests(_: Admin, session: DbSession) -> list[dict]:
+def admin_deletion_requests(scope: Admin, session: DbSession) -> list[dict]:
+    if scope.demo:
+        return []
     rows = session.scalars(select(User).where(User.deletion_requested_at.is_not(None)))
     return [{"user_id": u.id, "email": u.email, "requested_at": u.deletion_requested_at.isoformat(),
              "claims": [{"id": c.id, "status": c.status} for c in u.claims]} for u in rows]

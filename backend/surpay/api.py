@@ -227,6 +227,22 @@ def demo_attorney_login(session: DbSession, client: Client):
     return TokenOut(token=create_token(user), user=_profile(user))
 
 
+@app.post("/auth/demo-admin")
+def demo_admin_login(session: DbSession, client: Client) -> dict:
+    """A short-lived pass to the staff dashboard that only sees and acts on demo data (testing only)."""
+    from .demo import demo_records
+    from .deps import DEMO_ADMIN_HOURS, demo_admin_token
+    from .ingest import upsert
+    if not config.DEMO_ENABLED:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Demo login is turned off on this server")
+    if not session.scalar(select(SurplusRecord.id).where(SurplusRecord.source == "demo",
+                                                         SurplusRecord.status == "listed").limit(1)):
+        upsert(session, "demo", demo_records(), full_snapshot=True)
+    audit.record(session, "auth.demo_admin", actor_type="admin", client=client)
+    session.commit()
+    return {"token": demo_admin_token(), "expires_in_hours": DEMO_ADMIN_HOURS, "path": "admin"}
+
+
 @app.get("/me", response_model=ProfileOut)
 def get_me(user: CurrentUser):
     return _profile(user)

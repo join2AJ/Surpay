@@ -188,6 +188,12 @@ class SurpayViewModel(
         _session.value = SessionState.SignedIn(profile, offlineDemo = repo.isOfflineDemo)
     }
 
+    /** Testing: a short-lived pass to the staff dashboard (demo data only), opened in the browser. */
+    fun openAdminDemo(open: (String) -> Unit) = submit {
+        val pass = repo.demoAdminPass()
+        open("${server.current.trimEnd('/')}/admin#demo=${java.net.URLEncoder.encode(pass, "UTF-8")}")
+    }
+
     fun demoAttorneyLogin() = submit {
         _session.value = SessionState.SignedIn(repo.demoAttorneyLogin())
     }

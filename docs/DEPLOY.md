@@ -115,6 +115,14 @@ How cases flow:
 The fee per case is `SURPAY_ATTORNEY_FEE_CENTS` (default 50000 = $500), a placeholder you set
 from your attorney agreements. Per-state amounts can be set in `backend/surpay/config.py`.
 
+### Admin demo (testing)
+
+While `SURPAY_SEED_DEMO=true`, the app's welcome screen has **Claimant**, **Attorney** and **Admin** demo
+buttons. **Admin** opens this dashboard with a 2-hour pass that only sees and acts on demo data: Demo County
+claims, the fictional demo accounts, and attorneys who serve only Demo County. Real people's records, ID photos
+and fee settings stay out of reach, so the button is safe to leave in test builds. Real staff use the
+"Surpay staff? Open the review dashboard" link and the real `SURPAY_ADMIN_TOKEN`.
+
 ### Fees, family claims, audit (the dropdown at the top of `/admin`)
 
 - **Fee rules**: the client's fee is the average of the county's usual rate and the rate for the amount

@@ -127,6 +127,11 @@ fun IntroScreen(onDone: () -> Unit) {
 
 /** What changed in each version, newest first. Shown once after an update. */
 val CHANGELOG: List<Pair<Int, List<String>>> = listOf(
+    4 to listOf(
+        "Admin demo: one tap opens the staff dashboard, limited to demo data, for testing",
+        "“Surpay staff? Open the review dashboard” link on the welcome screen",
+        "Clearer message when the server has demo login switched off",
+    ),
     3 to listOf(
         "One-tap attorney demo next to the claimant demo, for testing",
         "Ask for a different attorney any time before your claim is filed",

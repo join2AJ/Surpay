@@ -464,6 +464,9 @@ data class DeviceInfo(
 }
 
 @Serializable
+data class DemoAdminPass(val token: String, @SerialName("expires_in_hours") val expiresInHours: Int = 2)
+
+@Serializable
 data class ApiError(val detail: kotlinx.serialization.json.JsonElement? = null)
 
 interface SurpayApi {
@@ -472,6 +475,7 @@ interface SurpayApi {
     @POST("auth/login") suspend fun login(@Body body: LoginRequest): TokenResponse
     @POST("auth/demo") suspend fun demoLogin(): TokenResponse
     @POST("auth/demo-attorney") suspend fun demoAttorneyLogin(): TokenResponse
+    @POST("auth/demo-admin") suspend fun demoAdmin(): DemoAdminPass
     @GET("me") suspend fun me(): Profile
     @PUT("me") suspend fun updateMe(@Body body: ProfileUpdate): Profile
     @GET("me/matches") suspend fun matches(): MatchesResponse

@@ -162,3 +162,18 @@ def reset_demo_attorney(session: Session) -> User:
     session.commit()
     session.refresh(lawyer)
     return lawyer
+
+
+def is_demo_user(user) -> bool:
+    """The fictional demo accounts (Jordan, Casey, Avery). Real testers' data is never shown to the demo admin."""
+    return user is not None and user.email.endswith("@surpay.test")
+
+
+def is_demo_claim(claim) -> bool:
+    return claim.record is not None and claim.record.source == "demo"
+
+
+def is_demo_attorney(profile) -> bool:
+    """An attorney who only serves Demo County can only ever get demo cases."""
+    counties = {c.lower().removesuffix(" county").strip() for c in (profile.counties or [])}
+    return bool(counties) and counties <= {"demo"}

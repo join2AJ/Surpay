@@ -223,6 +223,7 @@ class OfflineDemoApi : SurpayApi {
     override suspend fun caseDocument(id: Int, kind: String): okhttp3.ResponseBody = offline()
 
     override suspend fun demoAttorneyLogin(): TokenResponse = offline()
+    override suspend fun demoAdmin(): DemoAdminPass = offline()
     override suspend fun signup(body: SignupRequest): TokenResponse = offline()
     override suspend fun login(body: LoginRequest): TokenResponse = offline()
 

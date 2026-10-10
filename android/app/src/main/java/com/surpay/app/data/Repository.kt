@@ -150,6 +150,9 @@ class SurpayRepository(private val remote: SurpayApi, private val tokens: TokenS
         return response.user
     }
 
+    /** Testing only: a pass to the staff dashboard limited to demo data. */
+    suspend fun demoAdminPass(): String = remote.demoAdmin().token
+
     suspend fun logout() {
         tokens.clear()
         isOfflineDemo = false

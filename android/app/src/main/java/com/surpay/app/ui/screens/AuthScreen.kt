@@ -66,6 +66,8 @@ fun AuthScreen(
     onClearError: () -> Unit,
     onDemoLogin: () -> Unit = {},
     onDemoAttorneyLogin: () -> Unit = {},
+    onDemoAdmin: () -> Unit = {},
+    onStaffDashboard: () -> Unit = {},
     onServerSettings: () -> Unit = {},
     policies: Policies? = null,
     onLoadPolicies: () -> Unit = {},
@@ -94,7 +96,8 @@ fun AuthScreen(
         when (path) {
             null -> ChooseRole(coverage, showDemo, form, onChoose = { path = it; onClearError() },
                 onDemoLogin = { onClearError(); onDemoLogin() },
-                onDemoAttorneyLogin = { onClearError(); onDemoAttorneyLogin() })
+                onDemoAttorneyLogin = { onClearError(); onDemoAttorneyLogin() },
+                onDemoAdmin = { onClearError(); onDemoAdmin() })
             else -> AccountForm(
                 path = path!!, form = form, policies = policies, onLoadPolicies = onLoadPolicies,
                 onSwitch = { path = it; onClearError() }, onSignup = onSignup, onLogin = onLogin, onClearError = onClearError,
@@ -110,6 +113,9 @@ fun AuthScreen(
                 "an independent licensed attorney. You can always claim surplus funds yourself, for free, from the county.",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        TextButton(onClick = onStaffDashboard, modifier = Modifier.align(Alignment.CenterHorizontally).testTag("staffDashboard")) {
+            Text("Surpay staff? Open the review dashboard", style = MaterialTheme.typography.bodySmall)
+        }
         if (developer) {
             TextButton(onClick = onServerSettings, modifier = Modifier.align(Alignment.CenterHorizontally).testTag("serverSettings")) {
                 Text("Server settings (testers)", style = MaterialTheme.typography.bodySmall)
@@ -126,6 +132,7 @@ private fun ColumnScope.ChooseRole(
     onChoose: (String) -> Unit,
     onDemoLogin: () -> Unit,
     onDemoAttorneyLogin: () -> Unit,
+    onDemoAdmin: () -> Unit,
 ) {
     Text("The county won’t tell you they owe you money. We will.", style = MaterialTheme.typography.headlineMedium)
     Spacer(Modifier.height(10.dp))
@@ -162,15 +169,19 @@ private fun ColumnScope.ChooseRole(
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(onClick = onDemoLogin, enabled = !form.busy,
                 modifier = Modifier.weight(1f).height(48.dp).testTag("demoLogin")) {
-                if (form.busy) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp) else Text("Claimant demo")
+                if (form.busy) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp) else Text("Claimant")
             }
             OutlinedButton(onClick = onDemoAttorneyLogin, enabled = !form.busy,
                 modifier = Modifier.weight(1f).height(48.dp).testTag("demoAttorneyLogin")) {
-                if (form.busy) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp) else Text("Attorney demo")
+                if (form.busy) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp) else Text("Attorney")
+            }
+            OutlinedButton(onClick = onDemoAdmin, enabled = !form.busy,
+                modifier = Modifier.weight(1f).height(48.dp).testTag("demoAdmin")) {
+                if (form.busy) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp) else Text("Admin")
             }
         }
-        Text("Made-up people: “Jordan Testwell” with two matches, and attorney “Avery Counsel” with a verified case " +
-            "waiting. Both reset each time.",
+        Text("Made-up people: “Jordan Testwell” with two matches, attorney “Avery Counsel” with a verified case " +
+            "waiting, and the staff dashboard limited to demo data. They reset each time.",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(top = 4.dp))
         form.error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 6.dp).testTag("error")) }
