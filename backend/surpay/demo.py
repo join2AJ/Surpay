@@ -5,7 +5,7 @@ People and places are made up ("Demo County") so they can't be mistaken for real
 """
 
 import secrets
-from datetime import date
+from datetime import date, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -23,12 +23,16 @@ DEMO_ADDRESS = {"street": "412 Maple Ridge Rd", "city": "Springfield", "state": 
 
 
 def demo_records() -> list[RecordIn]:
+    # Sale dates count back from today so the demo always shows every deadline colour (Ohio allows
+    # about 3 years): D-1001 ~10 months left, D-1002 ~25 days (urgent), D-1003 ~4 months.
+    today = date.today()
+    ago = lambda days: today - timedelta(days=days)  # noqa: E731
     rows = [
-        ("D-1001", "Jordan Testwell", "412 Maple Ridge Rd, Springfield, OH 45501", 2_845_000, date(2024, 6, 17)),
-        ("D-1002", "TESTWELL, JORDAN A", "88 Harbor View Dr, Springfield, OH 45502", 612_550, date(2023, 11, 6)),
-        ("D-1003", "Casey Placeholder", "19 Elm St, Springfield, OH 45503", 1_210_000, date(2024, 2, 12)),
-        ("D-1004", "Morgan & Riley Example", "7 Birch Ct, Springfield, OH 45504", 4_390_075, date(2024, 9, 9)),
-        ("D-1005", "Avery Sampleton", "230 Lake Shore Blvd, Springfield, OH 45505", 98_013, date(2025, 1, 21)),
+        ("D-1001", "Jordan Testwell", "412 Maple Ridge Rd, Springfield, OH 45501", 2_845_000, ago(790)),
+        ("D-1002", "TESTWELL, JORDAN A", "88 Harbor View Dr, Springfield, OH 45502", 612_550, ago(1070)),
+        ("D-1003", "Casey Placeholder", "19 Elm St, Springfield, OH 45503", 1_210_000, ago(970)),
+        ("D-1004", "Morgan & Riley Example", "7 Birch Ct, Springfield, OH 45504", 4_390_075, ago(700)),
+        ("D-1005", "Avery Sampleton", "230 Lake Shore Blvd, Springfield, OH 45505", 98_013, ago(600)),
     ]
     return [
         RecordIn(source_key=key, state="OH", county="Demo", sale_type="tax_sale", reference=f"Case {key}",

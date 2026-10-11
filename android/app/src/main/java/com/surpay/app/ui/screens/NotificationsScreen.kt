@@ -14,6 +14,7 @@ import androidx.compose.material.icons.automirrored.outlined.Chat
 import androidx.compose.material.icons.outlined.Celebration
 import androidx.compose.material.icons.outlined.FamilyRestroom
 import androidx.compose.material.icons.outlined.Gavel
+import androidx.compose.material.icons.outlined.HourglassBottom
 import androidx.compose.material.icons.outlined.NotificationsNone
 import androidx.compose.material.icons.outlined.Timeline
 import androidx.compose.material.icons.outlined.VerifiedUser
@@ -61,7 +62,11 @@ fun NotificationsScreen(
                             "case_offer" -> Icons.Outlined.Gavel to MaterialTheme.colorScheme.primaryContainer
                             "identity" -> Icons.Outlined.VerifiedUser to MaterialTheme.colorScheme.primaryContainer
                             "relative" -> Icons.Outlined.FamilyRestroom to MaterialTheme.colorScheme.primaryContainer
-                            else -> Icons.Outlined.Timeline to MaterialTheme.colorScheme.primaryContainer
+                            else -> if (n.kind.startsWith("deadline_") || n.kind.startsWith("unclaimed_")) {
+                                // deadline_30: 60 days or less shows red, further out amber
+                                val days = n.kind.substringAfter('_').toIntOrNull() ?: 90
+                                Icons.Outlined.HourglassBottom to urgencyStyle(if (days <= 60) "urgent" else "soon").container
+                            } else Icons.Outlined.Timeline to MaterialTheme.colorScheme.primaryContainer
                         }
                         IconCircle(icon, background = bg)
                         Column(Modifier.weight(1f).padding(start = 12.dp)) {

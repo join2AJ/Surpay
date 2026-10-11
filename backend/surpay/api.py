@@ -14,7 +14,7 @@ from .claims import ESTIMATE_DISCLAIMER
 from .db import init_db
 from .demo import reset_demo_attorney, reset_demo_user
 from .deps import Client, CurrentUser, DbSession, encrypt_image
-from .legal import deadline_for, legal_basis
+from .legal import deadline_for, deadline_info, legal_basis
 from .matching import find_all_matches, find_matches
 from .me_api import record_consent, router as me_router, terms_current
 from .models import Agreement, Claim, CountySource, IdentityVerification, Notification, PreviousAddress, SurplusRecord, User
@@ -304,6 +304,7 @@ def my_matches(user: CurrentUser, session: DbSession):
             sale_date=r.sale_date, source_url=r.source_url, last_seen=r.last_seen,
             claim_status=claim.status if claim else None, legal=legal_basis(r.state),
             deadline_date=deadline_for(r.state, r.sale_date),
+            deadline=deadline_info(r.state, r.sale_date, claim.status if claim else None),
             relative_id=m.relative.id if m.relative else None, on_behalf_of=on_behalf_of(m.relative),
         ))
     searched = session.scalar(select(func.count()).select_from(SurplusRecord)
@@ -343,6 +344,7 @@ def claim_out(c: Claim) -> ClaimOut:
         attorney=_attorney_public(c),
         fee_pct=pct,
         deadline_date=deadline_for(r.state, r.sale_date),
+        deadline=deadline_info(r.state, r.sale_date, c.status),
         on_behalf_of=on_behalf_of(c.relative),
         chat_open=chat.thread_open(c),
         unread_messages=sum(1 for m in chat.thread(c) if m.sender_role == "attorney" and m.read_at is None),
@@ -377,6 +379,9 @@ def start_claim(body: ClaimIn, user: CurrentUser, session: DbSession, client: Cl
     existing = session.scalar(select(Claim).where(Claim.user_id == user.id, Claim.record_id == body.record_id))
     if existing:
         return claim_out(existing)
+    clock = deadline_info(match.record.state, match.record.sale_date)
+    if not clock["can_claim"]:
+        raise HTTPException(status.HTTP_409_CONFLICT, clock["message"])
     claim = claims.new_claim(session, user, body.record_id)
     claim.record = match.record
     claim.relative_id = match.relative.id if match.relative else None

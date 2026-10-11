@@ -99,6 +99,27 @@ data class ProfileUpdate(
 @Serializable
 data class TokenResponse(val token: String, val user: Profile)
 
+/** The legal clock on one record: how long is left to claim, colour-coded by urgency. */
+@Serializable
+data class Deadline(
+    /** safe | soon | urgent | expired | met | unknown */
+    val urgency: String = "unknown",
+    val color: String = "",
+    val label: String = "",
+    val message: String = "",
+    val deadline: String? = null,
+    /** Leave the attorney time to file: about 45 days before the deadline. */
+    @SerialName("file_by") val fileBy: String? = null,
+    @SerialName("sale_date") val saleDate: String? = null,
+    @SerialName("days_left") val daysLeft: Int? = null,
+    @SerialName("total_days") val totalDays: Int? = null,
+    /** Share of the claim period already gone, 0-100. */
+    @SerialName("elapsed_pct") val elapsedPct: Int? = null,
+    val rule: String = "",
+    @SerialName("if_missed") val ifMissed: String = "",
+    @SerialName("can_claim") val canClaim: Boolean = true,
+)
+
 @Serializable
 data class Match(
     @SerialName("record_id") val recordId: Int,
@@ -121,6 +142,7 @@ data class Match(
     val legal: Legal = Legal(),
     /** Approximate last day to claim. */
     @SerialName("deadline_date") val deadlineDate: String? = null,
+    val deadline: Deadline? = null,
     @SerialName("relative_id") val relativeId: Int? = null,
     /** Family claims: "Mary Parent (your parent, as heir)". */
     @SerialName("on_behalf_of") val onBehalfOf: String? = null,
@@ -177,6 +199,7 @@ data class Claim(
     val attorney: AttorneyPublic? = null,
     @SerialName("fee_pct") val feePct: Double = 0.0,
     @SerialName("deadline_date") val deadlineDate: String? = null,
+    val deadline: Deadline? = null,
     @SerialName("on_behalf_of") val onBehalfOf: String? = null,
     /** Messages with the attorney: open once they accept the case. */
     @SerialName("chat_open") val chatOpen: Boolean = false,
@@ -335,6 +358,7 @@ data class AttorneyCase(
     @SerialName("accepted_at") val acceptedAt: String? = null,
     @SerialName("source_url") val sourceUrl: String = "",
     val legal: Legal = Legal(),
+    val deadline: Deadline? = null,
     @SerialName("on_behalf_of") val onBehalfOf: String? = null,
     @SerialName("filing_guide") val filingGuide: FilingGuide = FilingGuide(),
     @SerialName("chat_open") val chatOpen: Boolean = false,

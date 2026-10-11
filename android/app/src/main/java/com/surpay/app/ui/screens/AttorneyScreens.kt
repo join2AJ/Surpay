@@ -299,6 +299,10 @@ fun CasesScreen(profile: AttorneyProfile, cases: List<AttorneyCase>?, onOpen: (A
                     "to you here.", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
+        val clocks = (offered + active).map { it.clock() }
+        item {
+            DeadlineBanner(clocks.count { it.urgency == "urgent" }, clocks.count { it.urgency == "soon" }, forAttorney = true)
+        }
         section("New cases: accept or decline", offered, onOpen)
         section("Active", active, onOpen)
         section("Closed", closed, onOpen)
@@ -327,6 +331,11 @@ private fun CaseCard(c: AttorneyCase, onClick: () -> Unit) {
                 }
             }
             Text("${c.county} County, ${c.state} · ${c.reference}")
+            val clock = c.clock()
+            if (clock.urgency != "unknown") {
+                Spacer(Modifier.height(6.dp))
+                DeadlineChip(clock)
+            }
             if (c.unreadMessages > 0) {
                 Text("${c.unreadMessages} new message(s)", style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
@@ -373,6 +382,11 @@ fun CaseDetailScreen(
         if (case.sourceUrl.isNotBlank()) TextButton(onClick = { uri.openUri(case.sourceUrl) }) { Text("County list") }
         form.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         Spacer(Modifier.height(8.dp))
+        val clock = case.clock()
+        if (case.status !in CLOSED && clock.urgency != "unknown") {
+            DeadlineCard(clock, forAttorney = true)
+            Spacer(Modifier.height(12.dp))
+        }
 
         if (case.assignmentStatus == "offered") {
             Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth()) {

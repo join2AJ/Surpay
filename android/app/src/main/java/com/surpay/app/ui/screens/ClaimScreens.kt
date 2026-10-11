@@ -51,7 +51,6 @@ import com.surpay.app.data.Claim
 import com.surpay.app.data.TimelineStep
 import com.surpay.app.ui.claimStatusLabel
 import com.surpay.app.ui.dateRange
-import com.surpay.app.ui.deadlineText
 import com.surpay.app.ui.theme.Gold
 import com.surpay.app.ui.dollars
 import com.surpay.app.ui.prettyDate
@@ -96,6 +95,11 @@ fun ClaimScreen(
             Spacer(Modifier.height(12.dp))
         }
         NextActionCard(claim, onVerifyIdentity, onSignAgreement)
+        val clock = claim.clock()
+        if (claim.status !in setOf("paid", "denied", "withdrawn") && clock.urgency != "unknown") {
+            Spacer(Modifier.height(12.dp))
+            DeadlineCard(clock)
+        }
         if (claim.documentRequests.isNotEmpty()) {
             Spacer(Modifier.height(12.dp))
             ClaimDocumentsCard(claim.documentRequests, busy, onUploadDocument)
@@ -112,10 +116,8 @@ fun ClaimScreen(
                     modifier = Modifier.testTag("eta"),
                 )
                 Text("Typically 2 to 6 months in total. Some counties take longer.", style = MaterialTheme.typography.bodySmall)
-                deadlineText(claim.deadlineDate)?.let {
-                    Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 4.dp))
-                }
+                Spacer(Modifier.height(8.dp))
+                DeadlineChip(claim.clock())
             }
         }
 

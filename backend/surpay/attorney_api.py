@@ -7,7 +7,7 @@ from sqlalchemy import select
 
 from . import attorneys, audit, chat, claims, config, crypto, documents, packet
 from .deps import Client, CurrentUser, DbSession, encrypt_image
-from .legal import filing_guide, legal_basis
+from .legal import deadline_info, filing_guide, legal_basis
 from .models import AttorneyProfile, Claim, ClaimEvent, User
 from .schemas import (
     AttorneyApplyIn, AttorneyProfileOut, AttorneyUpdateIn, CaseAcceptIn, CaseDeclineIn, CaseOut, CaseStatusIn, ChatOut,
@@ -161,6 +161,7 @@ def case_out(c: Claim, full: bool) -> CaseOut:
         reference=r.reference, sale_type=r.sale_type, sale_date=r.sale_date, amount_cents=r.amount_cents,
         fee_cents=c.attorney_fee_cents, payout_status=c.payout_status, assigned_at=c.assigned_at,
         accepted_at=c.accepted_at, source_url=r.source_url, legal=legal_basis(r.state),
+        deadline=deadline_info(r.state, r.sale_date, c.status),
         filing_guide=filing_guide(r.state), chat_open=chat.thread_open(c),
         unread_messages=sum(1 for m in chat.thread(c) if m.sender_role == "claimant" and m.read_at is None),
         other_claimants=other_claimants(c),
@@ -212,7 +213,13 @@ def my_cases(user: CurrentUser, session: DbSession):
         select(Claim).where(Claim.attorney_id == user.id, Claim.assignment_status.in_(("offered", "accepted")))
         .order_by(Claim.assigned_at.desc())
     )
-    return [case_out(c, full=c.assignment_status == "accepted") for c in rows]
+    cases = [case_out(c, full=c.assignment_status == "accepted") for c in rows]
+    # Most urgent first: new offers, then open cases by days left to file, then filed ones.
+    def urgency(case: CaseOut):
+        d = case.deadline
+        done = d is not None and d.urgency in ("met", "expired")
+        return (case.assignment_status != "offered", done, d.days_left if d and d.days_left is not None else 10**6)
+    return sorted(cases, key=urgency)
 
 
 @router.get("/cases/{case_id}", response_model=CaseOut)

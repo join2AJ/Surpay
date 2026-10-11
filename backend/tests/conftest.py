@@ -25,6 +25,15 @@ def session():
 
 
 @pytest.fixture(autouse=True)
+def fixed_today(monkeypatch):
+    """Deadlines are counted from fixed sale dates in the fixtures; pin "today" so they don't drift."""
+    from datetime import date
+
+    from surpay import legal
+    monkeypatch.setattr(legal, "today", lambda: date(2026, 10, 11))
+
+
+@pytest.fixture(autouse=True)
 def no_rate_limits():
     from surpay.security import login_limiter
     login_limiter.reset()

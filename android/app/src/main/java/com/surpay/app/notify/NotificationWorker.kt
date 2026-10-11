@@ -95,9 +95,12 @@ class NotificationWorker(context: Context, params: WorkerParameters) : Coroutine
                 .setStyle(NotificationCompat.BigTextStyle().bigText(body))
                 .setAutoCancel(true)
                 .setContentIntent(open)
-                .setPriority(if (kind == "money_released") NotificationCompat.PRIORITY_HIGH else NotificationCompat.PRIORITY_DEFAULT)
+                .setPriority(if (kind == "money_released" || kind in URGENT_KINDS) NotificationCompat.PRIORITY_HIGH else NotificationCompat.PRIORITY_DEFAULT)
                 .build()
             NotificationManagerCompat.from(context).notify(id, n)
         }
     }
 }
+
+/** Deadline reminders with two weeks or less to go are shown as high priority. */
+private val URGENT_KINDS = setOf("deadline_14", "deadline_7", "deadline_3", "deadline_1", "unclaimed_7")

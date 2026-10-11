@@ -26,7 +26,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.surpay.app.data.Match
 import com.surpay.app.ui.claimStatusLabel
-import com.surpay.app.ui.deadlineText
 import com.surpay.app.ui.dollars
 import com.surpay.app.ui.prettyDate
 import com.surpay.app.ui.saleTypeLabel
@@ -57,10 +56,9 @@ fun MatchDetailScreen(
                 Text("For $it", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
             }
         }
-        deadlineText(match.deadlineDate)?.let {
-            Spacer(Modifier.height(10.dp))
-            NoteBox(it + ". " + match.legal.ifMissed.ifBlank { "" })
-        }
+        val clock = match.clock()
+        Spacer(Modifier.height(12.dp))
+        DeadlineCard(clock)
         Spacer(Modifier.height(12.dp))
 
         SectionCard {
@@ -112,9 +110,15 @@ fun MatchDetailScreen(
                 }
             }
         } else {
+            if (!clock.canClaim) {
+                Text("The deadline has passed, so a new claim can’t be started in Surpay. If you think the date is " +
+                    "wrong (for example the sale was later), contact support with the record details.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 8.dp).testTag("claimClosed"))
+            }
             Button(
                 onClick = onStartClaim,
-                enabled = !claiming,
+                enabled = !claiming && clock.canClaim,
                 modifier = Modifier.fillMaxWidth().height(52.dp).testTag("startClaim"),
             ) {
                 if (claiming) {

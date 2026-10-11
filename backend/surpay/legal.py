@@ -5,7 +5,7 @@ General information for claimants, not legal advice. Sources are listed per stat
 attorney in each state confirm before launch, and update when statutes change.
 """
 
-from datetime import date
+from datetime import date, timedelta
 
 GENERAL_NOTE = (
     "This is general information, not legal advice. Requirements differ by county and can change; "
@@ -122,10 +122,79 @@ def deadline_for(state: str, sale_date: date | None) -> date | None:
     years = LEGAL.get(state.upper(), _DEFAULT).get("deadline_years")
     if not years or sale_date is None:
         return None
+    if years != int(years):  # e.g. 0.5 for six months
+        return sale_date + timedelta(days=round(years * 365.25))
+    years = int(years)
     try:
         return sale_date.replace(year=sale_date.year + years)
     except ValueError:  # Feb 29
         return sale_date.replace(year=sale_date.year + years, day=28)
+
+
+# Days before the deadline by which the attorney should have the claim filed: time to collect
+# documents, get the affidavit notarized and for the clerk to docket it.
+FILE_BY_MARGIN_DAYS = 45
+URGENT_DAYS = 60
+SOON_DAYS = 180
+MET_STATUSES = ("filed", "hearing_pending", "approved", "paid")
+
+_COLORS = {"safe": "#15803d", "soon": "#b45309", "urgent": "#b91c1c", "expired": "#6b7280",
+           "met": "#1d4ed8", "unknown": "#64748b"}
+
+
+def _plural(n: int, word: str) -> str:
+    return f"{n:,} {word}{'' if n == 1 else 's'}"
+
+
+def today() -> date:
+    """Today's date; tests pin it so deadlines counted from fixed sale dates don't drift."""
+    return date.today()
+
+
+def deadline_info(state: str, sale_date: date | None, claim_status: str | None = None,
+                  as_of: date | None = None) -> dict:
+    """Where a record stands against its legal deadline, for every screen that shows it.
+
+    urgency: safe (> 6 months left), soon (2-6 months), urgent (60 days or less), expired,
+    met (the claim was filed in time) or unknown (no sale date or no fixed statutory period).
+    """
+    as_of = as_of or today()
+    info = LEGAL.get(state.upper(), _DEFAULT)
+    deadline = deadline_for(state, sale_date)
+    base = {"deadline": deadline, "sale_date": sale_date, "file_by": None, "days_left": None,
+            "total_days": None, "elapsed_pct": None, "rule": info["deadline"], "if_missed": info["if_missed"],
+            "can_claim": True}
+    if claim_status in MET_STATUSES:
+        return {**base, "urgency": "met", "color": _COLORS["met"], "label": "Filed in time",
+                "message": "Your claim was filed before the deadline, so the deadline no longer applies. "
+                           "The court or county now decides."}
+    if deadline is None:
+        return {**base, "urgency": "unknown", "color": _COLORS["unknown"], "label": "Claim as soon as possible",
+                "message": "We can't work out an exact deadline for this one. " + info["deadline"]}
+    days_left = (deadline - as_of).days
+    total = max((deadline - sale_date).days, 1)
+    file_by = deadline - timedelta(days=FILE_BY_MARGIN_DAYS)
+    out = {**base, "file_by": file_by, "days_left": days_left, "total_days": total,
+           "elapsed_pct": max(0, min(100, round(100 * (total - days_left) / total)))}
+    if days_left < 0:
+        return {**out, "urgency": "expired", "color": _COLORS["expired"], "can_claim": False,
+                "label": f"Deadline passed {deadline:%b %-d, %Y}",
+                "message": f"The deadline to claim this money passed {_plural(-days_left, 'day')} ago. "
+                           + info["if_missed"]}
+    if days_left <= URGENT_DAYS:
+        urgency = "urgent"
+        message = (f"Only {_plural(days_left, 'day')} left. The claim must be filed by {deadline:%B %-d, %Y}. "
+                   "Act today: verify your ID and sign so the attorney can file in time.")
+    elif days_left <= SOON_DAYS:
+        urgency = "soon"
+        message = (f"{_plural(days_left, 'day')} left. Start now so the attorney can file by "
+                   f"{file_by:%B %-d, %Y}, comfortably before the {deadline:%B %-d, %Y} deadline.")
+    else:
+        urgency = "safe"
+        message = (f"{_plural(days_left, 'day')} left to claim, until {deadline:%B %-d, %Y}. "
+                   "Plenty of time, but money is paid in the order claims are proven, so don't wait.")
+    label = "Last day to claim" if days_left == 0 else f"{_plural(days_left, 'day')} left"
+    return {**out, "urgency": urgency, "color": _COLORS[urgency], "label": label, "message": message}
 
 
 def legal_basis(state: str) -> dict:

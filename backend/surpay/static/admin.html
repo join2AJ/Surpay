@@ -36,6 +36,13 @@
   h2 { font-size:17px; margin:0; }
   h3 { font-size:14px; margin:12px 0 4px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
   ol { margin:4px 0; padding-left:20px; }
+  .clock { display:inline-flex; align-items:center; gap:6px; padding:2px 10px; border-radius:999px; font-size:12px; font-weight:700; white-space:nowrap; }
+  .clock::before { content:""; width:8px; height:8px; border-radius:50%; background:currentColor; }
+  .track { height:6px; border-radius:3px; background:var(--line); overflow:hidden; margin-top:4px; min-width:90px; }
+  .track > div { height:100%; border-radius:3px; }
+  .tile { border-radius:12px; padding:12px; cursor:pointer; border:1px solid transparent; }
+  .tile b { display:block; font-size:22px; } .tile span { font-size:12px; font-weight:600; }
+  .tile:hover { border-color:currentColor; }
   #msg { padding:0 16px; }
   @media (max-width: 560px) { .grid { grid-template-columns: 1fr; } .grid div:nth-child(odd) { margin-top:6px; } }
 </style>
@@ -107,6 +114,18 @@ async function loadImage(img, userId, kind, path) {
   } catch (e) { img.alt = "Not available"; }
 }
 
+// The legal clock (days left to claim), colour-coded the same way in the app.
+const URGENCY = { urgent: "60 days or less", soon: "2 to 6 months", safe: "over 6 months", expired: "deadline passed", unknown: "no fixed deadline", met: "filed in time" };
+function clock(d) {
+  if (!d) return null;
+  return el("span", { class: "clock", title: d.message, style: `color:${d.color};background:${d.color}1f` }, d.label);
+}
+function track(d) {
+  if (!d || d.elapsed_pct == null || d.urgency === "met") return null;
+  return el("div", { class: "track", title: `${d.elapsed_pct}% of the claim period has passed` },
+    el("div", { style: `width:${d.elapsed_pct}%;background:${d.color}` }));
+}
+
 function render(c) {
   const id = c.identity;
   const card = el("section", { class: "card" });
@@ -114,6 +133,7 @@ function render(c) {
     el("div", { class: "row" },
       el("h2", {}, `#${c.id} · ${c.user.full_name}`),
       el("span", { class: "pill" }, c.status),
+      clock(c.deadline),
       id ? el("span", { class: "pill " + id.review_status }, "ID " + id.review_status) : el("span", { class: "pill" }, "no ID yet")),
     el("div", { class: "muted" }, `${c.user.email} · ${c.user.phone || "no phone"}`),
     ...(c.relative ? [el("div", { class: "pill " + c.relative.review_status }, `Family claim: for ${c.relative.name} (${c.relative.relationship}, ${c.relative.basis.replace(/_/g, " ")})`)] : []),
@@ -122,7 +142,9 @@ function render(c) {
       el("div", {}, "County"), el("div", {}, `${c.county} County, ${c.state} · ${c.reference}`),
       el("div", {}, "Listed owner"), el("div", {}, c.owner_name),
       el("div", {}, "Address on record"), el("div", {}, c.owner_address || "—"),
-      el("div", {}, "Amount"), el("div", {}, money(c.amount_cents))),
+      el("div", {}, "Amount"), el("div", {}, money(c.amount_cents)),
+      el("div", {}, "Legal deadline"), el("div", {}, c.deadline && c.deadline.deadline ? `${c.deadline.deadline} (file by ${c.deadline.file_by})` : "not fixed", track(c.deadline),
+        el("div", { class: "muted" }, c.deadline ? c.deadline.message : ""))),
     ...(c.other_claimants ? [el("p", { class: "pill pending" }, `${c.other_claimants} other account(s) also claim this record: co-owner, other heir, or a false claim.`)] : []),
     ...(c.record_listed === false ? [el("p", { class: "pill rejected" }, "The county no longer lists this record. Check whether it was paid out.")] : []),
     el("h3", {}, "Homes the claimant listed"),
@@ -406,6 +428,17 @@ async function loadOverview() {
       el("div", { class: "row", style: "margin-top:8px" },
         el("button", { class: "secondary", onclick: () => { $("#view").value = "records"; load(); } }, "Browse records"),
         el("button", { class: "secondary", onclick: () => download("/admin/records.csv", "surpay-records.csv") }, "Export records (CSV)"))),
+    el("section", { class: "card" }, el("h2", {}, "Legal deadlines on listed money"),
+      el("p", { class: "muted" }, "Each record's last day to claim, from its sale date and the state's law. Click a group to see the records."),
+      el("div", { class: "kpis" }, ...["urgent", "soon", "safe", "expired", "unknown"].map(k => {
+        const v = r.deadlines[k], color = { urgent: "#b91c1c", soon: "#b45309", safe: "#15803d", expired: "#6b7280", unknown: "#64748b" }[k];
+        return el("div", { class: "tile", style: `color:${color};background:${color}14`,
+                           onclick: () => { $("#view").value = "records"; recUrgency = k; recPage = 1; load(); } },
+          el("b", {}, v.records.toLocaleString()), el("span", {}, `${URGENCY[k]} · ${money(v.total_cents)}`));
+      })),
+      el("div", { class: "row", style: "margin-top:8px" },
+        el("span", { class: "pill rejected" }, `Next 30 days: ${r.deadlines.next_30_days.records} records, ${money(r.deadlines.next_30_days.total_cents)}`),
+        el("span", { class: "pill pending" }, `Next 90 days: ${r.deadlines.next_90_days.records} records, ${money(r.deadlines.next_90_days.total_cents)}`))),
     el("section", { class: "card" }, el("h2", {}, "Needs attention"),
       ...(o.alerts.length ? o.alerts.map(a => el("div", { class: "alert" }, a)) : [el("p", { class: "muted" }, "Nothing urgent.")])),
     el("section", { class: "card" }, el("h2", {}, "Claims"),
@@ -430,12 +463,14 @@ async function loadOverview() {
   );
 }
 
-let recPage = 1;
+let recPage = 1, recUrgency = "";
 async function loadRecords() {
   const f = { q: $("#rq")?.value || "", state: $("#rstate")?.value || "", county: $("#rcounty")?.value || "",
-              min: $("#rmin")?.value || "", sort: $("#rsort")?.value || "amount", status_: $("#rstatus")?.value || "listed" };
+              min: $("#rmin")?.value || "", sort: $("#rsort")?.value || "amount", status_: $("#rstatus")?.value || "listed",
+              urgency: $("#rurg") ? $("#rurg").value : recUrgency };
+  recUrgency = f.urgency;
   const qs = new URLSearchParams({ q: f.q, state: f.state, county: f.county, min_cents: Math.round((Number(f.min) || 0) * 100),
-                                   sort: f.sort, status_: f.status_, page: recPage, per_page: 50 });
+                                   sort: f.sort, status_: f.status_, urgency: f.urgency, page: recPage, per_page: 50 });
   const d = await (await api(`/admin/records?${qs}`)).json();
   const inp = (id, ph, v, w) => el("input", { id, placeholder: ph, value: v, style: `width:${w}` });
   const sel = (id, opts, v) => { const s = el("select", { id }, ...opts.map(([k, t]) => { const o = el("option", { value: k }, t); if (k === v) o.selected = true; return o; })); return s; };
@@ -445,15 +480,17 @@ async function loadRecords() {
     el("h2", {}, `County records (${d.total.toLocaleString()})`),
     el("div", { class: "row" }, inp("rq", "Owner name or reference", f.q, "200px"), inp("rstate", "State", f.state, "70px"),
       inp("rcounty", "County", f.county, "130px"), inp("rmin", "Min $", f.min, "90px"),
-      sel("rsort", [["amount", "Largest first"], ["newest", "Newest"], ["sale_date", "Oldest sale (deadline)"], ["owner", "Owner A-Z"]], f.sort),
+      sel("rsort", [["amount", "Largest first"], ["newest", "Newest"], ["deadline", "Closest deadline"], ["sale_date", "Oldest sale"], ["owner", "Owner A-Z"]], f.sort),
       sel("rstatus", [["listed", "Listed"], ["delisted", "No longer listed"], ["", "All"]], f.status_),
+      sel("rurg", [["", "Any deadline"], ["urgent", "60 days or less"], ["soon", "2 to 6 months"], ["safe", "Over 6 months"], ["expired", "Deadline passed"], ["unknown", "No fixed deadline"]], f.urgency),
       el("button", { onclick: go }, "Search"),
       el("button", { class: "secondary", onclick: () => download(`/admin/records.csv?${qs}`, "surpay-records.csv") }, "Export CSV")),
-    el("table", {}, el("tr", {}, el("th", {}, "Amount"), el("th", {}, "Owner"), el("th", {}, "County"), el("th", {}, "Sale / deadline"), el("th", {}, "Claims")),
+    el("table", {}, el("tr", {}, el("th", {}, "Amount"), el("th", {}, "Owner"), el("th", {}, "County"), el("th", {}, "Time left to claim"), el("th", {}, "Claims")),
       ...d.records.map(r => el("tr", {}, el("td", {}, el("b", {}, money(r.amount_cents))),
         el("td", {}, r.owner_name, el("div", { class: "muted" }, r.owner_address || "")),
         el("td", {}, `${r.county}, ${r.state}`, el("div", { class: "muted" }, r.reference)),
-        el("td", {}, r.sale_date || "?", el("div", { class: "muted" }, r.deadline ? "claim by " + r.deadline : "")),
+        el("td", {}, el("span", { class: "clock", style: `color:${r.deadline_color};background:${r.deadline_color}1f` }, r.deadline_label),
+          el("div", { class: "muted" }, `sold ${r.sale_date || "?"}${r.deadline ? " · claim by " + r.deadline : ""}`)),
         el("td", {}, r.claims ? el("span", { class: "pill approved" }, r.claims) : "")))),
     el("div", { class: "row", style: "margin-top:8px" },
       el("button", { class: "secondary", onclick: () => { if (recPage > 1) { recPage--; loadRecords(); } } }, "Previous"),

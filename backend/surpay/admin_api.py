@@ -538,6 +538,17 @@ def admin_overview(scope: Admin, session: DbSession) -> dict:
     delisted = session.scalar(select(func.count()).select_from(SurplusRecord).where(SurplusRecord.status != "listed"))
     new_7d = sum(1 for r in records if _aware(r.first_seen) and _aware(r.first_seen) > now - timedelta(days=7))
 
+    from .legal import deadline_info
+    clocks = [(r, deadline_info(r.state, r.sale_date)) for r in records]
+    deadlines: dict[str, dict] = {k: {"records": 0, "total_cents": 0}
+                                  for k in ("urgent", "soon", "safe", "expired", "unknown")}
+    for r, clock in clocks:
+        deadlines[clock["urgency"]]["records"] += 1
+        deadlines[clock["urgency"]]["total_cents"] += r.amount_cents
+    for days in (30, 90):
+        win = [r for r, clock in clocks if clock["days_left"] is not None and 0 <= clock["days_left"] <= days]
+        deadlines[f"next_{days}_days"] = {"records": len(win), "total_cents": sum(r.amount_cents for r in win)}
+
     sources = []
     for name, cls in SOURCES.items():
         last = session.scalars(select(ScrapeRun).where(ScrapeRun.source == name).order_by(ScrapeRun.id.desc()).limit(1)).first()
@@ -588,12 +599,16 @@ def admin_overview(scope: Admin, session: DbSession) -> dict:
         alerts.append(f"Scraper needs attention: {', '.join(unhealthy)}")
     if payouts_due:
         alerts.append(f"Attorney payouts due: ${payouts_due / 100:,.2f}")
+    at_risk = [c for c in active if deadline_info(c.record.state, c.record.sale_date, c.status)["urgency"] == "urgent"]
+    if at_risk:
+        alerts.insert(0, f"{len(at_risk)} claim(s) not yet filed with 60 days or less to the legal deadline: "
+                         + ", ".join(f"SP-{c.id:06d}" for c in at_risk[:5]))
 
     return {
         "demo": scope.demo,
         "records": {"listed": len(records), "total_cents": sum(r.amount_cents for r in records),
                     "counties": len(by_county), "delisted": delisted, "new_last_7_days": new_7d,
-                    "by_size": dict(bands), "by_county": counties_rows},
+                    "by_size": dict(bands), "by_county": counties_rows, "deadlines": deadlines},
         "registry": {k: dict(v) if hasattr(v, "items") else v for k, v in counties.summary(session).items()},
         "sources": sources,
         "people": {"accounts": len(users), "claimants": sum(1 for u in users if u.role == "claimant"),
@@ -629,26 +644,44 @@ def _records_query(q: str, state: str, county: str, status_: str, min_cents: int
 
 
 def _record_row(r, claimed: dict) -> dict:
-    from .legal import deadline_for
-    d = deadline_for(r.state, r.sale_date)
+    from .legal import deadline_info
+    clock = deadline_info(r.state, r.sale_date)
+    d = clock["deadline"]
     return {"id": r.id, "state": r.state, "county": r.county, "reference": r.reference, "owner_name": r.owner_name,
             "owner_address": r.owner_address, "amount_cents": r.amount_cents, "sale_type": r.sale_type,
             "sale_date": r.sale_date.isoformat() if r.sale_date else None, "status": r.status, "source": r.source,
             "first_seen": _aware(r.first_seen).isoformat(), "last_seen": _aware(r.last_seen).isoformat(),
-            "deadline": d.isoformat() if d else None, "claims": claimed.get(r.id, 0), "source_url": r.source_url}
+            "deadline": d.isoformat() if d else None, "days_left": clock["days_left"], "urgency": clock["urgency"],
+            "deadline_label": clock["label"], "deadline_color": clock["color"],
+            "claims": claimed.get(r.id, 0), "source_url": r.source_url}
 
 
 @router.get("/admin/records")
 def admin_records(scope: Admin, session: DbSession, q: str = "", state: str = "", county: str = "",
                   status_: str = "listed", min_cents: int = 0, sort: str = "amount", page: int = 1,
-                  per_page: int = 50) -> dict:
-    """County surplus records (public data). Search by owner or reference; filter and sort."""
+                  per_page: int = 50, urgency: str = "") -> dict:
+    """County surplus records (public data). Search by owner or reference; filter and sort.
+
+    urgency (safe | soon | urgent | expired | unknown) and sort=deadline work on the legal clock,
+    which depends on each state's law, so they're applied after the database query.
+    """
     from .models import SurplusRecord
     stmt = _records_query(q, state, county, status_, min_cents)
+    per_page = max(1, min(per_page, 200))
+    if urgency or sort == "deadline":
+        claimed = dict(session.execute(select(Claim.record_id, func.count()).group_by(Claim.record_id)).all())
+        rows = [_record_row(r, claimed) for r in session.scalars(stmt)]
+        if urgency:
+            rows = [r for r in rows if r["urgency"] == urgency]
+        if sort == "deadline":
+            rows.sort(key=lambda r: (r["days_left"] is None, r["days_left"] if r["days_left"] is not None else 0))
+        else:
+            rows.sort(key=lambda r: -r["amount_cents"])
+        start = (max(page, 1) - 1) * per_page
+        return {"total": len(rows), "page": page, "per_page": per_page, "records": rows[start:start + per_page]}
     total = session.scalar(select(func.count()).select_from(stmt.subquery()))
     order = {"amount": SurplusRecord.amount_cents.desc(), "newest": SurplusRecord.first_seen.desc(),
              "sale_date": SurplusRecord.sale_date.asc(), "owner": SurplusRecord.owner_name_norm.asc()}.get(sort)
-    per_page = max(1, min(per_page, 200))
     rows = session.scalars(stmt.order_by(order if order is not None else SurplusRecord.id)
                            .offset((max(page, 1) - 1) * per_page).limit(per_page)).all()
     claimed = dict(session.execute(select(Claim.record_id, func.count()).where(
@@ -682,6 +715,7 @@ def admin_records_csv(scope: Admin, session: DbSession, client: Client, q: str =
 @router.get("/admin/claims.csv")
 def admin_claims_csv(scope: Admin, session: DbSession, client: Client):
     """One row per claim (no ID numbers or documents)."""
+    from .legal import deadline_info
     rows = []
     for c in session.scalars(select(Claim).order_by(Claim.id)):
         if scope.demo and not is_demo_claim(c):
@@ -692,6 +726,9 @@ def admin_claims_csv(scope: Admin, session: DbSession, client: Client):
                      "claimant": c.user.full_name if shown else "(tester)", "email": c.user.email if shown else "",
                      "county": f"{c.record.county} County, {c.record.state}", "record": c.record.reference,
                      "amount": c.record.amount_cents / 100, "fee_pct": c.fee_pct,
+                     "deadline": (lambda d: d["deadline"].isoformat() if d["deadline"] else "")(
+                         deadline_info(c.record.state, c.record.sale_date, c.status)),
+                     "deadline_status": deadline_info(c.record.state, c.record.sale_date, c.status)["label"],
                      "attorney": lawyer.full_name if lawyer else "", "assignment": c.assignment_status,
                      "attorney_fee": c.attorney_fee_cents / 100, "payout": c.payout_status,
                      "for_relative": c.relative.full_name if c.relative and shown else ""})

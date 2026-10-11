@@ -13,12 +13,15 @@ class OfflineDemoApi : SurpayApi {
         val street: String, val cents: Long, val sold: String,
     )
 
+    /** Same as the server's demo: sale dates count back from today so every deadline colour shows. */
+    private fun ago(days: Long) = java.time.LocalDate.now().minusDays(days).toString()
+
     private val records = listOf(
-        DemoRecord(9001, "Case D-1001", "Jordan Testwell", "412 Maple Ridge Rd, Springfield, OH 45501", "412 maple ridge", 2_845_000, "2024-06-17"),
-        DemoRecord(9002, "Case D-1002", "TESTWELL, JORDAN A", "88 Harbor View Dr, Springfield, OH 45502", "88 harbor view", 612_550, "2023-11-06"),
-        DemoRecord(9003, "Case D-1003", "Casey Placeholder", "19 Elm St, Springfield, OH 45503", "19 elm", 1_210_000, "2024-02-12"),
-        DemoRecord(9004, "Case D-1004", "Morgan & Riley Example", "7 Birch Ct, Springfield, OH 45504", "7 birch", 4_390_075, "2024-09-09"),
-        DemoRecord(9005, "Case D-1005", "Avery Sampleton", "230 Lake Shore Blvd, Springfield, OH 45505", "230 lake shore", 98_013, "2025-01-21"),
+        DemoRecord(9001, "Case D-1001", "Jordan Testwell", "412 Maple Ridge Rd, Springfield, OH 45501", "412 maple ridge", 2_845_000, ago(790)),
+        DemoRecord(9002, "Case D-1002", "TESTWELL, JORDAN A", "88 Harbor View Dr, Springfield, OH 45502", "88 harbor view", 612_550, ago(1070)),
+        DemoRecord(9003, "Case D-1003", "Casey Placeholder", "19 Elm St, Springfield, OH 45503", "19 elm", 1_210_000, ago(970)),
+        DemoRecord(9004, "Case D-1004", "Morgan & Riley Example", "7 Birch Ct, Springfield, OH 45504", "7 birch", 4_390_075, ago(700)),
+        DemoRecord(9005, "Case D-1005", "Avery Sampleton", "230 Lake Shore Blvd, Springfield, OH 45505", "230 lake shore", 98_013, ago(600)),
     )
     /** Mirrors backend/surpay/fees.py defaults: average of 15% and the amount band, to the nearest 0.5%. */
     private fun feePct(cents: Long): Double {

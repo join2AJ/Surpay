@@ -7,6 +7,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -102,11 +103,17 @@ class EndToEndTest {
         compose.waitUntilAtLeastOneExists(hasTestTag("totalAmount"), timeout)
         compose.onNodeWithText("$34,575.50").assertExists()
         compose.onNodeWithText("Name & address match").assertExists()
+        // The legal clock: one demo record is under 60 days from its deadline
+        compose.onNodeWithTag("deadlineBanner").assertExists()
+        compose.onAllNodesWithTag("deadlineChip", useUnmergedTree = true).fetchSemanticsNodes().size.let { assert(it >= 2) }
         shot("5_matches")
 
         // Detail shows the law and what to prove; start claim goes straight to signing
         compose.onNodeWithText("$28,450.00").performClick()
         compose.waitUntilAtLeastOneExists(hasTestTag("legalCard"), timeout)
+        compose.onNodeWithTag("deadlineCard").assertExists()
+        compose.onNodeWithTag("daysLeft", useUnmergedTree = true).assertExists()
+        shot("5b_deadline")
         compose.onNodeWithTag("legalLaw", useUnmergedTree = true).assertTextEquals("Ohio Revised Code § 5721.20")
         compose.onNodeWithTag("legalCard").performScrollTo().performClick()
         compose.onNodeWithText("An IRS Form W-9", substring = true).performScrollTo().assertExists()

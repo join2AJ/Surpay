@@ -254,7 +254,8 @@ private fun SignedInApp(vm: SurpayViewModel, session: SessionState.SignedIn) {
     }
 
     fun openNotification(n: AppNotification) {
-        val id = n.claimId ?: return
+        // A reminder about money not yet claimed has no claim: show the matches to start one.
+        val id = n.claimId ?: return nav.navigate(Routes.MATCHES)
         nav.navigate(if (n.kind == "message") Routes.chat(id) else Routes.claim(id))
     }
 

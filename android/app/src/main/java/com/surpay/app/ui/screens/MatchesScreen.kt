@@ -33,7 +33,6 @@ import com.surpay.app.data.Match
 import com.surpay.app.data.MatchesResponse
 import com.surpay.app.ui.MatchesState
 import com.surpay.app.ui.claimStatusLabel
-import com.surpay.app.ui.deadlineText
 import com.surpay.app.ui.dollars
 import com.surpay.app.ui.prettyDate
 import com.surpay.app.ui.saleTypeLabel
@@ -64,11 +63,22 @@ fun MatchesScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             item { SummaryCard(data) }
+            val open = data.matches.filter { it.claimStatus == null }.map { it.clock() }
+            if (open.any { it.urgency == "urgent" || it.urgency == "soon" }) {
+                item { DeadlineBanner(open.count { it.urgency == "urgent" }, open.count { it.urgency == "soon" }) }
+            }
             state.error?.let { err -> item { Text(err, color = MaterialTheme.colorScheme.error) } }
             if (data.matches.isEmpty()) {
                 item { EmptyState(data, onEditProfile) }
             } else {
-                items(data.matches, key = { it.recordId }) { MatchCard(it, onClick = { onOpen(it) }) }
+                // Money that can still be claimed first, closest deadline first; passed deadlines last.
+                val ordered = data.matches.sortedWith(compareBy<Match>(
+                    { it.clock().urgency == "expired" },
+                    { it.claimStatus != null },
+                    { it.clock().daysLeft ?: Int.MAX_VALUE },
+                ))
+                items(ordered, key = { it.recordId }) { MatchCard(it, onClick = { onOpen(it) }) }
+                item { DeadlineLegend() }
                 item {
                     Text(
                         data.disclaimer.ifBlank {
@@ -169,10 +179,15 @@ private fun MatchCard(match: Match, onClick: () -> Unit) {
             color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text("Sold ${prettyDate(match.saleDate)} · ${match.reference}", style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
-        if (match.claimStatus == null) {
-            deadlineText(match.deadlineDate)?.let {
-                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 4.dp))
+        val clock = match.clock()
+        if (clock.urgency != "unknown") {
+            Spacer(Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                DeadlineChip(clock)
+                clock.deadline?.takeIf { clock.urgency != "met" && clock.urgency != "expired" }?.let {
+                    Text("  claim by ${prettyDate(it)}", style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
         }
         match.claimStatus?.let {

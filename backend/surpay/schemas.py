@@ -79,6 +79,23 @@ class MatchPreviewOut(BaseModel):
     possible_matches: int
 
 
+class DeadlineOut(BaseModel):
+    """The legal clock on one record: how long is left to claim, colour-coded."""
+    urgency: str  # safe | soon | urgent | expired | met | unknown
+    color: str
+    label: str  # "123 days left"
+    message: str
+    deadline: date | None = None
+    file_by: date | None = None  # leave the attorney time to file before the deadline
+    sale_date: date | None = None
+    days_left: int | None = None
+    total_days: int | None = None
+    elapsed_pct: int | None = None  # share of the claim period already gone, 0-100
+    rule: str = ""
+    if_missed: str = ""
+    can_claim: bool = True
+
+
 class LegalOut(BaseModel):
     law: str
     right: str
@@ -115,6 +132,7 @@ class MatchOut(BaseModel):
     legal: LegalOut
     # Approximate last day to claim (from the sale date and state law); None if unknown.
     deadline_date: date | None = None
+    deadline: DeadlineOut | None = None
     # Family claims: whose money this is and how the user is related.
     relative_id: int | None = None
     on_behalf_of: str | None = None
@@ -166,6 +184,7 @@ class ClaimOut(BaseModel):
     attorney: "AttorneyPublic | None" = None
     fee_pct: float = 0
     deadline_date: date | None = None
+    deadline: DeadlineOut | None = None
     on_behalf_of: str | None = None
     # Chat with the attorney: open once they accept; they write first.
     chat_open: bool = False
@@ -329,6 +348,7 @@ class CaseOut(BaseModel):
     accepted_at: datetime | None
     source_url: str
     legal: LegalOut
+    deadline: DeadlineOut | None = None
     on_behalf_of: str | None = None
     # How claims are filed in this state, step by step (and what must be printed).
     filing_guide: dict = Field(default_factory=dict)
