@@ -25,7 +25,11 @@ def pdf_stream_words(content: bytes) -> list[str]:
     import pdfplumber
 
     with pdfplumber.open(io.BytesIO(content)) as pdf:
-        return [w["text"] for page in pdf.pages for w in page.extract_words(x_tolerance=1.5, use_text_flow=True)]
+        words: list[str] = []
+        for page in pdf.pages:
+            words.extend(w["text"] for w in page.extract_words(x_tolerance=1.5, use_text_flow=True))
+            page.close()  # free the page's parsed layout
+        return words
 
 
 def parse_words(words: list[str], source_url: str) -> list[RecordIn]:

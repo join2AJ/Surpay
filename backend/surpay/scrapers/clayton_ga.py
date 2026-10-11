@@ -52,6 +52,7 @@ def pdf_stream_rows(content: bytes, y_tolerance: float = 3.5) -> list[Row]:
                 groups[-1].append((i, w))
                 last_top = w["top"]
             rows.extend([(w["x0"], w["text"]) for _, w in sorted(g, key=lambda iw: iw[0])] for g in groups)
+            page.close()  # free the page's parsed layout
     return rows
 
 

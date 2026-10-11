@@ -57,8 +57,12 @@ def pdf_lines(content: bytes) -> list[str]:
 
     import pdfplumber
 
+    lines: list[str] = []
     with pdfplumber.open(io.BytesIO(content)) as pdf:
-        return [ln for page in pdf.pages for ln in (page.extract_text(layout=True) or "").splitlines()]
+        for page in pdf.pages:
+            lines.extend((page.extract_text(layout=True) or "").splitlines())
+            page.close()  # free the page's parsed layout; long lists otherwise exhaust a small server's memory
+    return lines
 
 
 Row = list[tuple[float, str]]  # (x position, word) for one visual line of a PDF table
@@ -84,6 +88,7 @@ def pdf_word_rows(content: bytes, y_tolerance: float = 3.5) -> list[Row]:
                     rows.append([])
                 rows[-1].append((w["x0"], w["text"]))
                 last_top = w["top"]
+            page.close()  # free the page's parsed layout; long lists otherwise exhaust a small server's memory
     return [sorted(r) for r in rows]
 
 
