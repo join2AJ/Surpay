@@ -22,7 +22,8 @@ def test_real_registry_covers_every_county():
         rows = list(csv.DictReader(f))
     assert len(rows) == 3143
     assert len({r["fips"] for r in rows}) == 3143
-    live = {r["scraper"] for r in rows if r["status"] == "scraper_live"}
+    # A county with several lists names its scrapers separated by ";" (e.g. Cuyahoga's two clerks' lists).
+    live = {name for r in rows if r["status"] == "scraper_live" for name in r["scraper"].split(";")}
     from surpay.scrapers import SOURCES
     assert live == set(SOURCES)  # every scraper is recorded, and every recorded one exists
 

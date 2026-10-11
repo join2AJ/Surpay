@@ -7,7 +7,7 @@ from sqlalchemy import select
 
 from . import attorneys, audit, chat, claims, config, crypto, documents, packet
 from .deps import Client, CurrentUser, DbSession, encrypt_image
-from .legal import deadline_info, filing_guide, legal_basis
+from .legal import filing_guide, legal_basis, record_deadline
 from .models import AttorneyProfile, Claim, ClaimEvent, User
 from .schemas import (
     AttorneyApplyIn, AttorneyProfileOut, AttorneyUpdateIn, CaseAcceptIn, CaseDeclineIn, CaseOut, CaseStatusIn, ChatOut,
@@ -160,8 +160,8 @@ def case_out(c: Claim, full: bool) -> CaseOut:
         id=c.id, assignment_status=c.assignment_status, status=c.status, county=r.county, state=r.state,
         reference=r.reference, sale_type=r.sale_type, sale_date=r.sale_date, amount_cents=r.amount_cents,
         fee_cents=c.attorney_fee_cents, payout_status=c.payout_status, assigned_at=c.assigned_at,
-        accepted_at=c.accepted_at, source_url=r.source_url, legal=legal_basis(r.state),
-        deadline=deadline_info(r.state, r.sale_date, c.status),
+        accepted_at=c.accepted_at, source_url=r.source_url, legal=legal_basis(r.state, r.sale_type),
+        deadline=record_deadline(r, c.status),
         filing_guide=filing_guide(r.state), chat_open=chat.thread_open(c),
         unread_messages=sum(1 for m in chat.thread(c) if m.sender_role == "claimant" and m.read_at is None),
         other_claimants=other_claimants(c),

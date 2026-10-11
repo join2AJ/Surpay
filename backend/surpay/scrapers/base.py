@@ -39,6 +39,8 @@ def http_client() -> httpx.Client:
         headers={"User-Agent": config.USER_AGENT},
         timeout=60,
         follow_redirects=True,
+        # County servers sometimes drop a connection; retry the connect twice before failing the run.
+        transport=httpx.HTTPTransport(retries=2),
     )
 
 

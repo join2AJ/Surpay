@@ -13,6 +13,7 @@ else
   python -m surpay.cli seed-demo --remove
 fi
 
-( python -m surpay.cli scrape --all --if-stale 20 || true ) &
+# Housekeeping runs after the scrape: expired offers, retention, and deadline reminders (each sent once).
+( python -m surpay.cli scrape --all --if-stale 20 || true; python -m surpay.cli purge || true ) &
 
 exec uvicorn surpay.api:app --host 0.0.0.0 --port "${PORT:-8000}"

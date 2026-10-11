@@ -16,14 +16,37 @@ android {
         applicationId = "com.surpay.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 5
-        versionName = "0.4.0"
+        versionCode = 6
+        versionName = "0.5.0"
         buildConfigField("String", "API_BASE_URL", "\"$apiUrl\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        // One shared test key, so every test APK (built here or by CI) installs over the last one
+        // without uninstalling. Not for the Play Store: release builds use the upload key below.
+        getByName("debug") {
+            storeFile = rootProject.file("keystore/surpay-test.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+        // Play Store upload key, kept out of the repository. Set these four environment variables
+        // (CI: repository secrets) to sign release builds; see docs/DEPLOY.md.
+        val releaseStore = System.getenv("SURPAY_UPLOAD_KEYSTORE")
+        if (releaseStore != null) {
+            create("release") {
+                storeFile = file(releaseStore)
+                storePassword = System.getenv("SURPAY_UPLOAD_STORE_PASSWORD")
+                keyAlias = System.getenv("SURPAY_UPLOAD_KEY_ALIAS") ?: "upload"
+                keyPassword = System.getenv("SURPAY_UPLOAD_KEY_PASSWORD") ?: System.getenv("SURPAY_UPLOAD_STORE_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
+            signingConfigs.findByName("release")?.let { signingConfig = it }
             isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }

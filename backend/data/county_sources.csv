@@ -104,7 +104,7 @@ fips,state,county,status,difficulty,publisher,format,list_url,update_frequency,s
 04011,AZ,Greenlee County,unresearched,unknown,,,,,,,
 04012,AZ,La Paz County,unresearched,unknown,,,,,,,
 04013,AZ,Maricopa County,list_online,medium,Treasurer,html,https://treasurer.maricopa.gov/,unknown,,Excess proceeds from mortgage foreclosures (ARS 33-812); confirm live page,2026-10-08
-04015,AZ,Mohave County,unresearched,unknown,,,,,,,
+04015,AZ,Mohave County,scraper_live,easy,Treasurer,html,https://www.mohave.gov/departments/treasurer/general-use/excess-proceeds-list/,irregular,mohave_az,"~35 records, ~$1.2M; trustee-sale (mortgage) surplus",2026-10-11
 04017,AZ,Navajo County,unresearched,unknown,,,,,,,
 04019,AZ,Pima County,unresearched,unknown,,,,,,,
 04021,AZ,Pinal County,unresearched,unknown,,,,,,,
@@ -210,7 +210,7 @@ fips,state,county,status,difficulty,publisher,format,list_url,update_frequency,s
 06043,CA,Mariposa County,unresearched,unknown,,,,,,,
 06045,CA,Mendocino County,unresearched,unknown,,,,,,,
 06047,CA,Merced County,unresearched,unknown,,,,,,,
-06049,CA,Modoc County,unresearched,unknown,,,,,,,
+06049,CA,Modoc County,scraper_live,medium,Tax Collector,pdf,https://www.co.modoc.ca.us/,per sale,modoc_ca,"~25 records, ~$76k; notice URL is hard-coded per sale (add the next one to KNOWN_NOTICES)",2026-10-11
 06051,CA,Mono County,unresearched,unknown,,,,,,,
 06053,CA,Monterey County,unresearched,unknown,,,,,,,
 06055,CA,Napa County,unresearched,unknown,,,,,,,
@@ -330,7 +330,7 @@ fips,state,county,status,difficulty,publisher,format,list_url,update_frequency,s
 12015,FL,Charlotte County,unresearched,unknown,,,,,,,
 12017,FL,Citrus County,unresearched,unknown,,,,,,,
 12019,FL,Clay County,unresearched,unknown,,,,,,,
-12021,FL,Collier County,list_online,medium,Clerk of Court,document,https://collierclerk.com/tax-deed-sales/tax-deed-surplus/,unknown,,Tax deed surplus listed in a separate document,2026-10-08
+12021,FL,Collier County,scraper_live,medium,Clerk of Courts,pdf,https://app.collierclerk.com/LFOfficialRecords/,irregular,collier_fl,"~16 records, ~$862k; fixed Laserfiche link overwritten in place; includes claim-pending amounts",2026-10-11
 12023,FL,Columbia County,unresearched,unknown,,,,,,,
 12027,FL,DeSoto County,unresearched,unknown,,,,,,,
 12029,FL,Dixie County,unresearched,unknown,,,,,,,
@@ -359,8 +359,8 @@ fips,state,county,status,difficulty,publisher,format,list_url,update_frequency,s
 12075,FL,Levy County,unresearched,unknown,,,,,,,
 12077,FL,Liberty County,unresearched,unknown,,,,,,,
 12079,FL,Madison County,unresearched,unknown,,,,,,,
-12081,FL,Manatee County,unresearched,unknown,,,,,,,
-12083,FL,Marion County,unresearched,unknown,,,,,,,
+12081,FL,Manatee County,scraper_live,easy,Clerk of Courts,html,https://www.manateeclerk.com/departments/tax-deeds/list-of-unclaimed-funds,irregular,manatee_fl,"~12 records, ~$277k",2026-10-11
+12083,FL,Marion County,scraper_live,medium,Clerk of Courts,pdf,https://www.marioncountyclerk.org/,irregular,marion_fl,"~883 records, ~$9.5M; no sale dates",2026-10-11
 12085,FL,Martin County,unresearched,unknown,,,,,,,
 12086,FL,Miami-Dade County,unresearched,unknown,,,,,,,
 12087,FL,Monroe County,unresearched,unknown,,,,,,,
@@ -376,14 +376,14 @@ fips,state,county,status,difficulty,publisher,format,list_url,update_frequency,s
 12107,FL,Putnam County,unresearched,unknown,,,,,,,
 12109,FL,St. Johns County,unresearched,unknown,,,,,,,
 12111,FL,St. Lucie County,unresearched,unknown,,,,,,,
-12113,FL,Santa Rosa County,unresearched,unknown,,,,,,,
+12113,FL,Santa Rosa County,scraper_live,medium,Clerk of Courts,pdf,https://santarosaclerk.com/courts/foreclosures-tax-deeds/,irregular,santarosa_fl,"~47 records, ~$585k",2026-10-11
 12115,FL,Sarasota County,list_online,medium,Clerk of Court,html,https://www.sarasotaclerk.com/Home-and-Property/Tax-Deeds/Surplus-Funds-from-Tax-Deed-Sale,unknown,,Site returned 403 to our scraper; may need a browser,2026-10-08
 12117,FL,Seminole County,unresearched,unknown,,,,,,,
 12119,FL,Sumter County,unresearched,unknown,,,,,,,
 12121,FL,Suwannee County,unresearched,unknown,,,,,,,
-12123,FL,Taylor County,unresearched,unknown,,,,,,,
+12123,FL,Taylor County,scraper_live,easy,Clerk of Courts,html,https://taylorclerk.com/departments/tax-deeds-surplus/,irregular,taylor_fl,"~39 records, ~$532k",2026-10-11
 12125,FL,Union County,unresearched,unknown,,,,,,,
-12127,FL,Volusia County,unresearched,unknown,,,,,,,
+12127,FL,Volusia County,scraper_live,medium,Clerk of Courts,pdf,https://www.clerk.org/pdf/user_publish/TaxDeeds/Tax_Deed_Surplus_List.pdf,monthly,volusia_fl,"~602 records, ~$2.6M; date received used as sale date",2026-10-11
 12129,FL,Wakulla County,unresearched,unknown,,,,,,,
 12131,FL,Walton County,unresearched,unknown,,,,,,,
 12133,FL,Washington County,unresearched,unknown,,,,,,,
@@ -411,15 +411,15 @@ fips,state,county,status,difficulty,publisher,format,list_url,update_frequency,s
 13045,GA,Carroll County,unresearched,unknown,,,,,,,
 13047,GA,Catoosa County,unresearched,unknown,,,,,,,
 13049,GA,Charlton County,unresearched,unknown,,,,,,,
-13051,GA,Chatham County,unresearched,unknown,,,,,,,
+13051,GA,Chatham County,scraper_live,medium,Tax Commissioner,pdf,https://tax.chathamcountyga.gov/ExcessFunds,irregular,chatham_ga,"~226 records, ~$2.7M; in-rem entries name the former owner",2026-10-11
 13053,GA,Chattahoochee County,unresearched,unknown,,,,,,,
 13055,GA,Chattooga County,unresearched,unknown,,,,,,,
 13057,GA,Cherokee County,unresearched,unknown,,,,,,,
 13059,GA,Clarke County,list_online,medium,Tax Commissioner,pdf,https://accgov.com/3910/Excess-Funds,unknown,,Athens-Clarke; page links several PDFs incl. application form; confirm which is the list,2026-10-08
 13061,GA,Clay County,unresearched,unknown,,,,,,,
-13063,GA,Clayton County,unresearched,unknown,,,,,,,
+13063,GA,Clayton County,scraper_live,medium,Tax Commissioner,pdf,https://www.claytoncountyga.gov/government/tax-commissioner,irregular,clayton_ga,"~110 records, ~$2.6M; printed total is stale, rows summed instead",2026-10-11
 13065,GA,Clinch County,unresearched,unknown,,,,,,,
-13067,GA,Cobb County,unresearched,unknown,,,,,,,
+13067,GA,Cobb County,scraper_live,medium,Tax Commissioner,pdf,https://www.cobbtax.gov/property/delinquent_taxes/index.php,monthly,cobb_ga,"~30 records, ~$1.2M; file name changes monthly",2026-10-11
 13069,GA,Coffee County,unresearched,unknown,,,,,,,
 13071,GA,Colquitt County,unresearched,unknown,,,,,,,
 13073,GA,Columbia County,unresearched,unknown,,,,,,,
@@ -430,7 +430,7 @@ fips,state,county,status,difficulty,publisher,format,list_url,update_frequency,s
 13083,GA,Dade County,unresearched,unknown,,,,,,,
 13085,GA,Dawson County,unresearched,unknown,,,,,,,
 13087,GA,Decatur County,unresearched,unknown,,,,,,,
-13089,GA,DeKalb County,unresearched,unknown,,,,,,,
+13089,GA,DeKalb County,scraper_live,medium,Tax Commissioner,pdf,https://dekalbtaxga.gov/excess-funds/,irregular,dekalb_ga,"~231 records, ~$6.2M; includes property address",2026-10-11
 13091,GA,Dodge County,unresearched,unknown,,,,,,,
 13093,GA,Dooly County,unresearched,unknown,,,,,,,
 13095,GA,Dougherty County,unresearched,unknown,,,,,,,
@@ -444,7 +444,7 @@ fips,state,county,status,difficulty,publisher,format,list_url,update_frequency,s
 13111,GA,Fannin County,unresearched,unknown,,,,,,,
 13113,GA,Fayette County,unresearched,unknown,,,,,,,
 13115,GA,Floyd County,unresearched,unknown,,,,,,,
-13117,GA,Forsyth County,unresearched,unknown,,,,,,,
+13117,GA,Forsyth County,scraper_live,easy,Tax Commissioner,html,https://www.forsythcountytax.com/tax-sales-excess-funds/,irregular,forsyth_ga,"~17 records, ~$430k; includes mailing address; rate-limits back-to-back requests",2026-10-11
 13119,GA,Franklin County,unresearched,unknown,,,,,,,
 13121,GA,Fulton County,request_only,hard,Sheriff,open records request,https://fultoncountyga.gov/Inside-Fulton-County/Fulton-County-Departments/Sheriff/Tax-Sales,on request,,List has sale #/parcel/amount only (no owner names),2026-10-08
 13123,GA,Gilmer County,unresearched,unknown,,,,,,,
@@ -2060,7 +2060,7 @@ fips,state,county,status,difficulty,publisher,format,list_url,update_frequency,s
 39029,OH,Columbiana County,unresearched,unknown,,,,,,,
 39031,OH,Coshocton County,unresearched,unknown,,,,,,,
 39033,OH,Crawford County,unresearched,unknown,,,,,,,
-39035,OH,Cuyahoga County,list_online,medium,Clerk of Courts / Sheriff,html,https://cuyahogacounty.gov/coc/unclaimed-funds,unknown,,Excess foreclosure funds held by Clerk of Courts by year; Sheriff has a separate list,2026-10-08
+39035,OH,Cuyahoga County,scraper_live,medium,Clerk of Courts,xlsx,https://cuyahogacounty.gov/coc,monthly,cuyahoga_oh;cuyahoga_tax_oh,"Foreclosure excess (~6,000, ~$17M, back to 2006) and tax foreclosure funds released to Treasurer (~690, ~$6.3M)",2026-10-11
 39037,OH,Darke County,unresearched,unknown,,,,,,,
 39039,OH,Defiance County,unresearched,unknown,,,,,,,
 39041,OH,Delaware County,unresearched,unknown,,,,,,,
@@ -2099,7 +2099,7 @@ fips,state,county,status,difficulty,publisher,format,list_url,update_frequency,s
 39107,OH,Mercer County,unresearched,unknown,,,,,,,
 39109,OH,Miami County,unresearched,unknown,,,,,,,
 39111,OH,Monroe County,unresearched,unknown,,,,,,,
-39113,OH,Montgomery County,unresearched,unknown,,,,,,,
+39113,OH,Montgomery County,scraper_live,medium,Clerk of Courts,pdf,https://www.mcclerkofcourts.org/,monthly,montgomery_oh,"~408 records, ~$6.9M; sheriff-sale foreclosure excess; no sale dates",2026-10-11
 39115,OH,Morgan County,unresearched,unknown,,,,,,,
 39117,OH,Morrow County,unresearched,unknown,,,,,,,
 39119,OH,Muskingum County,unresearched,unknown,,,,,,,
@@ -2324,7 +2324,7 @@ fips,state,county,status,difficulty,publisher,format,list_url,update_frequency,s
 45011,SC,Barnwell County,unresearched,unknown,,,,,,,
 45013,SC,Beaufort County,unresearched,unknown,,,,,,,
 45015,SC,Berkeley County,unresearched,unknown,,,,,,,
-45017,SC,Calhoun County,unresearched,unknown,,,,,,,
+45017,SC,Calhoun County,scraper_live,medium,Delinquent Tax Collector,pdf,https://calhouncounty.sc.gov/departments/tax-collector,yearly per sale,calhoun_sc,"~74 records, ~$327k; one PDF per sale year; only 2023 prints sale dates",2026-10-11
 45019,SC,Charleston County,unresearched,unknown,,,,,,,
 45021,SC,Cherokee County,unresearched,unknown,,,,,,,
 45023,SC,Chester County,unresearched,unknown,,,,,,,
@@ -2583,14 +2583,14 @@ fips,state,county,status,difficulty,publisher,format,list_url,update_frequency,s
 48115,TX,Dawson County,unresearched,unknown,,,,,,,
 48117,TX,Deaf Smith County,unresearched,unknown,,,,,,,
 48119,TX,Delta County,unresearched,unknown,,,,,,,
-48121,TX,Denton County,unresearched,unknown,,,,,,,
+48121,TX,Denton County,scraper_live,medium,District Clerk,pdf,https://www.dentoncounty.gov/DocumentCenter/View/3044,irregular,denton_tx,"~28 records, ~$1.7M; deposit date only (no sale date)",2026-10-11
 48123,TX,DeWitt County,unresearched,unknown,,,,,,,
 48125,TX,Dickens County,unresearched,unknown,,,,,,,
 48127,TX,Dimmit County,unresearched,unknown,,,,,,,
 48129,TX,Donley County,unresearched,unknown,,,,,,,
 48131,TX,Duval County,unresearched,unknown,,,,,,,
 48133,TX,Eastland County,unresearched,unknown,,,,,,,
-48135,TX,Ector County,unresearched,unknown,,,,,,,
+48135,TX,Ector County,scraper_live,medium,District Clerk,pdf,https://www.ectorcountytx.gov/243/District-Clerk,irregular,ector_tx,"~63 records, ~$1.4M; no sale date",2026-10-11
 48137,TX,Edwards County,unresearched,unknown,,,,,,,
 48139,TX,Ellis County,unresearched,unknown,,,,,,,
 48141,TX,El Paso County,unresearched,unknown,,,,,,,
@@ -2771,7 +2771,7 @@ fips,state,county,status,difficulty,publisher,format,list_url,update_frequency,s
 48491,TX,Williamson County,unresearched,unknown,,,,,,,
 48493,TX,Wilson County,unresearched,unknown,,,,,,,
 48495,TX,Winkler County,unresearched,unknown,,,,,,,
-48497,TX,Wise County,unresearched,unknown,,,,,,,
+48497,TX,Wise County,scraper_live,medium,District Clerk,pdf,https://www.co.wise.tx.us/453/Excess-Proceeds,monthly,wise_tx,"~19 records, ~$166k; names cut at 40 characters",2026-10-11
 48499,TX,Wood County,unresearched,unknown,,,,,,,
 48501,TX,Yoakum County,unresearched,unknown,,,,,,,
 48503,TX,Young County,unresearched,unknown,,,,,,,

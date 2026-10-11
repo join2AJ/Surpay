@@ -151,6 +151,32 @@ See `docs/COMPLIANCE.md` for security and privacy (DPDP, ISO 27001, NIST CSF).
 ID photos are encrypted in the database with `SURPAY_ENCRYPTION_KEY`. **Never change or delete
 that key** once IDs are stored, or they can't be opened again.
 
+## Signing the app
+
+Test APKs (debug builds, from CI or built locally) are all signed with the shared test key in
+`android/keystore/surpay-test.keystore`, so each new APK installs over the last one.
+
+For the Play Store, create your own **upload key** once and keep it safe (if it's lost, Google has to
+reset it). It never goes in the repository:
+
+```
+keytool -genkeypair -v -keystore surpay-upload.jks -alias upload -keyalg RSA -keysize 4096 -validity 10000
+```
+
+Then build a release with these four environment variables set (in CI, as repository secrets):
+`SURPAY_UPLOAD_KEYSTORE` (path to the .jks file), `SURPAY_UPLOAD_STORE_PASSWORD`,
+`SURPAY_UPLOAD_KEY_ALIAS` (`upload`) and `SURPAY_UPLOAD_KEY_PASSWORD`, and run
+`./gradlew bundleRelease`. Turn on Play App Signing when you upload the first bundle.
+
+## Deadlines and reminders
+
+Every record shows how long is left to claim, from its sale date and the state's rule in
+`backend/surpay/legal.py` (green over 6 months, amber 2 to 6 months, red 60 days or less, grey once
+passed). New claims can't be started after the deadline. Reminders go to the claimant and attorney at
+90, 60, 30, 14, 7, 3 and 1 days, from the daily housekeeping job (`python -m surpay.cli purge`, run by
+the daily GitHub Action and after each Render start). Lists without sale dates show "Claim as soon as
+possible" rather than a countdown.
+
 ## Before real users
 
 - Set `SURPAY_SEED_DEMO=false` in Render. The fake Demo County disappears and the demo sign-in is switched off.

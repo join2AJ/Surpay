@@ -73,6 +73,88 @@ LEGAL: dict[str, dict] = {
         "sources": ["https://codes.ohio.gov/ohio-revised-code/section-5721.20",
                     "https://adamsoh-auditor.schneidergis.com/media/13898/instructions-surplus-tax-sales-funds.pdf"],
     },
+    "OH:mortgage_foreclosure": {
+        "law": "Ohio Revised Code § 2329.44",
+        "right": "When a sheriff's sale in a foreclosure brings more than the judgment, costs and liens, the "
+                 "clerk of courts holds the excess for the former owner (the judgment debtor) and anyone else "
+                 "the court finds entitled to it.",
+        "process": "A motion to release the excess funds is filed in the foreclosure case at the Court of "
+                   "Common Pleas, with proof of identity and ownership. The court orders the clerk to pay.",
+        "deadline": "There is no fixed claim period for foreclosure surplus, but money left with the clerk is "
+                    "eventually handled as unclaimed court funds. Claim as soon as possible.",
+        "deadline_years": None,
+        "if_missed": "Excess the owner doesn't collect is treated as unclaimed money held by the court and later "
+                     "the county or state. It can usually still be claimed, but it takes longer and needs the "
+                     "same proof.",
+        "sources": ["https://codes.ohio.gov/ohio-revised-code/section-2329.44",
+                    "https://codes.ohio.gov/ohio-revised-code/section-2335.34"],
+    },
+    "FL": {
+        "law": "Fla. Stat. § 197.582 (tax deed surplus) and §§ 45.032-45.033 (mortgage foreclosure surplus)",
+        "right": "When a tax deed sale brings more than the opening bid, the clerk pays government liens and holds "
+                 "the rest for those who had an interest in the property: mortgage and lien holders in order of "
+                 "priority, then the former owner.",
+        "process": "The clerk mails a notice of surplus funds. The claimant files a notarized claim to receive "
+                   "surplus proceeds with the clerk. If claims conflict, the clerk asks the circuit court to "
+                   "decide (interpleader); otherwise the clerk pays by priority.",
+        "deadline": "Lienholders must claim within 120 days of the clerk's notice. The owner should claim within "
+                    "about one year: after that the clerk sends unclaimed surplus to the state.",
+        "deadline_years": 1,
+        "if_missed": "The clerk reports the money to the Florida Department of Financial Services as unclaimed "
+                     "property. The former owner (or an heir) can still claim it from the state at "
+                     "FLTreasureHunt.gov, but it takes longer and needs the same proof.",
+        "sources": ["https://www.flsenate.gov/Laws/Statutes/2026/197.582",
+                    "https://www.flsenate.gov/Laws/Statutes/2026/45.032",
+                    "https://www.flsenate.gov/Laws/Statutes/2026/45.033"],
+    },
+    "AZ": {
+        "law": "Arizona Revised Statutes § 33-812",
+        "right": "When a trustee's sale under a deed of trust brings more than the debt, costs and junior liens, "
+                 "the rest belongs to the former owner (the trustor). The trustee may deposit it with the county "
+                 "treasurer, who holds it until the superior court orders it paid.",
+        "process": "An application for distribution is filed in the court case the trustee started, and mailed "
+                   "to the treasurer and every interested party. Others have 45 days to respond; then the court "
+                   "orders payment. A finder's agreement must be written and notarized, can't be signed within "
+                   "30 days after the sale, and a fee over $2,500 (not counting attorney fees and costs) is "
+                   "presumed unreasonable.",
+        "deadline": "Apply within 2 years of the date the money was deposited with the county treasurer.",
+        "deadline_years": 2,
+        "if_missed": "After 2 years the money is presumed abandoned. Amounts over $50 go to the Arizona "
+                     "Department of Revenue as unclaimed property, where a slower claim is still possible; "
+                     "smaller amounts go to the county and can't be claimed.",
+        "sources": ["https://www.azleg.gov/ars/33/00812.htm",
+                    "https://www.mohave.gov/departments/treasurer/general-use/excess-proceeds-list/"],
+    },
+    "SC": {
+        "law": "S.C. Code § 12-51-130",
+        "right": "When a tax sale brings more than the taxes, penalties and costs, the overage belongs to the "
+                 "owner of record just before the 12-month redemption period ended.",
+        "process": "After the tax deed is issued, the owner files a signed (often notarized) claim form with the "
+                   "county's delinquent tax collector, with ID and proof of ownership. The overage is paid about "
+                   "90 days after the tax deed unless someone else goes to court over it. The county charges no fee.",
+        "deadline": "Claim within 5 years of the tax sale.",
+        "deadline_years": 5,
+        "if_missed": "Overage not claimed within 5 years goes to the county's general fund and can no longer be "
+                     "claimed.",
+        "sources": ["https://www.scstatehouse.gov/code/t12c051.php",
+                    "https://calhouncounty.sc.gov/departments/tax-collector"],
+    },
+    "CA": {
+        "law": "California Revenue and Taxation Code §§ 4674-4676",
+        "right": "Money left from a tax-defaulted property sale goes first to lienholders of record in order of "
+                 "priority, then to whoever held title before the tax deed was recorded: the former owner or "
+                 "their heirs.",
+        "process": "A written claim (usually form SCO 8-21) with proof of interest is filed with the county tax "
+                   "collector. The board of supervisors decides and pays no sooner than one year after the deed "
+                   "is recorded. Anyone filing for the owner must show the owner was told the amount and that "
+                   "they can claim directly with the county for free.",
+        "deadline": "File within one year after the tax deed to the buyer is recorded.",
+        "deadline_years": 1,
+        "if_missed": "Excess proceeds not claimed in time go to the county general fund, and the former owner's "
+                     "right to them ends.",
+        "sources": ["https://california.public.law/codes/ca_rev_and_tax_code_section_4675",
+                    "https://www.sco.ca.gov/Files-ARD-Tax-Info/Tax-Collector-Ref-Man/sco8-21.pdf"],
+    },
 }
 
 _DEFAULT = {
@@ -117,9 +199,15 @@ FAMILY_PROOF = {
 }
 
 
-def deadline_for(state: str, sale_date: date | None) -> date | None:
+def rules(state: str, sale_type: str = "") -> dict:
+    """The state's rules, or its separate rules for this kind of sale where they differ
+    (for example "OH:mortgage_foreclosure")."""
+    return LEGAL.get(f"{state.upper()}:{sale_type}") or LEGAL.get(state.upper(), _DEFAULT)
+
+
+def deadline_for(state: str, sale_date: date | None, sale_type: str = "") -> date | None:
     """Approximate last day to claim, counted from the sale date. None if unknown."""
-    years = LEGAL.get(state.upper(), _DEFAULT).get("deadline_years")
+    years = rules(state, sale_type).get("deadline_years")
     if not years or sale_date is None:
         return None
     if years != int(years):  # e.g. 0.5 for six months
@@ -152,15 +240,15 @@ def today() -> date:
 
 
 def deadline_info(state: str, sale_date: date | None, claim_status: str | None = None,
-                  as_of: date | None = None) -> dict:
+                  as_of: date | None = None, sale_type: str = "") -> dict:
     """Where a record stands against its legal deadline, for every screen that shows it.
 
     urgency: safe (> 6 months left), soon (2-6 months), urgent (60 days or less), expired,
     met (the claim was filed in time) or unknown (no sale date or no fixed statutory period).
     """
     as_of = as_of or today()
-    info = LEGAL.get(state.upper(), _DEFAULT)
-    deadline = deadline_for(state, sale_date)
+    info = rules(state, sale_type)
+    deadline = deadline_for(state, sale_date, sale_type)
     base = {"deadline": deadline, "sale_date": sale_date, "file_by": None, "days_left": None,
             "total_days": None, "elapsed_pct": None, "rule": info["deadline"], "if_missed": info["if_missed"],
             "can_claim": True}
@@ -197,8 +285,13 @@ def deadline_info(state: str, sale_date: date | None, claim_status: str | None =
     return {**out, "urgency": urgency, "color": _COLORS[urgency], "label": label, "message": message}
 
 
-def legal_basis(state: str) -> dict:
-    info = {k: v for k, v in LEGAL.get(state.upper(), _DEFAULT).items() if k != "deadline_years"}
+def record_deadline(r, claim_status: str | None = None, as_of: date | None = None) -> dict:
+    """deadline_info for a SurplusRecord."""
+    return deadline_info(r.state, r.sale_date, claim_status, as_of=as_of, sale_type=r.sale_type)
+
+
+def legal_basis(state: str, sale_type: str = "") -> dict:
+    info = {k: v for k, v in rules(state, sale_type).items() if k != "deadline_years"}
     return {
         **info,
         "proof": [*_COMMON_PROOF, _HEIR_PROOF],

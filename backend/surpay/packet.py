@@ -51,8 +51,8 @@ def _image(blob: bytes | None, max_w: float = 6 * inch, max_h: float = 4 * inch)
 def build(claim: Claim) -> bytes:
     r, u = claim.record, claim.user
     i, a, rel = u.identity, claim.agreement, claim.relative
-    guide, legal = filing_guide(r.state), legal_basis(r.state)
-    deadline = deadline_for(r.state, r.sale_date)
+    guide, legal = filing_guide(r.state), legal_basis(r.state, r.sale_type)
+    deadline = deadline_for(r.state, r.sale_date, r.sale_type)
     name = i.legal_name if i else u.full_name
     story: list = []
 

@@ -538,8 +538,8 @@ def admin_overview(scope: Admin, session: DbSession) -> dict:
     delisted = session.scalar(select(func.count()).select_from(SurplusRecord).where(SurplusRecord.status != "listed"))
     new_7d = sum(1 for r in records if _aware(r.first_seen) and _aware(r.first_seen) > now - timedelta(days=7))
 
-    from .legal import deadline_info
-    clocks = [(r, deadline_info(r.state, r.sale_date)) for r in records]
+    from .legal import record_deadline
+    clocks = [(r, record_deadline(r)) for r in records]
     deadlines: dict[str, dict] = {k: {"records": 0, "total_cents": 0}
                                   for k in ("urgent", "soon", "safe", "expired", "unknown")}
     for r, clock in clocks:
@@ -599,7 +599,7 @@ def admin_overview(scope: Admin, session: DbSession) -> dict:
         alerts.append(f"Scraper needs attention: {', '.join(unhealthy)}")
     if payouts_due:
         alerts.append(f"Attorney payouts due: ${payouts_due / 100:,.2f}")
-    at_risk = [c for c in active if deadline_info(c.record.state, c.record.sale_date, c.status)["urgency"] == "urgent"]
+    at_risk = [c for c in active if record_deadline(c.record, c.status)["urgency"] == "urgent"]
     if at_risk:
         alerts.insert(0, f"{len(at_risk)} claim(s) not yet filed with 60 days or less to the legal deadline: "
                          + ", ".join(f"SP-{c.id:06d}" for c in at_risk[:5]))
@@ -644,8 +644,8 @@ def _records_query(q: str, state: str, county: str, status_: str, min_cents: int
 
 
 def _record_row(r, claimed: dict) -> dict:
-    from .legal import deadline_info
-    clock = deadline_info(r.state, r.sale_date)
+    from .legal import record_deadline
+    clock = record_deadline(r)
     d = clock["deadline"]
     return {"id": r.id, "state": r.state, "county": r.county, "reference": r.reference, "owner_name": r.owner_name,
             "owner_address": r.owner_address, "amount_cents": r.amount_cents, "sale_type": r.sale_type,
@@ -715,7 +715,7 @@ def admin_records_csv(scope: Admin, session: DbSession, client: Client, q: str =
 @router.get("/admin/claims.csv")
 def admin_claims_csv(scope: Admin, session: DbSession, client: Client):
     """One row per claim (no ID numbers or documents)."""
-    from .legal import deadline_info
+    from .legal import record_deadline
     rows = []
     for c in session.scalars(select(Claim).order_by(Claim.id)):
         if scope.demo and not is_demo_claim(c):
@@ -727,8 +727,8 @@ def admin_claims_csv(scope: Admin, session: DbSession, client: Client):
                      "county": f"{c.record.county} County, {c.record.state}", "record": c.record.reference,
                      "amount": c.record.amount_cents / 100, "fee_pct": c.fee_pct,
                      "deadline": (lambda d: d["deadline"].isoformat() if d["deadline"] else "")(
-                         deadline_info(c.record.state, c.record.sale_date, c.status)),
-                     "deadline_status": deadline_info(c.record.state, c.record.sale_date, c.status)["label"],
+                         record_deadline(c.record, c.status)),
+                     "deadline_status": record_deadline(c.record, c.status)["label"],
                      "attorney": lawyer.full_name if lawyer else "", "assignment": c.assignment_status,
                      "attorney_fee": c.attorney_fee_cents / 100, "payout": c.payout_status,
                      "for_relative": c.relative.full_name if c.relative and shown else ""})

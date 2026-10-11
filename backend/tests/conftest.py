@@ -1,7 +1,8 @@
 import os
 import tempfile
 
-os.environ["SURPAY_DATABASE_URL"] = f"sqlite:///{tempfile.mkdtemp()}/test.db"
+# SURPAY_TEST_DATABASE_URL runs the suite against Postgres (an empty, throwaway database).
+os.environ["SURPAY_DATABASE_URL"] = os.environ.get("SURPAY_TEST_DATABASE_URL") or f"sqlite:///{tempfile.mkdtemp()}/test.db"
 os.environ.setdefault("SURPAY_SECRET_KEY", "test-secret")
 
 import pytest  # noqa: E402

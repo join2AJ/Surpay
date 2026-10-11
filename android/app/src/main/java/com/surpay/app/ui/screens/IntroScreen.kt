@@ -127,6 +127,15 @@ fun IntroScreen(onDone: () -> Unit) {
 
 /** What changed in each version, newest first. Shown once after an update. */
 val CHANGELOG: List<Pair<Int, List<String>>> = listOf(
+    6 to listOf(
+        "A countdown on every match and claim: how many days are left to claim, colour-coded green, amber or red",
+        "A timeline from the sale to your last day to claim, with the date to file by, and what happens if it’s missed",
+        "Reminders as your deadline gets close (90, 60, 30, 14, 7, 3 and 1 days)",
+        "Money closest to its deadline is listed first",
+        "Many more counties: Florida, Georgia, Texas, Ohio, Arizona, South Carolina and California, about 9,800 records",
+        "Attorneys: time left to file on every case, most urgent first",
+        "Future updates install over this version without uninstalling",
+    ),
     5 to listOf(
         "Every claim now has a reference number, like SP-000123, to quote when you contact us",
         "Your attorney can ask for documents (a W-9, a deed, a bank statement) and you upload them right in your claim",

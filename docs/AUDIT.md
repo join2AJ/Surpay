@@ -80,3 +80,17 @@ This audit reviewed the backend, the Android app and the legal set-up of Surpay,
 - Attorneys manage their own firm, office and counties, and can pause new offers.
 - Every claim has a reference number (SP-000123) shown to the client, attorney and staff.
 - Help and FAQ in the app for both roles; quick replies in attorney chat.
+
+## v0.5: coverage, deadlines, dependencies
+
+- 24 county lists in 7 states (FL, GA, TX, OH, AZ, SC, CA): about 9,800 records and $70M on 2026-10-11,
+  up from 4 lists and 344 records. Counties that only answer by email, paid request or behind bot
+  protection were skipped (see `data/county_sources.csv` notes).
+- Legal rules added for FL, AZ, SC and CA, plus Ohio sheriff-sale foreclosure surplus (ORC 2329.44),
+  which has no fixed claim period, unlike Ohio tax foreclosure (ORC 5721.20, 3 years).
+- The legal clock on every screen; claims can't start after the deadline; reminders before it.
+- Backend dependencies upgraded (FastAPI 0.143, Starlette 1.7, SQLAlchemy 2.1, cryptography 50,
+  PyJWT 2.15, pdfminer 20260107...): `pip-audit` reports no known vulnerabilities. Tested on SQLite and
+  Postgres 16.
+- Test APKs share one signing key so updates install in place; release signing reads an upload key
+  from the environment.

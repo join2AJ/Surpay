@@ -76,13 +76,13 @@ def deadline_reminders(session: Session, today=None) -> int:
     Once per milestone (90, 60, 30, 14, 7, 3 and 1 days left) for claims not yet filed, and at 90, 30
     and 7 days for money a verified user matches but hasn't started a claim on.
     """
-    from .legal import deadline_info
+    from .legal import record_deadline
     from .matching import find_all_matches
 
     sent = 0
     for c in session.scalars(select(Claim).where(Claim.status.not_in(CLOSED))).all():
         r = c.record
-        clock = deadline_info(r.state, r.sale_date, c.status, as_of=today)
+        clock = record_deadline(r, c.status, as_of=today)
         m = _due_milestone(clock["days_left"], REMINDER_DAYS)
         if m is None or clock["urgency"] == "met":
             continue
@@ -112,7 +112,7 @@ def deadline_reminders(session: Session, today=None) -> int:
             r = match.record
             if r.id in claimed:
                 continue
-            clock = deadline_info(r.state, r.sale_date, as_of=today)
+            clock = record_deadline(r, as_of=today)
             m = _due_milestone(clock["days_left"], UNCLAIMED_REMINDER_DAYS)
             if m is None:
                 continue
