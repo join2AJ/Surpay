@@ -307,3 +307,58 @@ def optout(code: str, session: DbSession, client: Client) -> HTMLResponse:
                      client=client, details={"code": code.upper()})
         session.commit()
     return HTMLResponse(_PAGE.format(title="Done", body="<h1>Done</h1><p>We won't contact you about this again.</p>"))
+
+
+class ContactImportIn(BaseModel):
+    # CSV lines: record_id,kind,value,source_url,note,matches_property (header line optional)
+    text: str = Field(min_length=3, max_length=200_000)
+
+
+@router.post("/admin/contacts-import")
+def import_contacts(body: ContactImportIn, scope: Admin, session: DbSession, client: Client) -> dict:
+    """Add many contacts at once from pasted CSV lines. Each is encrypted, checked and audited like a
+    single add; bad lines are reported and skipped."""
+    import csv
+    import io
+    results = []
+    kinds = {"address", "email", "phone", "profile", "obituary", "link"}
+    for n, row in enumerate(csv.reader(io.StringIO(body.text.strip())), 1):
+        row = [c.strip() for c in row]
+        if not row or not any(row) or row[0].lower() in ("record_id", "record"):
+            continue
+        try:
+            record_id, kind, value = int(row[0]), row[1].lower(), row[2]
+        except (ValueError, IndexError):
+            results.append({"line": n, "ok": False, "error": "Needs at least: record_id,kind,value"})
+            continue
+        url = row[3] if len(row) > 3 else ""
+        note = row[4] if len(row) > 4 else ""
+        matches = len(row) > 5 and row[5].lower() in ("yes", "y", "true", "1", "x")
+        r = session.get(SurplusRecord, record_id)
+        if r is None or (scope.demo and r.source != "demo"):
+            results.append({"line": n, "ok": False, "error": f"Record {record_id} not found" if r is None
+                            else "Real people's contacts can only be added with the staff token"})
+            continue
+        if kind not in kinds or len(value) < 3:
+            results.append({"line": n, "ok": False, "error": f"Type must be one of {', '.join(sorted(kinds))}"})
+            continue
+        if url and not url.startswith(("http://", "https://")):
+            results.append({"line": n, "ok": False, "error": "Source URL must start with https://"})
+            continue
+        if matches:
+            note = (note + " · " if note else "") + f"Address history includes the sold property ({r.owner_address or r.reference})"
+        dup = [c for c in session.scalars(select(OwnerContact).where(OwnerContact.record_id == r.id))
+               if c.kind == kind and c.value.lower() == value.lower()]
+        if dup:
+            results.append({"line": n, "ok": False, "error": "Already saved", "contact_id": dup[0].id})
+            continue
+        c = OwnerContact(record_id=r.id, kind=kind, value=value, source="manual", source_url=url[:2000],
+                         confidence="high" if matches else "medium", note=note[:2000])
+        session.add(c)
+        session.flush()
+        results.append({"line": n, "ok": True, "record_id": r.id, "contact_id": c.id, "kind": kind})
+    added = [x for x in results if x["ok"]]
+    _log(session, "admin.contacts_imported", client, added=len(added),
+         records=sorted({x["record_id"] for x in added}))
+    session.commit()
+    return {"added": len(added), "results": results}

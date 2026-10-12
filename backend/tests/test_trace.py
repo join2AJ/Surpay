@@ -126,3 +126,24 @@ def test_admin_demo_can_find_owners_of_real_records(client, session, monkeypatch
     monkeypatch.setattr(trace_api, "DEMO_TRACES_PER_HOUR", 1)
     assert client.post(f"/admin/records/{rid}/trace", headers=d).status_code == 429
     assert client.post(f"/admin/records/{rid}/trace", headers=staff).status_code == 200
+
+
+def test_paste_contacts(client, session, admin):  # noqa: F811
+    upsert(session, "dallas_tx", [rec("A", "SAMIYA MUSTAFA", "3920 WESTBROOK RD, Gwinnett County, GA")], full_snapshot=True)
+    rid = client.get("/admin/records", headers=admin).json()["records"][0]["id"]
+    url = "https://nationalpublicdata.com/people/m/samiya-mustafa/tx/houston/abc/"
+    text = (f"record_id,kind,value,source_url,note,matches_property\n"
+            f'{rid},email,s.m@example.com,{url},"National Public Data, current email",yes\n'
+            f'{rid},phone,(555) 010-0000,{url},"Landline, Georgia",yes\n'
+            f'{rid},address,"Houston, TX 77263",{url},Current city,yes\n'
+            f"{rid},email,s.m@example.com,{url},again,yes\n"
+            f"999,email,x@y.com,,,\n"
+            f"{rid},fax,123,,,\n")
+    r = client.post("/admin/contacts-import", headers=admin, json={"text": text}).json()
+    assert r["added"] == 3
+    assert [x["error"] for x in r["results"] if not x["ok"]] == ["Already saved", "Record 999 not found",
+                                                                  "Type must be one of address, email, link, obituary, phone, profile"]
+    t = client.get(f"/admin/records/{rid}/trace", headers=admin).json()
+    addr = [c for c in t["contacts"] if c["kind"] == "address" and c["source"] == "manual"][0]
+    assert addr["value"] == "Houston, TX 77263" and addr["confidence"] == "high" and addr["source_url"] == url
+    assert "National Public Data, current email" in [c for c in t["contacts"] if c["kind"] == "email"][0]["note"]

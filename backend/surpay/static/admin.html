@@ -690,6 +690,7 @@ async function viewTrace(root) {
           if (!confirm(`Mark ${ready.length} letter(s) as posted?`)) return;
           await api("/admin/outreach/mark-sent", { method: "POST", body: JSON.stringify({ ids: ready.map(o => o.id) }) }); go("trace"); } }, "Mark them posted") : null),
       el("p", { class: "muted" }, "Outreach is by letter, email (with an unsubscribe link) or in-app notice. No automated calls or texts. Anyone can opt out from the link in their letter.")),
+    pasteCard(),
     card("Traced records", sortableTable([
       { key: "owner_name", label: "Owner", render: t => el("span", {}, el("b", {}, t.owner_name), t.deceased ? el("div", { class: "muted" }, "possibly deceased: look for heirs") : null) },
       { key: "county", label: "County", render: t => `${t.county}, ${t.state}` },
@@ -700,6 +701,20 @@ async function viewTrace(root) {
       { key: "outreach", label: "Invited", num: true },
       { key: "finished_at", label: "When", render: t => day(t.finished_at) },
     ], d.runs, t => showTrace(t.record_id), { sortKey: "amount_cents", empty: "Nothing traced yet: press Trace next 10." })));
+}
+
+function pasteCard() {
+  const box = el("textarea", { rows: "5", style: "width:100%;font-family:ui-monospace,monospace;font-size:12px",
+    placeholder: "record_id,kind,value,source_url,note,matches_property\n350,email,name@example.com,https://…,Found on …,yes" });
+  const out = el("div", { class: "muted" });
+  return card("Paste contacts",
+    el("p", { class: "muted" }, "One per line: record number, type (email, phone, address, profile, obituary, link), value, source URL, note, and yes if the source's address history includes the sold property. Each line is encrypted, checked and recorded in the audit trail."),
+    box, el("div", { class: "row", style: "margin-top:8px" }, el("button", { onclick: async () => {
+      try {
+        const r = await (await api("/admin/contacts-import", { method: "POST", body: JSON.stringify({ text: box.value }) })).json();
+        out.replaceChildren(el("b", {}, `Added ${r.added}.`), ...r.results.filter(x => !x.ok).map(x => el("div", {}, `Line ${x.line}: ${x.error}`)));
+        if (r.added) box.value = "";
+      } catch (e) { alert(e.message); } } }, "Add contacts")), out);
 }
 
 async function showTrace(recordId) {
