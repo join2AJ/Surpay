@@ -677,6 +677,7 @@ async function viewTrace(root) {
   root.append(
     card("Find the owners of listed money",
       el("p", { class: "muted" }, "Each record is checked in at most four places, in order: Surpay users, the address on the county list, a web search, an obituary search. It stops at the first usable hit, records what every place returned, and moves on. Click a record for the places to search by hand."),
+      d.demo ? el("p", { class: "muted" }, `Admin demo: you can search real county records (up to ${d.demo_searches_per_hour} searches an hour, 5 at a time). Contact details are partly hidden and letters and emails are for Surpay staff.`) : null,
       s.search_provider ? null : el("div", { class: "alert" }, "Web and obituary search are off: add SURPAY_BRAVE_API_KEY (Brave Search, 2,000 free searches a month) or SURPAY_GOOGLE_CSE_KEY and SURPAY_GOOGLE_CSE_ID (Google Programmable Search, 100 free a day) in Render."),
       el("div", { class: "kpis" }, kpi("records listed", (s.listed || 0).toLocaleString()), kpi("traced", (s.traced || 0).toLocaleString()),
         ...Object.keys(TRACE_STATUS).map(k => kpi(TRACE_STATUS[k][0].toLowerCase(), (s.by_status[k] || 0).toLocaleString())),
@@ -729,20 +730,21 @@ async function showTrace(recordId) {
         { key: "value", label: "Contact", render: c => /^https?:/.test(c.value) ? el("a", { href: c.value, target: "_blank", rel: "noopener" }, c.label || c.value) : el("span", {}, c.value, c.label ? el("div", { class: "muted" }, c.label) : null) },
         { key: "source", label: "From", render: c => el("span", {}, c.source.replace(/_/g, " "), c.note ? el("div", { class: "muted" }, c.note) : null) },
         { key: "confidence", label: "Confidence" },
-        { key: "act", label: "", nosort: true, render: c => c.do_not_contact ? el("span", { class: "pill rejected" }, "do not contact") : el("span", { class: "row" },
+        { key: "act", label: "", nosort: true, render: c => t.read_only ? "" : c.do_not_contact ? el("span", { class: "pill rejected" }, "do not contact") : el("span", { class: "row" },
           c.kind === "address" ? el("button", { class: "secondary", onclick: (e) => { e.stopPropagation(); invite("letter", c); } }, "Letter") : null,
           c.kind === "email" ? el("button", { class: "secondary", onclick: (e) => { e.stopPropagation(); invite("email", c); } }, "Email") : null,
           el("button", { class: "secondary", title: "Never contact this person", onclick: async (e) => { e.stopPropagation();
             if (!confirm("Mark as do not contact?")) return; await api(`/admin/contacts/${c.id}`, { method: "POST", body: JSON.stringify({ do_not_contact: true }) }); showTrace(recordId); } }, "Don't contact")) },
       ], t.contacts, null, { empty: "Nothing found yet. Try the places below and add what you find." }),
-        el("h3", {}, "Add what you found"),
+        ...(t.read_only ? [el("div", { class: "alert" }, "Admin demo: you can search this real county record and see what was found (emails and phones partly hidden). Adding contacts and sending letters or emails to real people is for Surpay staff.")]
+          : [el("h3", {}, "Add what you found"),
         el("div", { class: "row" }, kind, val, note, el("button", { onclick: async () => {
           try { await api(`/admin/records/${recordId}/contacts`, { method: "POST", body: JSON.stringify({ kind: kind.value, value: val.value, note: note.value }) }); showTrace(recordId); }
-          catch (e) { alert(e.message); } } }, "Add"))),
+          catch (e) { alert(e.message); } } }, "Add"))])),
       card("Search further by hand", el("p", { class: "muted" }, "Each link opens a search already filled in. Note what you find above, or nothing, so nobody repeats it."),
         ...t.manual_sources.map(m => el("div", { style: "padding:5px 0;border-bottom:1px solid var(--line)" },
           el("a", { href: m.url, target: "_blank", rel: "noopener" }, el("b", {}, m.name)), el("div", { class: "muted" }, m.why)))),
-      card(`Invitations sent (${t.outreach.length})`, sortableTable([
+      t.read_only ? null : card(`Invitations sent (${t.outreach.length})`, sortableTable([
         { key: "channel", label: "How" }, { key: "code", label: "Code", render: o => el("span", { class: "mono" }, o.code) },
         { key: "status", label: "Status" }, { key: "created_at", label: "Created", render: o => day(o.created_at) },
         { key: "link", label: "Their link", nosort: true, render: o => el("a", { href: o.link, target: "_blank", rel: "noopener" }, "open") },
@@ -767,7 +769,7 @@ async function load() {
     const who = await getJson("/admin/whoami");
     const banner = $("#banner");
     banner.style.display = who.demo ? "block" : "none";
-    banner.textContent = who.demo ? "Admin demo: you see and act only on demo data (Demo County, the demo accounts, and Demo County attorneys). Real people's records stay hidden. Fee and pay settings are read-only." : "";
+    banner.textContent = who.demo ? "Admin demo: people, claims and signed documents are limited to the demo accounts. Public county records can be browsed and searched for owners (Find owners). Contacting real people and changing fee or pay settings are for Surpay staff." : "";
     $("#load").textContent = "Refresh";
     await VIEWS[view](root);
     $("#msg").textContent = "";

@@ -95,3 +95,29 @@ def test_staff_tools_letters_and_opt_out(client, session, admin):  # noqa: F811
     client.post(f"/optout/{o['code']}")
     r = client.post(f"/admin/records/{rid}/outreach", headers=admin, json={"channel": "letter", "contact_id": address["id"]})
     assert r.status_code == 409  # they asked not to be contacted
+
+
+def test_admin_demo_can_find_owners_of_real_records(client, session, monkeypatch):
+    from tests.test_demo_admin import demo_admin
+    from surpay import trace_api
+    monkeypatch.setattr(config, "DEMO_ENABLED", True)
+    monkeypatch.setattr(config, "ADMIN_TOKEN", "real-staff-token")
+    staff = {"X-Admin-Token": "real-staff-token"}
+    upsert(session, "dallas_tx", [rec("A", "Pat Unknown", "12 Oak St, Dallas, TX 75201")], full_snapshot=True)
+    rid = client.get("/admin/records", headers=staff).json()["records"][0]["id"]
+    client.post(f"/admin/records/{rid}/contacts", headers=staff, json={"kind": "email", "value": "pat@example.com"})
+    d = demo_admin(client)
+
+    t = client.post(f"/admin/records/{rid}/trace", headers=d)
+    assert t.status_code == 200 and t.json()["read_only"] is True
+    emails = [c["value"] for c in t.json()["contacts"] if c["kind"] == "email"]
+    assert emails == ["p•••@example.com"]  # partly hidden in the demo
+    assert any(s["name"] == "LinkedIn people search" for s in t.json()["manual_sources"])
+    assert client.post("/admin/trace/run", headers=d, json={"limit": 10}).status_code == 200
+    # Acting on a real person stays with staff
+    assert client.post(f"/admin/records/{rid}/contacts", headers=d, json={"kind": "email", "value": "x@y.com"}).status_code == 404
+    assert client.post(f"/admin/records/{rid}/outreach", headers=d, json={"channel": "letter"}).status_code == 404
+    # And the demo's searches are capped
+    monkeypatch.setattr(trace_api, "DEMO_TRACES_PER_HOUR", 1)
+    assert client.post(f"/admin/records/{rid}/trace", headers=d).status_code == 429
+    assert client.post(f"/admin/records/{rid}/trace", headers=staff).status_code == 200

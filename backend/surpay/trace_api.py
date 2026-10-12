@@ -38,22 +38,55 @@ class OutreachIn(BaseModel):
     contact_id: int | None = None
 
 
-def _record(session, scope, record_id: int) -> SurplusRecord:
+def _record(session, scope, record_id: int, public: bool = False) -> SurplusRecord:
+    """County records are public, so the admin demo may search any of them (public=True); acting on a
+    real person (adding contacts, sending letters or emails) stays with real staff."""
     r = session.get(SurplusRecord, record_id)
     if r is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Record not found")
-    scope.check(r.source == "demo")
+    if not public:
+        scope.check(r.source == "demo")
     return r
 
 
-def contact_out(c: OwnerContact) -> dict:
-    return {"id": c.id, "kind": c.kind, "value": c.value, "label": c.label, "source": c.source,
+# The admin demo is open to anyone testing the app: it may run this many searches an hour, in total.
+DEMO_TRACES_PER_HOUR = 30
+
+
+def _demo_quota(session) -> None:
+    from datetime import datetime, timedelta, timezone
+
+    from sqlalchemy import func
+    used = session.scalar(select(func.count()).select_from(TraceRun).where(
+        TraceRun.by == "demo_admin", TraceRun.started_at > datetime.now(timezone.utc) - timedelta(hours=1))) or 0
+    if used >= DEMO_TRACES_PER_HOUR:
+        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS,
+                            "The admin demo has used its searches for this hour. Try again later.")
+
+
+def _mask(kind: str, value: str) -> str:
+    if kind == "email":
+        local, _, domain = value.partition("@")
+        return f"{local[:1]}•••@{domain}"
+    if kind == "phone":
+        return "•••-•••-" + "".join(ch for ch in value if ch.isdigit())[-4:]
+    if kind == "user":
+        return "a verified Surpay user"
+    return value
+
+
+def contact_out(c: OwnerContact, mask: bool = False) -> dict:
+    return {"id": c.id, "kind": c.kind, "value": _mask(c.kind, c.value) if mask else c.value, "label": c.label, "source": c.source,
             "source_url": c.source_url, "confidence": c.confidence, "note": c.note,
             "do_not_contact": c.do_not_contact, "created_at": c.created_at}
 
 
-def run_out(t: TraceRun) -> dict:
-    return {"id": t.id, "record_id": t.record_id, "status": t.status, "steps": t.steps, "deceased": t.deceased,
+def run_out(t: TraceRun, mask: bool = False) -> dict:
+    steps = t.steps
+    if mask:  # don't reveal which real user matched
+        steps = [{**s, "note": "Matches a verified Surpay user" if s.get("source") == "Surpay users" and s.get("found")
+                  else s.get("note", "")} for s in steps]
+    return {"id": t.id, "record_id": t.record_id, "status": t.status, "steps": steps, "deceased": t.deceased,
             "started_at": t.started_at, "finished_at": t.finished_at, "by": t.by}
 
 
@@ -73,35 +106,39 @@ def trace_overview(scope: Admin, session: DbSession, status_: str = "", limit: i
     rows = []
     for t in latest.values():
         r = session.get(SurplusRecord, t.record_id)
-        if r is None or (scope.demo and r.source != "demo") or (status_ and t.status != status_):
+        if r is None or (status_ and t.status != status_):
             continue
         contacts = session.scalars(select(OwnerContact).where(OwnerContact.record_id == r.id)).all()
-        rows.append({**run_out(t), "owner_name": r.owner_name, "county": r.county, "state": r.state,
+        rows.append({**run_out(t, mask=scope.demo and r.source != "demo"), "owner_name": r.owner_name, "county": r.county, "state": r.state,
                      "amount_cents": r.amount_cents, "contacts": len(contacts),
                      "usable": sum(1 for c in contacts if c.kind in ("email", "address", "user") and not c.do_not_contact),
                      "outreach": len(session.scalars(select(Outreach).where(Outreach.record_id == r.id)).all())})
-    return {"summary": trace.summary(session, demo_only=scope.demo), "runs": rows[:limit],
-            "queue": len(trace.queue(session, limit=50))}
+    return {"summary": trace.summary(session), "runs": rows[:limit],
+            "queue": len(trace.queue(session, limit=50)), "demo": scope.demo,
+            "demo_searches_per_hour": DEMO_TRACES_PER_HOUR if scope.demo else None}
 
 
 @router.post("/admin/trace/run")
 def trace_run(body: TraceBatchIn, scope: Admin, session: DbSession, client: Client) -> dict:
     """Trace the next records in the queue (biggest first), each checking at most four places."""
     if scope.demo:
-        # The demo traces only demo records, which never touch the web.
-        records = [r for r in session.scalars(select(SurplusRecord).where(SurplusRecord.source == "demo",
-                                                                         SurplusRecord.status == "listed"))]
-        runs = [trace.trace(session, r, by="admin") for r in records[: body.limit]]
+        # The demo searches the real queue too (county records are public), a few at a time.
+        _demo_quota(session)
+        records = trace.queue(session, limit=min(body.limit, 5))
+        users = trace._verified_users(session)
+        runs = [trace.trace(session, r, by="demo_admin", users=users) for r in records]
+        session.commit()
     else:
         runs = trace.trace_batch(session, body.limit, body.min_cents)
     _log(session, "admin.trace_batch", client, records=[t.record_id for t in runs])
     session.commit()
-    return {"runs": [run_out(t) for t in runs]}
+    return {"runs": [run_out(t, mask=scope.demo) for t in runs]}
 
 
 @router.get("/admin/records/{record_id}/trace")
 def record_trace(record_id: int, scope: Admin, session: DbSession, client: Client) -> dict:
-    r = _record(session, scope, record_id)
+    r = _record(session, scope, record_id, public=True)
+    mask = scope.demo and r.source != "demo"
     _log(session, "admin.trace_viewed", client, entity_type="record", entity_id=r.id)
     session.commit()
     reg = session.scalars(select(CountySource).where(CountySource.scraper.like(f"%{r.source}%"))).first()
@@ -110,18 +147,22 @@ def record_trace(record_id: int, scope: Admin, session: DbSession, client: Clien
     return {
         "record_id": r.id, "owner_name": r.owner_name, "person": name, "deceased_hint": deceased,
         "search_place": f"{city}, {state}", "search_provider": trace.search_ready() or None,
-        "runs": [run_out(t) for t in session.scalars(select(TraceRun).where(TraceRun.record_id == r.id)
-                                                     .order_by(TraceRun.id.desc()))],
-        "contacts": [contact_out(c) for c in session.scalars(select(OwnerContact).where(OwnerContact.record_id == r.id))],
-        "outreach": [outreach_out(o) for o in session.scalars(select(Outreach).where(Outreach.record_id == r.id))],
+        "runs": [run_out(t, mask) for t in session.scalars(select(TraceRun).where(TraceRun.record_id == r.id)
+                                                           .order_by(TraceRun.id.desc()))],
+        "contacts": [contact_out(c, mask) for c in session.scalars(select(OwnerContact).where(OwnerContact.record_id == r.id))],
+        "outreach": [] if mask else [outreach_out(o) for o in session.scalars(select(Outreach).where(Outreach.record_id == r.id))],
+        # The admin demo can search real county records but not contact real people.
+        "read_only": mask,
         "manual_sources": trace.manual_sources(r, reg.list_url if reg else ""),
     }
 
 
 @router.post("/admin/records/{record_id}/trace")
 def trace_one(record_id: int, scope: Admin, session: DbSession, client: Client) -> dict:
-    r = _record(session, scope, record_id)
-    t = trace.trace(session, r, by="admin")
+    r = _record(session, scope, record_id, public=True)
+    if scope.demo and r.source != "demo":
+        _demo_quota(session)
+    t = trace.trace(session, r, by="demo_admin" if scope.demo else "admin")
     _log(session, "admin.trace_run", client, entity_type="record", entity_id=r.id, status=t.status)
     session.commit()
     return record_trace(record_id, scope, session, client)
