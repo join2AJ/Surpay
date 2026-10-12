@@ -18,6 +18,7 @@ from .legal import deadline_for, legal_basis, record_deadline
 from .matching import find_all_matches, find_matches
 from .admin_insights import router as insights_router
 from .forms_api import router as forms_router
+from .trace_api import router as trace_router
 from .me_api import record_consent, router as me_router, terms_current
 from .models import Agreement, Claim, CountySource, IdentityVerification, Notification, PreviousAddress, SurplusRecord, User
 from .policies import PRIVACY_VERSION, TERMS_VERSION
@@ -43,6 +44,7 @@ app.include_router(me_router)
 app.include_router(admin_router)
 app.include_router(forms_router)
 app.include_router(insights_router)
+app.include_router(trace_router)
 
 
 def _identity_status(user: User) -> str | None:
@@ -146,6 +148,11 @@ def signup(body: SignupIn, session: DbSession, client: Client):
         raise HTTPException(status.HTTP_409_CONFLICT, "An account with this email already exists") from None
     record_consent(session, user, "terms", TERMS_VERSION, client)
     record_consent(session, user, "privacy", PRIVACY_VERSION, client)
+    if body.invite_code.strip():
+        from .outreach import redeem
+        if redeem(session, body.invite_code, user.id) is not None:
+            audit.record(session, "outreach.signed_up", actor_id=user.id, entity_type="user", entity_id=user.id,
+                         client=client, details={"code": body.invite_code.strip().upper()})
     audit.record(session, "account.created", actor_id=user.id, entity_type="user", entity_id=user.id,
                  client=client, details={"role": user.role})
     session.commit()

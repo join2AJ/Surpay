@@ -205,6 +205,33 @@ plus bonuses for heir claims and contested hearings, paid when the money is rele
 size-based amount if the claim is denied). Each claim's detail shows the client's fee, the attorney's pay
 and what Surpay keeps. Have ethics counsel review the arrangement in each state.
 
+## Finding owners and inviting them (staff: Find owners)
+
+Each listed record is checked in at most four places, in order, and the run records what each returned:
+Surpay's own verified users (they get an in-app notice), the address on the county's list, a web search
+for the name and city, and an obituary search (if the owner died, the money goes to heirs). It stops at
+the first usable hit and moves on to the next record, biggest amounts first. For anything not found,
+the record's panel has ready-made links to search further by hand (Google, obituaries, LinkedIn,
+Facebook, people-search sites, probate, the state business registry for companies, Missing Money) and a
+form to add what you find.
+
+Turn on web search with one of these in Render:
+- `SURPAY_BRAVE_API_KEY`: Brave Search API, 2,000 free searches a month (https://brave.com/search/api/).
+- `SURPAY_GOOGLE_CSE_KEY` and `SURPAY_GOOGLE_CSE_ID`: Google Programmable Search, 100 free a day.
+
+Each record uses up to two searches. Paid skip-trace data (current phones and addresses) can be added
+later through a provider such as BatchData or IDI; they require a permissible-purpose agreement.
+
+Invitations: printed letters (Find owners, Print letters ready), emails (needs the SMTP settings above)
+or in-app notices. Each has a code the person enters when they sign up, so you can see which worked, and
+an opt-out link that is honoured for good. Set `SURPAY_COMPANY_ADDRESS` (printed on letters and needed in
+emails by CAN-SPAM) and `SURPAY_APP_URL` (where to get the app).
+
+Rules to follow: no automated calls or texts (TCPA); letters and emails only to people about their own
+record; some states restrict contacting owners about surplus or require disclosures (check each state
+with counsel before mailing); LinkedIn, Facebook and people-search sites are opened by hand, never
+scraped. Contact details are encrypted and erased 180 days after the county stops listing the record.
+
 ## Before real users
 
 - Set `SURPAY_SEED_DEMO=false` in Render. The fake Demo County disappears and the demo sign-in is switched off.

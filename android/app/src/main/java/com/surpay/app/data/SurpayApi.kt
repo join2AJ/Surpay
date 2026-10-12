@@ -38,6 +38,8 @@ data class SignupRequest(
     /** claimant | attorney */
     val role: String = "claimant",
     @SerialName("accept_terms") val acceptTerms: Boolean = false,
+    /** From a letter or email we sent, e.g. "K7QX2M9P". */
+    @SerialName("invite_code") val inviteCode: String = "",
 )
 
 @Serializable

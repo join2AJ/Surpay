@@ -175,8 +175,11 @@ class SurpayViewModel(
 
     fun clearFormError() = _form.update { it.copy(error = null) }
 
+    /** The invitation code typed on the sign-up screen (from a letter or email we sent). */
+    var inviteCode: String = ""
+
     fun signup(email: String, password: String, fullName: String, role: String = "claimant", acceptTerms: Boolean = true) = submit {
-        val profile = repo.signup(email, password, fullName, role, acceptTerms)
+        val profile = repo.signup(email, password, fullName, role, acceptTerms, inviteCode)
         _session.value = SessionState.SignedIn(profile, isNewUser = true)
     }
 

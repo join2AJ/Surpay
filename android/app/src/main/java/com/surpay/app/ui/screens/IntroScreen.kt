@@ -127,6 +127,10 @@ fun IntroScreen(onDone: () -> Unit) {
 
 /** What changed in each version, newest first. Shown once after an update. */
 val CHANGELOG: List<Pair<Int, List<String>>> = listOf(
+    8 to listOf(
+        "Got a letter or email from us? Enter its invitation code when you create your account",
+        "If we find money that may be yours, we let you know here",
+    ),
     7 to listOf(
         "Fill in and sign your W-9 and sworn affidavit right in the app: we fill in the official forms for you",
         "A document checklist on every claim, so everything is ready before your attorney files",

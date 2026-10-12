@@ -542,3 +542,52 @@ def _assign_app_number(mapper, connection, target: User) -> None:
     number = app_number_for(target.id)
     connection.execute(User.__table__.update().where(User.__table__.c.id == target.id).values(app_number=number))
     set_committed_value(target, "app_number", number)
+
+
+class TraceRun(Base):
+    """One attempt to find a record's owner: which places were checked, what each found, the outcome."""
+
+    __tablename__ = "trace_runs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    record_id: Mapped[int] = mapped_column(ForeignKey("surplus_records.id", ondelete="CASCADE"), index=True)
+    status: Mapped[str] = mapped_column(String(16))  # found | not_found | user_found | business | skipped
+    steps: Mapped[list] = mapped_column(JSON, default=list)  # [{source, query, found, note}]
+    deceased: Mapped[bool] = mapped_column(default=False)  # an obituary matched: look for heirs
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    by: Mapped[str] = mapped_column(String(32), default="system")  # system | admin
+
+
+class OwnerContact(Base):
+    """A way to reach a record's owner (or their family), and where it came from. Encrypted."""
+
+    __tablename__ = "owner_contacts"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    record_id: Mapped[int] = mapped_column(ForeignKey("surplus_records.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String(16))  # address | email | phone | profile | obituary | user | link
+    value: Mapped[str] = mapped_column(EncryptedText)
+    label: Mapped[str] = mapped_column(String(255), default="")
+    source: Mapped[str] = mapped_column(String(64))  # county_list | surpay_user | web_search | obituary_search | skip_trace | manual
+    source_url: Mapped[str] = mapped_column(Text, default="")
+    confidence: Mapped[str] = mapped_column(String(8), default="low")  # low | medium | high
+    note: Mapped[str] = mapped_column(Text, default="")
+    do_not_contact: Mapped[bool] = mapped_column(default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class Outreach(Base):
+    """A letter, email or in-app notice inviting a record's owner to claim, with its invitation code."""
+
+    __tablename__ = "outreach"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    record_id: Mapped[int] = mapped_column(ForeignKey("surplus_records.id", ondelete="CASCADE"), index=True)
+    contact_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    channel: Mapped[str] = mapped_column(String(16))  # letter | email | in_app
+    code: Mapped[str] = mapped_column(String(16), unique=True, index=True)
+    status: Mapped[str] = mapped_column(String(16), default="ready")  # ready | sent | opened | signed_up | opted_out | failed
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    user_id: Mapped[int | None] = mapped_column(Integer, nullable=True)  # who signed up with the code

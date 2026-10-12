@@ -76,3 +76,14 @@ TWILIO_SID = os.environ.get("SURPAY_TWILIO_SID", "")
 TWILIO_TOKEN = os.environ.get("SURPAY_TWILIO_TOKEN", "")
 TWILIO_FROM = os.environ.get("SURPAY_TWILIO_FROM", "")
 TEST_SERVER = DEMO_ENABLED or DATABASE_URL.startswith("sqlite")
+
+# Finding owners (trace.py): a search engine's official API. Google Programmable Search (100 free
+# queries a day) or Brave Search (2,000 free a month). Without one, tracing checks Surpay users and the
+# county's address only.
+GOOGLE_CSE_KEY = os.environ.get("SURPAY_GOOGLE_CSE_KEY", "")
+GOOGLE_CSE_ID = os.environ.get("SURPAY_GOOGLE_CSE_ID", "")
+BRAVE_API_KEY = os.environ.get("SURPAY_BRAVE_API_KEY", "")
+# Printed on letters: where people go with their invitation code, and where to get the app.
+PUBLIC_URL = os.environ.get("SURPAY_PUBLIC_URL", "https://surpay-api.onrender.com").rstrip("/")
+APP_URL = os.environ.get("SURPAY_APP_URL", "")
+COMPANY_ADDRESS = os.environ.get("SURPAY_COMPANY_ADDRESS", "")

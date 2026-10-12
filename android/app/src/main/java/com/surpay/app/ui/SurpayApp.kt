@@ -146,6 +146,7 @@ fun SurpayApp(vm: SurpayViewModel) {
                 onDemoAttorneyLogin = vm::demoAttorneyLogin,
                 onDemoAdmin = { vm.openAdminDemo { url -> uriHandler.openUri(url) } },
                 onResetDemo = { vm.resetDemo() },
+                onInviteCode = { vm.inviteCode = it },
                 demoNotice = demoNotice,
                 onStaffDashboard = { uriHandler.openUri("${serverUrl.trimEnd('/')}/admin") },
                 onClearError = vm::clearFormError,

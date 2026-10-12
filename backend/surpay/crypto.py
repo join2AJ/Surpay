@@ -112,7 +112,8 @@ def rotate_all(session) -> int:
 
     changed = 0
     for model in (models.IdentityVerification, models.AttorneyProfile, models.Relative, models.Agreement,
-                  models.Message, models.StaffNote, models.DocumentRequest):
+                  models.Message, models.StaffNote, models.DocumentRequest, models.SignedDocument,
+                  models.OwnerContact):
         table = model.__table__
         cols = [c for c in table.columns if isinstance(c.type, (LargeBinary, EncryptedText))]
         names = ", ".join(c.name for c in cols)

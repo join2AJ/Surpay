@@ -112,8 +112,10 @@ class SurpayRepository(private val remote: SurpayApi, private val tokens: TokenS
         }
     }
 
-    suspend fun signup(email: String, password: String, fullName: String, role: String = "claimant", acceptTerms: Boolean = true): Profile =
-        api.signup(SignupRequest(email.trim(), password, fullName.trim(), role = role, acceptTerms = acceptTerms))
+    suspend fun signup(email: String, password: String, fullName: String, role: String = "claimant", acceptTerms: Boolean = true,
+                       inviteCode: String = ""): Profile =
+        api.signup(SignupRequest(email.trim(), password, fullName.trim(), role = role, acceptTerms = acceptTerms,
+            inviteCode = inviteCode.trim()))
             .also { tokens.save(it.token) }.user
 
     suspend fun login(email: String, password: String): Profile =

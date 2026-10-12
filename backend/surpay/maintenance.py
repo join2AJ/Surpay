@@ -46,8 +46,28 @@ def purge(session: Session, now: datetime | None = None) -> dict:
             _erase(session, user, f"never verified; inactive {ABANDONED_DAYS} days")
             erased += 1
     reminders = deadline_reminders(session, now.date())
+    contacts = purge_contacts(session, now)
     session.commit()
-    return {"expired_offers": expired_offers, "erased_accounts": erased, "deadline_reminders": reminders}
+    return {"expired_offers": expired_offers, "erased_accounts": erased, "deadline_reminders": reminders,
+            "owner_contacts_erased": contacts}
+
+
+CONTACT_RETENTION_DAYS = 180
+
+
+def purge_contacts(session: Session, now: datetime) -> int:
+    """Contact details found for owners are kept only while useful: erased 180 days after the county
+    stops listing the money. Opt-outs are kept, so we keep honouring them."""
+    from .models import OwnerContact, SurplusRecord
+    n = 0
+    old = now - timedelta(days=CONTACT_RETENTION_DAYS)
+    for c in session.scalars(select(OwnerContact).join(SurplusRecord, SurplusRecord.id == OwnerContact.record_id)
+                             .where(SurplusRecord.status != "listed")):
+        r = session.get(SurplusRecord, c.record_id)
+        if not c.do_not_contact and _aware(r.last_seen) < old:
+            session.delete(c)
+            n += 1
+    return n
 
 
 REMINDER_DAYS = (90, 60, 30, 14, 7, 3, 1)

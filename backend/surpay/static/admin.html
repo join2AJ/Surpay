@@ -116,6 +116,7 @@
     <button class="nav" data-view="users">☺ People</button>
     <div class="sep">Data</div>
     <button class="nav" data-view="records">⌂ County records</button>
+    <button class="nav" data-view="trace">⌕ Find owners</button>
     <button class="nav" data-view="documents">✎ Signed documents</button>
     <button class="nav" data-view="audit">⛓ Audit trail</button>
     <div class="sep">Settings</div>
@@ -129,7 +130,7 @@
       <select id="view" style="display:none">
         <option value="overview"></option><option value="insights"></option><option value="reviews"></option>
         <option value="claims"></option><option value="records"></option><option value="users"></option>
-        <option value="documents"></option><option value="fees"></option><option value="audit"></option>
+        <option value="documents"></option><option value="trace"></option><option value="fees"></option><option value="audit"></option>
       </select>
     </header>
     <p id="banner"></p>
@@ -148,7 +149,7 @@ const STAGE = { requested: "Claim started", identity_submitted: "ID submitted", 
   identity_verified: "Waiting for attorney", attorney_assigned: "Attorney working", filed: "Filed", hearing_pending: "County / court",
   approved: "Approved", paid: "Money released", denied: "Denied", withdrawn: "Withdrawn" };
 const TITLES = { overview: "Overview", insights: "Where people are", reviews: "Reviews", claims: "Claims", records: "County records",
-  users: "People", documents: "Signed documents", audit: "Audit trail", fees: "Fees and attorney pay" };
+  users: "People", trace: "Find owners", documents: "Signed documents", audit: "Audit trail", fees: "Fees and attorney pay" };
 const URGENCY = { urgent: "60 days or less", soon: "2 to 6 months", safe: "over 6 months", expired: "deadline passed", unknown: "no fixed deadline", met: "filed in time" };
 const URGENCY_COLOR = { urgent: "var(--urgent)", soon: "var(--soon)", safe: "var(--safe)", expired: "var(--expired)", unknown: "var(--muted)" };
 
@@ -270,6 +271,7 @@ async function showRecord(id) {
         "Owner address": r.owner_address, Amount: money(r.amount_cents), "Sale type": r.sale_type.replace(/_/g, " "),
         "Sale date": r.sale_date || "not in the list", Status: r.status, "Time left": clock(r.deadline) || "" }),
         r.deadline ? el("p", { class: "muted" }, r.deadline.message) : null),
+      card("", el("div", { class: "row" }, el("button", { onclick: () => showTrace(r.id) }, "Find the owner"))),
       card("Where it came from", pairs({ Source: `${p.description} (${p.source})`, Publisher: p.publisher,
         "File type": p.file_type, "County file": p.file_url ? el("a", { href: p.file_url, target: "_blank", rel: "noopener" }, p.file_url) : "",
         "List page": p.list_page ? el("a", { href: p.list_page, target: "_blank", rel: "noopener" }, p.list_page) : "",
@@ -658,7 +660,97 @@ async function viewFees(root) {
       ], f.rules, null)));
 }
 
-const VIEWS = { overview: viewOverview, insights: viewInsights, reviews: viewReviews, claims: viewClaims, records: viewRecords,
+const TRACE_STATUS = { user_found: ["Already a Surpay user", "var(--safe)"], found: ["Contact found", "var(--safe)"],
+  leads: ["Leads to check", "var(--soon)"], not_found: ["Not found", "var(--expired)"], business: ["Business owner", "var(--blue)"] };
+const traceChip = (st) => { const [t, c] = TRACE_STATUS[st] || [st, "var(--muted)"];
+  return el("span", { class: "clock", style: `color:${c};background:color-mix(in srgb, ${c} 12%, transparent)` }, t); };
+
+async function viewTrace(root) {
+  const d = await getJson("/admin/trace");
+  const s = d.summary;
+  const run = async (n) => {
+    $("#msg").textContent = `Searching ${n} records…`;
+    try { const r = await (await api("/admin/trace/run", { method: "POST", body: JSON.stringify({ limit: n }) })).json();
+      $("#msg").textContent = `Traced ${r.runs.length} records.`; go("trace"); } catch (e) { alert(e.message); }
+  };
+  const ready = (await getJson("/admin/outreach?channel=letter&status_=ready"));
+  root.append(
+    card("Find the owners of listed money",
+      el("p", { class: "muted" }, "Each record is checked in at most four places, in order: Surpay users, the address on the county list, a web search, an obituary search. It stops at the first usable hit, records what every place returned, and moves on. Click a record for the places to search by hand."),
+      s.search_provider ? null : el("div", { class: "alert" }, "Web and obituary search are off: add SURPAY_BRAVE_API_KEY (Brave Search, 2,000 free searches a month) or SURPAY_GOOGLE_CSE_KEY and SURPAY_GOOGLE_CSE_ID (Google Programmable Search, 100 free a day) in Render."),
+      el("div", { class: "kpis" }, kpi("records listed", (s.listed || 0).toLocaleString()), kpi("traced", (s.traced || 0).toLocaleString()),
+        ...Object.keys(TRACE_STATUS).map(k => kpi(TRACE_STATUS[k][0].toLowerCase(), (s.by_status[k] || 0).toLocaleString())),
+        kpi("waiting in queue", d.queue >= 50 ? "50+" : d.queue)),
+      el("div", { class: "row", style: "margin-top:10px" },
+        el("button", { onclick: () => run(10) }, "Trace next 10 (biggest first)"),
+        el("button", { class: "secondary", onclick: () => run(25) }, "Trace next 25"),
+        el("button", { class: "secondary", disabled: ready.length ? null : "", onclick: () => openPdf("/admin/outreach/letters.pdf") }, `Print ${ready.length} letter(s) ready`),
+        ready.length ? el("button", { class: "secondary", onclick: async () => {
+          if (!confirm(`Mark ${ready.length} letter(s) as posted?`)) return;
+          await api("/admin/outreach/mark-sent", { method: "POST", body: JSON.stringify({ ids: ready.map(o => o.id) }) }); go("trace"); } }, "Mark them posted") : null),
+      el("p", { class: "muted" }, "Outreach is by letter, email (with an unsubscribe link) or in-app notice. No automated calls or texts. Anyone can opt out from the link in their letter.")),
+    card("Traced records", sortableTable([
+      { key: "owner_name", label: "Owner", render: t => el("span", {}, el("b", {}, t.owner_name), t.deceased ? el("div", { class: "muted" }, "possibly deceased: look for heirs") : null) },
+      { key: "county", label: "County", render: t => `${t.county}, ${t.state}` },
+      { key: "amount_cents", label: "Amount", num: true, render: t => money0(t.amount_cents) },
+      { key: "status", label: "Result", render: t => traceChip(t.status) },
+      { key: "steps", label: "Places checked", sort: t => t.steps.length, render: t => t.steps.map(x => (x.found ? "✓ " : "✗ ") + x.source.replace(/ \(.*\)/, "")).join(" · ") },
+      { key: "usable", label: "Usable contacts", num: true },
+      { key: "outreach", label: "Invited", num: true },
+      { key: "finished_at", label: "When", render: t => day(t.finished_at) },
+    ], d.runs, t => showTrace(t.record_id), { sortKey: "amount_cents", empty: "Nothing traced yet: press Trace next 10." })));
+}
+
+async function showTrace(recordId) {
+  openDrawer("Find the owner", loading());
+  try {
+    const t = await getJson(`/admin/records/${recordId}/trace`);
+    const last = t.runs[0];
+    const invite = async (channel, contact) => {
+      try { const o = await (await api(`/admin/records/${recordId}/outreach`, { method: "POST", body: JSON.stringify({ channel, contact_id: contact?.id }) })).json();
+        alert(channel === "letter" ? `Letter ready to print (code ${o.code}).` : `Email ${o.status} (code ${o.code}).`); showTrace(recordId); }
+      catch (e) { alert(e.message); }
+    };
+    const kind = el("select", {}, ...["email", "phone", "address", "profile", "obituary", "link"].map(k => el("option", { value: k }, k)));
+    const val = el("input", { placeholder: "Value (email, phone, address or URL)", style: "flex:1;min-width:220px" });
+    const note = el("input", { placeholder: "Where you found it / note", style: "flex:1;min-width:180px" });
+    openDrawer(`Find: ${t.person || t.owner_name}`,
+      card("What we searched", pairs({ "On the county list": t.owner_name, "Searched as": t.person || "(business or unreadable name)",
+        "Place": t.search_place, "Web search": t.search_provider || "not set up", "Note": t.deceased_hint ? "The list suggests the owner died: look for heirs" : "" }),
+        last ? el("div", {}, el("h3", {}, `Last run: ${day(last.finished_at)} · `, traceChip(last.status)),
+          ...last.steps.map(x => el("div", { class: "row", style: "padding:4px 0" }, el("b", {}, x.found ? "✓" : "✗"),
+            el("span", {}, el("b", {}, x.source), el("div", { class: "muted" }, `${x.query ? "Searched: " + x.query + " · " : ""}${x.note || ""}`)))))
+          : el("p", { class: "muted" }, "Not traced yet."),
+        el("div", { class: "row", style: "margin-top:8px" }, el("button", { onclick: async () => {
+          try { await api(`/admin/records/${recordId}/trace`, { method: "POST" }); showTrace(recordId); } catch (e) { alert(e.message); } } }, last ? "Search again" : "Search now"),
+          el("button", { class: "secondary", onclick: () => showRecord(recordId) }, "Open the record"))),
+      card("Ways to reach them", sortableTable([
+        { key: "kind", label: "Type" },
+        { key: "value", label: "Contact", render: c => /^https?:/.test(c.value) ? el("a", { href: c.value, target: "_blank", rel: "noopener" }, c.label || c.value) : el("span", {}, c.value, c.label ? el("div", { class: "muted" }, c.label) : null) },
+        { key: "source", label: "From", render: c => el("span", {}, c.source.replace(/_/g, " "), c.note ? el("div", { class: "muted" }, c.note) : null) },
+        { key: "confidence", label: "Confidence" },
+        { key: "act", label: "", nosort: true, render: c => c.do_not_contact ? el("span", { class: "pill rejected" }, "do not contact") : el("span", { class: "row" },
+          c.kind === "address" ? el("button", { class: "secondary", onclick: (e) => { e.stopPropagation(); invite("letter", c); } }, "Letter") : null,
+          c.kind === "email" ? el("button", { class: "secondary", onclick: (e) => { e.stopPropagation(); invite("email", c); } }, "Email") : null,
+          el("button", { class: "secondary", title: "Never contact this person", onclick: async (e) => { e.stopPropagation();
+            if (!confirm("Mark as do not contact?")) return; await api(`/admin/contacts/${c.id}`, { method: "POST", body: JSON.stringify({ do_not_contact: true }) }); showTrace(recordId); } }, "Don't contact")) },
+      ], t.contacts, null, { empty: "Nothing found yet. Try the places below and add what you find." }),
+        el("h3", {}, "Add what you found"),
+        el("div", { class: "row" }, kind, val, note, el("button", { onclick: async () => {
+          try { await api(`/admin/records/${recordId}/contacts`, { method: "POST", body: JSON.stringify({ kind: kind.value, value: val.value, note: note.value }) }); showTrace(recordId); }
+          catch (e) { alert(e.message); } } }, "Add"))),
+      card("Search further by hand", el("p", { class: "muted" }, "Each link opens a search already filled in. Note what you find above, or nothing, so nobody repeats it."),
+        ...t.manual_sources.map(m => el("div", { style: "padding:5px 0;border-bottom:1px solid var(--line)" },
+          el("a", { href: m.url, target: "_blank", rel: "noopener" }, el("b", {}, m.name)), el("div", { class: "muted" }, m.why)))),
+      card(`Invitations sent (${t.outreach.length})`, sortableTable([
+        { key: "channel", label: "How" }, { key: "code", label: "Code", render: o => el("span", { class: "mono" }, o.code) },
+        { key: "status", label: "Status" }, { key: "created_at", label: "Created", render: o => day(o.created_at) },
+        { key: "link", label: "Their link", nosort: true, render: o => el("a", { href: o.link, target: "_blank", rel: "noopener" }, "open") },
+      ], t.outreach, null, { empty: "No invitations yet." })));
+  } catch (e) { openDrawer("Find the owner", el("p", {}, e.message)); }
+}
+
+const VIEWS = { overview: viewOverview, trace: viewTrace, insights: viewInsights, reviews: viewReviews, claims: viewClaims, records: viewRecords,
   users: viewUsers, documents: viewDocuments, audit: viewAudit, fees: viewFees };
 
 function go(view) { $("#view").value = view; load(); }

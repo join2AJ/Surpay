@@ -36,6 +36,8 @@ class SignupIn(BaseModel):
     role: str = Field(default="claimant", pattern=r"^(claimant|attorney)$")
     # Terms of Use and Privacy Notice (current versions) accepted on the sign-up screen.
     accept_terms: bool = False
+    # From a letter or email we sent ("K7QX2M9P"): tells us the invitation reached them.
+    invite_code: str = Field(default="", max_length=16)
 
 
 class LoginIn(BaseModel):

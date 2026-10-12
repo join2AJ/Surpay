@@ -67,6 +67,7 @@ fun AuthScreen(
     onDemoLogin: () -> Unit = {},
     onDemoAttorneyLogin: () -> Unit = {},
     onDemoAdmin: () -> Unit = {},
+    onInviteCode: (String) -> Unit = {},
     onResetDemo: () -> Unit = {},
     demoNotice: String? = null,
     onStaffDashboard: () -> Unit = {},
@@ -104,6 +105,7 @@ fun AuthScreen(
             else -> AccountForm(
                 path = path!!, form = form, policies = policies, onLoadPolicies = onLoadPolicies,
                 onSwitch = { path = it; onClearError() }, onSignup = onSignup, onLogin = onLogin, onClearError = onClearError,
+                onInviteCode = onInviteCode,
             )
         }
         Spacer(Modifier.height(24.dp))
@@ -222,6 +224,7 @@ private fun ColumnScope.AccountForm(
     onSignup: (String, String, String, String) -> Unit,
     onLogin: (String, String) -> Unit,
     onClearError: () -> Unit,
+    onInviteCode: (String) -> Unit = {},
 ) {
     val slow = rememberIsSlow(form.busy)
     val role = if (path == "attorney") "attorney" else "claimant"
@@ -230,6 +233,7 @@ private fun ColumnScope.AccountForm(
     var email by rememberSaveable { mutableStateOf("") }
     var password by rememberSaveable { mutableStateOf("") }
     var agreed by rememberSaveable { mutableStateOf(false) }
+    var invite by rememberSaveable { mutableStateOf("") }
     var reading by rememberSaveable { mutableStateOf<String?>(null) }
     val canSubmit = email.contains('@') && password.length >= 8 && (!signingUp || (name.trim().length >= 3 && agreed))
 
@@ -245,7 +249,7 @@ private fun ColumnScope.AccountForm(
         when {
             path == "attorney" -> "Create an attorney account, then apply with your bar license. We verify every attorney."
             path == "signin" -> "Sign in to your claimant or attorney account."
-            else -> "Free to search. You’ll verify your ID next, so only you can see your results."
+            else -> "Takes two minutes. You’ll verify your ID next, so only you can see your results."
         },
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
@@ -281,6 +285,14 @@ private fun ColumnScope.AccountForm(
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
             modifier = Modifier.fillMaxWidth().testTag("password"),
         )
+        if (signingUp && role == "claimant") {
+            OutlinedTextField(
+                value = invite, onValueChange = { invite = it.uppercase().filter(Char::isLetterOrDigit).take(8); onInviteCode(invite) },
+                label = { Text("Invitation code (optional)") },
+                supportingText = { Text("If you got a letter or email from us") },
+                singleLine = true, modifier = Modifier.fillMaxWidth().testTag("inviteCode"),
+            )
+        }
     }
     if (signingUp) {
         Row(verticalAlignment = Alignment.Top, modifier = Modifier.padding(top = 8.dp)) {
@@ -314,7 +326,7 @@ private fun ColumnScope.AccountForm(
             when {
                 !signingUp -> "Sign in"
                 role == "attorney" -> "Continue to attorney application"
-                else -> "Create my free account"
+                else -> "Create my account"
             },
             fontWeight = FontWeight.Bold,
         )
