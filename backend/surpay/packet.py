@@ -137,12 +137,33 @@ def build(claim: Claim) -> bytes:
         if rel.authority_document:
             story += [_p("Exhibit D: authority document", H2), _image(rel.authority_document)]
     from .documents import KINDS
-    for n, d in enumerate([d for d in claim.document_requests if d.file is not None and d.status != "rejected"], 1):
+    for n, d in enumerate([d for d in claim.document_requests if d.file is not None and d.status != "rejected"
+                           and d.signed_document_id is None], 1):
         story += [_p(f"Exhibit E-{n}: {KINDS.get(d.kind, KINDS['other'])[0]} (supplied by the client)", H2),
                   _image(d.file)]
+    # Forms the client signed in the app follow as they were signed (W-9, affidavits).
+    from sqlalchemy.orm import object_session
+
+    from .models import SignedDocument
+    session = object_session(claim)
+    signed = [session.get(SignedDocument, d.signed_document_id) for d in claim.document_requests
+              if d.signed_document_id is not None and d.status != "rejected"] if session is not None else []
+    signed = [s for s in signed if s is not None]
+    if signed:
+        story += [_p("Signed forms (attached after this page)", H2)]
+        story += [_p(f"{s.title}: signed by {s.signer_name}, fingerprint {s.doc_id}") for s in signed]
 
     buf = io.BytesIO()
     SimpleDocTemplate(buf, pagesize=LETTER, leftMargin=0.8 * inch, rightMargin=0.8 * inch,
                       topMargin=0.7 * inch, bottomMargin=0.7 * inch,
                       title=f"Surpay claim packet SP-{claim.id:06d}").build(story)
-    return buf.getvalue()
+    if not signed:
+        return buf.getvalue()
+    from pypdf import PdfReader, PdfWriter
+    w = PdfWriter()
+    w.append(PdfReader(io.BytesIO(buf.getvalue())))
+    for s in signed:
+        w.append(PdfReader(io.BytesIO(crypto.decrypt(s.pdf))))
+    out = io.BytesIO()
+    w.write(out)
+    return out.getvalue()

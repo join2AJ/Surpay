@@ -10,7 +10,7 @@ from surpay import crypto
 from surpay.ingest import upsert
 from surpay.models import AuditLog, Claim, IdentityVerification, User
 from surpay.scrapers.base import RecordIn
-from tests.conftest import SIGNATURE_PNG, TEST_JPEG, verify_identity
+from tests.conftest import SIGNATURE_PNG, TEST_JPEG, verify_identity, two_factor
 from tests.test_attorneys import admin, attorney, claimant_with_claim, signup  # noqa: F401  (fixture)
 
 ACCEPT = {"conflict_checked": True}
@@ -98,6 +98,7 @@ def test_id_rejected_after_signing_still_reaches_an_attorney(client, session, ad
     with __import__("surpay.db", fromlist=["SessionLocal"]).SessionLocal() as s:
         s.get(User, uid).identity.review_status = "pending"
         s.commit()
+    two_factor(client, h)
     client.post(f"/me/claims/{claim['id']}/agreement", headers=h,
                 json={"signature_name": "Rae Retry", "agreed": True, "signature_png_b64": SIGNATURE_PNG})
     client.post(f"/admin/users/{uid}/identity", headers=admin, json={"decision": "rejected", "note": "blurry"})

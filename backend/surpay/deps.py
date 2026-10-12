@@ -119,7 +119,14 @@ def client_info(request: Request) -> ClientInfo:
                                      h.get("x-app-version", "")) if x)
     install = h.get("x-install-id", "")
     device_id = h.get("x-device-id", "")
+    tz = h.get("x-time-zone", "")[:64]
+    try:
+        from zoneinfo import ZoneInfo
+        ZoneInfo(tz)
+    except Exception:  # noqa: BLE001 - unknown or missing zone: leave it out
+        tz = ""
     return ClientInfo(
+        time_zone=tz,
         ip=client_ip(request),
         user_agent=h.get("user-agent", ""),
         device_id=f"{device_id}/{install}" if install else device_id,

@@ -63,3 +63,16 @@ SUPPORT_CONTACT = os.environ.get("SURPAY_SUPPORT_CONTACT", "support@surpay.app")
 # Proxies in front of the API that append to X-Forwarded-For (Render: 3, Cloudflare, its edge and its load balancer). Used to find the
 # caller's real IP for rate limits and the audit trail without trusting client-sent values.
 PROXY_HOPS = int(os.environ.get("SURPAY_PROXY_HOPS", "3"))
+
+# Delivering one-time codes. Email: any SMTP service (Brevo, Resend, SendGrid, Gmail...).
+# SMS: Twilio. Without them, codes can't reach people, so signing is blocked on a real server;
+# on a test server (demo on, or local SQLite) the code is shown in the app instead.
+SMTP_HOST = os.environ.get("SURPAY_SMTP_HOST", "")
+SMTP_PORT = int(os.environ.get("SURPAY_SMTP_PORT", "587"))
+SMTP_USER = os.environ.get("SURPAY_SMTP_USER", "")
+SMTP_PASSWORD = os.environ.get("SURPAY_SMTP_PASSWORD", "")
+SMTP_FROM = os.environ.get("SURPAY_SMTP_FROM", "")
+TWILIO_SID = os.environ.get("SURPAY_TWILIO_SID", "")
+TWILIO_TOKEN = os.environ.get("SURPAY_TWILIO_TOKEN", "")
+TWILIO_FROM = os.environ.get("SURPAY_TWILIO_FROM", "")
+TEST_SERVER = DEMO_ENABLED or DATABASE_URL.startswith("sqlite")

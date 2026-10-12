@@ -1,7 +1,7 @@
 """The shared demo is one connected world: the claimant's signed claim reaches the demo attorney,
 the attorney's messages reach the claimant, and signing in again never wipes anyone's progress."""
 
-from tests.conftest import SIGNATURE_PNG
+from tests.conftest import SIGNATURE_PNG, two_factor
 
 
 def login(client, path):
@@ -15,6 +15,7 @@ def test_claimant_and_attorney_demos_are_connected(client, monkeypatch):
     jordan = login(client, "/auth/demo")
     rid = client.get("/me/matches", headers=jordan).json()["matches"][0]["record_id"]
     claim = client.post("/me/claims", headers=jordan, json={"record_id": rid}).json()
+    two_factor(client, jordan)
     claim = client.post(f"/me/claims/{claim['id']}/agreement", headers=jordan,
                         json={"signature_name": "Jordan Testwell", "agreed": True, "signature_png_b64": SIGNATURE_PNG}).json()
     assert claim["status"] == "identity_verified"

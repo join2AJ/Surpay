@@ -653,7 +653,12 @@ def _record_row(r, claimed: dict) -> dict:
             "first_seen": _aware(r.first_seen).isoformat(), "last_seen": _aware(r.last_seen).isoformat(),
             "deadline": d.isoformat() if d else None, "days_left": clock["days_left"], "urgency": clock["urgency"],
             "deadline_label": clock["label"], "deadline_color": clock["color"],
-            "claims": claimed.get(r.id, 0), "source_url": r.source_url}
+            "claims": claimed.get(r.id, 0), "source_url": r.source_url, "file_type": _file_type_of(r.source_url)}
+
+
+def _file_type_of(url: str) -> str:
+    from .admin_insights import _file_type
+    return _file_type(url)
 
 
 @router.get("/admin/records")
@@ -832,3 +837,51 @@ def admin_add_note(claim_id: int, body: AdminStatusIn, scope: Admin, session: Db
     _log(session, "admin.note_added", client, "claim", claim.id)
     session.commit()
     return admin_notes(claim_id, scope, session)
+
+
+# --- Signed documents -------------------------------------------------------------------------------------
+
+def _doc_visible(session, scope: AdminScope, doc) -> bool:
+    if not scope.demo:
+        return True
+    owner = session.get(User, doc.user_id) if doc.user_id else None
+    return owner is not None and is_demo_user(owner)
+
+
+@router.get("/admin/documents")
+def admin_documents(scope: Admin, session: DbSession, q: str = "", limit: int = 100) -> list[dict]:
+    """Every signed document, newest first; q matches a fingerprint, a claim (SP-000123) or a signer."""
+    from . import esign
+    from .models import SignedDocument
+    stmt = select(SignedDocument).order_by(SignedDocument.id.desc())
+    q = q.strip()
+    if q:
+        ref = q.upper().removeprefix("SP-").lstrip("0")
+        stmt = stmt.where(SignedDocument.doc_id.startswith(q.lower()) | SignedDocument.signer_name.ilike(f"%{q}%")
+                          | (SignedDocument.claim_id == int(ref) if ref.isdigit() else False))
+    rows = [d for d in session.scalars(stmt.limit(max(1, min(limit, 500)))) if _doc_visible(session, scope, d)]
+    return [esign.out(d, full=True) for d in rows]
+
+
+@router.get("/admin/documents/{doc_id}")
+def admin_document(doc_id: str, scope: Admin, session: DbSession, client: Client) -> dict:
+    from . import esign
+    from .forms_api import masked_data
+    doc = esign.find(session, doc_id)
+    if doc is None or not _doc_visible(session, scope, doc):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No signed document with that fingerprint")
+    _log(session, "admin.document_viewed", client, doc_id=doc.doc_id)
+    session.commit()
+    return {**esign.out(doc, full=True), "data": masked_data(doc)}
+
+
+@router.get("/admin/documents/{doc_id}/pdf")
+def admin_document_pdf(doc_id: str, scope: Admin, session: DbSession, client: Client):
+    from . import esign
+    from .forms_api import pdf_response
+    doc = esign.find(session, doc_id)
+    if doc is None or not _doc_visible(session, scope, doc):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No signed document with that fingerprint")
+    _log(session, "admin.document_downloaded", client, doc_id=doc.doc_id)
+    session.commit()
+    return pdf_response(doc)

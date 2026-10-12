@@ -6,7 +6,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, object_session
 
-from . import attorneys, audit, chat, claims, config, crypto, documents, fees, filing_methods
+from . import attorneys, audit, chat, claims, config, crypto, documents, esign, fees, filing_methods, forms, verification
 from .admin_api import router as admin_router
 from .attorney_api import router as attorney_router
 from .auth import create_token, hash_password, verify_password
@@ -16,6 +16,8 @@ from .demo import demo_world
 from .deps import Client, CurrentUser, DbSession, encrypt_image
 from .legal import deadline_for, legal_basis, record_deadline
 from .matching import find_all_matches, find_matches
+from .admin_insights import router as insights_router
+from .forms_api import router as forms_router
 from .me_api import record_consent, router as me_router, terms_current
 from .models import Agreement, Claim, CountySource, IdentityVerification, Notification, PreviousAddress, SurplusRecord, User
 from .policies import PRIVACY_VERSION, TERMS_VERSION
@@ -39,6 +41,8 @@ app.add_middleware(BodySizeLimit)
 app.include_router(attorney_router)
 app.include_router(me_router)
 app.include_router(admin_router)
+app.include_router(forms_router)
+app.include_router(insights_router)
 
 
 def _identity_status(user: User) -> str | None:
@@ -66,6 +70,7 @@ def _profile(user: User) -> ProfileOut:
         terms_current=terms_current(user),
         unread_notifications=unread or 0,
         deletion_requested=user.deletion_requested_at is not None,
+        app_number=user.app_number or "",
     )
 
 
@@ -403,6 +408,8 @@ def start_claim(body: ClaimIn, user: CurrentUser, session: DbSession, client: Cl
     except IntegrityError:  # the same claim started twice at once
         session.rollback()
         return claim_out(session.scalar(select(Claim).where(Claim.user_id == user.id, Claim.record_id == body.record_id)))
+    documents.ensure_checklist(session, claim)
+    session.flush()
     audit.record(session, "claim.started", actor_id=user.id, entity_type="claim", entity_id=claim.id, client=client,
                  details={"record_id": body.record_id, "fee_pct": claim.fee_pct, "relative_id": claim.relative_id})
     session.commit()
@@ -412,6 +419,9 @@ def start_claim(body: ClaimIn, user: CurrentUser, session: DbSession, client: Cl
 
 @app.get("/me/claims", response_model=list[ClaimOut])
 def my_claims(user: CurrentUser, session: DbSession):
+    for c in user.claims:
+        if c.status not in ("withdrawn",) and documents.ensure_checklist(session, c):
+            session.flush()
     out = [claim_out(c) for c in sorted(user.claims, key=lambda c: c.created_at, reverse=True)]
     session.commit()  # fees fixed on first view of an older claim
     return out
@@ -419,7 +429,10 @@ def my_claims(user: CurrentUser, session: DbSession):
 
 @app.get("/me/claims/{claim_id}", response_model=ClaimOut)
 def my_claim(claim_id: int, user: CurrentUser, session: DbSession):
-    out = claim_out(_my_claim(user, claim_id))
+    claim = _my_claim(user, claim_id)
+    if documents.ensure_checklist(session, claim):
+        session.flush()
+    out = claim_out(claim)
     session.commit()
     return out
 
@@ -510,7 +523,9 @@ def get_agreement(claim_id: int, user: CurrentUser, session: DbSession):
     if a:
         return AgreementOut(version=a.version, text=a.text, fee_pct=a.fee_pct, signed=True,
                             signature_name=a.signature_name, signed_at=a.signed_at,
-                            expected_name=a.legal_name_on_id or a.signature_name, document_sha256=a.document_sha256)
+                            expected_name=a.legal_name_on_id or a.signature_name, document_sha256=a.document_sha256,
+                            signed_at_display=esign.stamp(a.signed_at, a.signer_tz),
+                            doc_id=a.document_sha256[:16])
     pct = fees.for_claim(session, claim)
     session.commit()
     text = claims.agreement_text(claim, user, pct)
@@ -546,6 +561,7 @@ def sign_agreement(claim_id: int, body: SignIn, user: CurrentUser, session: DbSe
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
                             f"Type your full legal name exactly as it appears on your ID: {legal}")
     png = _signature_png(body.signature_png_b64)
+    evidence = verification.require_fresh(session, user)
     pct = fees.for_claim(session, claim)
     text = claims.agreement_text(claim, user, pct)
     digest = crypto.sha256_hex(text)
@@ -553,11 +569,18 @@ def sign_agreement(claim_id: int, body: SignIn, user: CurrentUser, session: DbSe
         version=claims.AGREEMENT_VERSION, text=text, fee_pct=pct, signature_name=body.signature_name.strip(),
         ip_address=client.ip, user_agent=client.user_agent[:255], signature_image=crypto.encrypt(png),
         document_sha256=digest, device_id=client.device_id[:128], device_info=client.device_info[:255],
-        legal_name_on_id=legal, signed_at=datetime.now(timezone.utc),
+        legal_name_on_id=legal, signed_at=datetime.now(timezone.utc), signer_tz=client.time_zone,
     )
     claims.advance(claim, "agreement_signed")
     claims.sync_with_identity(claim, user)
     session.flush()
+    a = claim.agreement
+    rows = forms.certificate_rows(legal, a.signed_at, client.time_zone, client.ip, client.device_info, evidence,
+                                  f"SP-{claim.id:06d}, {claim.record.county} County, {claim.record.state}")
+    esign.register(session, kind="agreement", title="Claim agreement", user=user, claim_id=claim.id,
+                   pdf=forms.agreement_pdf(text, legal, png, a.signed_at, client.time_zone, rows),
+                   signer_name=legal, client=client, evidence=evidence, fingerprint=digest, signed_at=a.signed_at,
+                   data={"version": claims.AGREEMENT_VERSION, "fee_pct": pct})
     record_consent(session, user, "agreement", f"{claims.AGREEMENT_VERSION}:{claim.id}", client)
     audit.record(session, "agreement.signed", actor_id=user.id, entity_type="claim", entity_id=claim.id,
                  client=client, details={"document_sha256": digest, "signature_sha256": crypto.sha256_hex(png),

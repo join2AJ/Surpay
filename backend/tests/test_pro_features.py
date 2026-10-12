@@ -79,24 +79,47 @@ def test_document_requests_round_trip(client, session, admin):  # noqa: F811
     ah, auid, ch, claim = accepted(client, session, admin)
     case = client.post(f"/attorney/cases/{claim['id']}/document-requests", headers=ah,
                        json={"kind": "w9", "note": "Sign page 1"}).json()
-    [req] = case["document_requests"]
+    [req] = [r for r in case["document_requests"] if r["kind"] == "w9"]
+    assert {r["kind"] for r in case["document_requests"]} >= {"w9", "ownership_affidavit", "proof_of_ownership"}
     assert req["label"] == "IRS Form W-9" and req["status"] == "requested" and case["reference_code"] == "SP-000001"
     mine = client.get(f"/me/claims/{claim['id']}", headers=ch).json()
-    assert mine["document_requests"][0]["note"] == "Sign page 1"
+    assert [r for r in mine["document_requests"] if r["kind"] == "w9"][0]["note"] == "Sign page 1"
     titles = [n["title"] for n in client.get("/me/notifications", headers=ch).json()["items"]]
     assert "Your attorney needs: IRS Form W-9" in titles
 
     mine = client.post(f"/me/claims/{claim['id']}/documents/{req['id']}", headers=ch, json={"image_b64": TEST_JPEG}).json()
-    assert mine["document_requests"][0]["status"] == "uploaded"
+    assert [r for r in mine["document_requests"] if r["kind"] == "w9"][0]["status"] == "uploaded"
     f = client.get(f"/attorney/cases/{claim['id']}/document-requests/{req['id']}/file", headers=ah)
     assert f.status_code == 200 and f.content.startswith(b"\xff\xd8")
     case = client.post(f"/attorney/cases/{claim['id']}/document-requests/{req['id']}/review", headers=ah,
                        json={"decision": "rejected", "note": "Unsigned"}).json()
-    assert case["document_requests"][0]["status"] == "rejected"
+    assert [r for r in case["document_requests"] if r["kind"] == "w9"][0]["status"] == "rejected"
     client.post(f"/me/claims/{claim['id']}/documents/{req['id']}", headers=ch, json={"image_b64": TEST_JPEG})
     case = client.post(f"/attorney/cases/{claim['id']}/document-requests/{req['id']}/review", headers=ah,
                        json={"decision": "accepted"}).json()
-    assert case["document_requests"][0]["status"] == "accepted"
+    assert [r for r in case["document_requests"] if r["kind"] == "w9"][0]["status"] == "accepted"
     assert client.post(f"/me/claims/{claim['id']}/documents/{req['id']}", headers=ch,
                        json={"image_b64": TEST_JPEG}).status_code == 409
     assert client.get(f"/attorney/cases/{claim['id']}/packet", headers=ah).content.startswith(b"%PDF")
+
+
+def test_insights_and_drill_down(client, session, admin):  # noqa: F811
+    ah, auid, ch, claim = accepted(client, session, admin)
+    i = client.get("/admin/insights", headers=admin).json()
+    steps = {s["key"]: s["count"] for s in i["journey"]}
+    assert steps["accounts"] == 1 and steps["attorney_assigned"] == 1 and steps["filed"] == 0
+    assert i["by_stage"][0]["stage"] == "attorney_assigned" and i["attorneys"][0]["active"] == 1
+    assert i["margin"]["cases"] == 1 and "Claims of" in i["pay_schedule"]
+
+    rec = client.get(f"/admin/records/{claim['record_id']}", headers=admin).json()
+    assert rec["provenance"]["source"] == "dallas_tx" and rec["provenance"]["file_type"] == "PDF"
+    assert rec["claims"][0]["ref"] == "SP-000001" and rec["filing_method"]["kind"] == "court"
+
+    me = client.get("/me", headers=ch).json()
+    person = client.get(f"/admin/users/{me['id']}", headers=admin).json()
+    assert person["app_number"] == me["app_number"] and any(a["action"] == "claim.started" for a in person["activity"])
+    detail = client.get(f"/admin/claims/{claim['id']}/detail", headers=admin).json()
+    assert detail["pay"]["total_cents"] > 0 and detail["events"]
+    pay = client.get("/admin/pay", headers=admin).json()
+    band = pay["bands"][0]
+    assert client.post(f"/admin/pay/{band['id']}", headers=admin, json={"base_cents": 70000}).json()["bands"][0]["base_cents"] == 70000

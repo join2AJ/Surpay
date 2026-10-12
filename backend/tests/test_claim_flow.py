@@ -9,7 +9,7 @@ from surpay import claims, config, crypto
 from surpay.ingest import upsert
 from surpay.models import IdentityVerification
 from surpay.scrapers.base import RecordIn
-from tests.conftest import SIGNATURE_PNG, real_image, verify_identity
+from tests.conftest import SIGNATURE_PNG, real_image, verify_identity, two_factor
 
 JPEG = real_image()
 PNG = real_image("PNG", (200, 30, 30))
@@ -97,6 +97,7 @@ def test_full_flow_verify_first(client, session, unverified, admin):
     assert agreement["expected_name"] == "Jordan Testwell" and len(agreement["document_sha256"]) == 64
     assert "not a law firm" in agreement["text"] and "facilitator" in agreement["text"]
     # The typed name must match the verified ID, and a drawn signature is required
+    two_factor(client, h)
     bad = client.post(f"/me/claims/{c['id']}/agreement", headers=h,
                       json={"signature_name": "J Testwell", "agreed": True, "signature_png_b64": SIGNATURE_PNG})
     assert bad.status_code == 422 and "Jordan Testwell" in bad.text

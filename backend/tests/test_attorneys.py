@@ -8,7 +8,7 @@ import pytest
 from surpay import config
 from surpay.ingest import upsert
 from surpay.scrapers.base import RecordIn
-from tests.conftest import SIGNATURE_PNG, real_image, verify_identity
+from tests.conftest import SIGNATURE_PNG, real_image, verify_identity, two_factor
 
 JPEG = real_image()
 
@@ -51,6 +51,7 @@ def claimant_with_claim(client, session, email="jane@example.com"):
     verify_identity(client, h, "Jane Sample")
     rid = client.get("/me/matches", headers=h).json()["matches"][0]["record_id"]
     claim = client.post("/me/claims", headers=h, json={"record_id": rid}).json()
+    two_factor(client, h)
     claim = client.post(f"/me/claims/{claim['id']}/agreement", headers=h,
                         json={"signature_name": "Jane Sample", "agreed": True, "signature_png_b64": SIGNATURE_PNG}).json()
     assert claim["status"] == "identity_verified"

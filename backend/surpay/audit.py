@@ -24,6 +24,7 @@ class ClientInfo:
     user_agent: str = ""
     device_id: str = ""
     device_info: str = ""
+    time_zone: str = ""  # IANA name from the phone, e.g. "America/New_York"
 
 
 SYSTEM = ClientInfo()

@@ -411,6 +411,12 @@ def request_document(case_id: int, body: DocumentRequestIn, user: CurrentUser, s
 def requested_document_file(case_id: int, request_id: int, user: CurrentUser, session: DbSession):
     c = _accepted_case(user, session, case_id)
     r = next((d for d in c.document_requests if d.id == request_id), None)
+    if r is not None and r.signed_document_id is not None:
+        from .forms_api import pdf_response
+        from .models import SignedDocument
+        doc = session.get(SignedDocument, r.signed_document_id)
+        if doc is not None:
+            return pdf_response(doc)
     if r is None or r.file is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Not uploaded yet")
     data = crypto.decrypt(r.file)

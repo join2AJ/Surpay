@@ -80,3 +80,12 @@ def verify_identity(client, headers, legal_name, approve=True):
             ident.review_status = "approved"
             ident.user.full_name = ident.legal_name
             s.commit()
+
+
+def two_factor(client, headers):
+    """Confirm the email and phone codes (a test server returns them) so the user can sign."""
+    for channel in ("email", "phone"):
+        sent = client.post("/me/verify/start", headers=headers, json={"channel": channel})
+        assert sent.status_code == 200, sent.text
+        r = client.post("/me/verify/confirm", headers=headers, json={"channel": channel, "code": sent.json()["test_code"]})
+        assert r.status_code == 200, r.text

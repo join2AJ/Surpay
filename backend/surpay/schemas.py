@@ -72,6 +72,8 @@ class ProfileOut(BaseModel):
     terms_current: bool = True
     unread_notifications: int = 0
     deletion_requested: bool = False
+    # Permanent account number, e.g. "SU-100042".
+    app_number: str = ""
 
 
 class MatchPreviewOut(BaseModel):
@@ -233,6 +235,10 @@ class AgreementOut(BaseModel):
     # The typed signature must match this (the name on their verified ID).
     expected_name: str = ""
     document_sha256: str = ""
+    # "Oct 11, 2026, 3:42 PM EDT (19:42 UTC)": in the signer's time zone, with UTC.
+    signed_at_display: str = ""
+    # The fingerprint the signed copy is kept under ("6b3389550b204db6").
+    doc_id: str = ""
 
 
 class PasswordChangeIn(BaseModel):

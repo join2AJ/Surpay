@@ -233,3 +233,49 @@ def delete_my_account(user: CurrentUser, session: DbSession, client: Client) -> 
     session.commit()
     return {"deleted": True, "message": "Your account and data have been deleted."}
 
+
+
+# --- My activity ----------------------------------------------------------------------------------
+
+ACTIVITY_LABELS = {
+    "auth.signup": "Created your account", "auth.login": "Signed in", "auth.demo_login": "Signed in (demo)",
+    "auth.logout_all": "Signed out on every device", "auth.password_changed": "Changed your password",
+    "consent.given": "Accepted terms", "identity.submitted": "Submitted your ID", "identity.reviewed": "ID reviewed",
+    "claim.started": "Started a claim", "agreement.signed": "Signed the claim agreement",
+    "document.signed": "Signed a document", "document.uploaded": "Uploaded a document",
+    "verify.code_sent": "A security code was sent", "verify.confirmed": "Confirmed a security code",
+    "case.accepted": "Accepted a case", "case.declined": "Declined a case", "case.status": "Updated a case",
+    "message.sent": "Sent a message", "profile.updated": "Updated your profile",
+    "relative.added": "Added a family member", "data.exported": "Downloaded your data",
+}
+
+
+@router.get("/me/activity")
+def my_activity(user: CurrentUser, session: DbSession, limit: int = 200) -> list[dict]:
+    """Everything recorded about your account in the tamper-evident audit trail: when, what, from
+    which IP address and device. The same record staff see."""
+    from sqlalchemy import or_
+
+    from .audit import entry_out
+    claim_ids = [c.id for c in user.claims]
+    if user.role == "attorney":
+        from .models import Claim
+        claim_ids += list(session.scalars(select(Claim.id).where(Claim.attorney_id == user.id)))
+    stmt = select(AuditLog).where(or_(
+        AuditLog.actor_id == user.id,
+        (AuditLog.entity_type == "user") & (AuditLog.entity_id == user.id),
+        (AuditLog.entity_type == "claim") & AuditLog.entity_id.in_(claim_ids or [-1]),
+    )).order_by(AuditLog.id.desc()).limit(max(1, min(limit, 500)))
+    out = []
+    for e in session.scalars(stmt):
+        o = entry_out(e)
+        o["mine"] = e.actor_id == user.id and e.actor_type != "admin"
+        # Other people's actions on your claim (staff, your attorney) are shown without their network details.
+        if not o["mine"]:
+            who = {"admin": "Surpay staff", "attorney": "Your attorney" if user.role != "attorney" else "Attorney",
+                   "system": "Surpay"}.get(e.actor_type, "Another user")
+            o.update(ip="", device_info=who, device_id="", user_agent="")
+            o["details"] = {}
+        o["label"] = ACTIVITY_LABELS.get(e.action, e.action.replace(".", " ").replace("_", " ").capitalize())
+        out.append(o)
+    return out
