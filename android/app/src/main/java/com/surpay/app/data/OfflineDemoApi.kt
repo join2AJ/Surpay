@@ -232,6 +232,27 @@ class OfflineDemoApi : SurpayApi {
 
     override suspend fun demoAttorneyLogin(): TokenResponse = offline()
     override suspend fun resetDemo(): kotlinx.serialization.json.JsonObject = offline()
+
+    // Two-factor codes work on the device too, so the signing flow can be tried offline.
+    private val confirmed = mutableSetOf<String>()
+    private fun verifyNow() = VerifyState(
+        email = ChannelState("j•••@surpay.test", fresh = "email" in confirmed),
+        phone = ChannelState("•••0000", fresh = "phone" in confirmed),
+        readyToSign = confirmed.containsAll(listOf("email", "phone")),
+    )
+    override suspend fun verifyState(): VerifyState = verifyNow()
+    override suspend fun sendCode(body: CodeStart): CodeSent =
+        CodeSent(body.channel, if (body.channel == "email") "j•••@surpay.test" else "•••0000", sent = false, testCode = "246810")
+    override suspend fun confirmCode(body: CodeConfirm): VerifyState {
+        if (body.code != "246810") throw IllegalStateException("That code isn't right")
+        confirmed += body.channel
+        return verifyNow()
+    }
+    override suspend fun formPrefill(id: Int, kind: String): FormPrefill = offline()
+    override suspend fun signForm(id: Int, kind: String, body: FormSubmit): FormSigned = offline()
+    override suspend fun myDocuments(): List<SignedDoc> = emptyList()
+    override suspend fun myDocumentPdf(docId: String): okhttp3.ResponseBody = offline()
+    override suspend fun myActivity(): List<ActivityEntry> = emptyList()
     override suspend fun demoAdmin(): DemoAdminPass = offline()
     override suspend fun signup(body: SignupRequest): TokenResponse = offline()
     override suspend fun login(body: LoginRequest): TokenResponse = offline()

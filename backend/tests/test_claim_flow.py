@@ -154,7 +154,7 @@ def test_admin_off_without_token(client):
 
 def test_admin_page_served(client, admin):
     r = client.get("/admin")
-    assert r.status_code == 200 and "Surpay staff review" in r.text
+    assert r.status_code == 200 and "Surpay Staff" in r.text
 
 
 def test_address_needs_county_and_zip(client, user):

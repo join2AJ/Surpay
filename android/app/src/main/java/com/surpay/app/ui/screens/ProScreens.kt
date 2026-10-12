@@ -85,19 +85,23 @@ private fun StatusPill(status: String) {
 
 /** Client side: what the attorney asked for, with a camera/gallery upload for each. */
 @Composable
-fun ClaimDocumentsCard(requests: List<DocumentRequest>, busy: Boolean, onUpload: (Int, ByteArray) -> Unit) {
+fun ClaimDocumentsCard(requests: List<DocumentRequest>, busy: Boolean, onUpload: (Int, ByteArray) -> Unit,
+                       onFill: (String) -> Unit = {}) {
     if (requests.isEmpty()) return
     val photos = rememberPhotoSource()
     SectionCard(modifier = Modifier.testTag("claimDocuments")) {
+        val done = requests.count { it.status in setOf("uploaded", "accepted") }
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconCircle(Icons.Outlined.Description)
-            Column(Modifier.padding(start = 12.dp)) {
-                Text("Documents your attorney needs", fontWeight = FontWeight.Bold)
-                val open = requests.count { it.status in setOf("requested", "rejected") }
-                Text(if (open == 0) "All sent. Thank you!" else "$open to send",
+            Column(Modifier.padding(start = 12.dp).weight(1f)) {
+                Text("Documents for your claim", fontWeight = FontWeight.Bold)
+                Text(if (done == requests.size) "All ready. Your attorney checks each one."
+                    else "$done of ${requests.size} ready. Prepare them now so your attorney can file as soon as they accept.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
+        androidx.compose.material3.LinearProgressIndicator(
+            progress = { done.toFloat() / requests.size }, modifier = Modifier.fillMaxWidth().padding(top = 10.dp).testTag("docProgress"))
         requests.forEach { r ->
             Column(Modifier.padding(top = 14.dp).testTag("docRequest${r.id}")) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -110,18 +114,35 @@ fun ClaimDocumentsCard(requests: List<DocumentRequest>, busy: Boolean, onUpload:
                 if (r.status == "rejected" && r.reviewNote.isNotBlank()) {
                     Text("Your attorney: ${r.reviewNote}", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                 }
+                r.docId?.let { Text("Signed in the app · fingerprint $it", style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary) }
                 if (r.status in setOf("requested", "rejected")) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 6.dp)) {
-                        Button(onClick = { photos.request(true) { b -> if (b != null) onUpload(r.id, b) } }, enabled = !busy,
-                            modifier = Modifier.testTag("docCamera${r.id}")) { Text("Take photo") }
-                        OutlinedButton(onClick = { photos.request(false) { b -> if (b != null) onUpload(r.id, b) } },
-                            enabled = !busy) { Text("Gallery") }
+                        if (r.fillInApp) {
+                            Button(onClick = { onFill(r.kind) }, enabled = !busy, modifier = Modifier.testTag("fillForm_${r.kind}")) {
+                                Text(if (r.status == "rejected") "Fill in and sign again" else "Fill in and sign")
+                            }
+                        } else {
+                            Button(onClick = { photos.request(true) { b -> if (b != null) onUpload(r.id, b) } }, enabled = !busy,
+                                modifier = Modifier.testTag("docCamera${r.id}")) { Text("Take photo") }
+                            OutlinedButton(onClick = { photos.request(false) { b -> if (b != null) onUpload(r.id, b) } },
+                                enabled = !busy) { Text("Gallery") }
+                        }
                     }
                 }
             }
         }
     }
 }
+
+/** Why an attorney sends a document back (same wording as the server's suggestions). */
+val REJECT_REASONS = listOf(
+    "Blurry" to "The photo is blurry or cut off. Please retake it in good light with all four corners visible.",
+    "Wrong document" to "This isn't the right document.",
+    "Name doesn't match" to "The name doesn't match the name on your ID.",
+    "Needs notary" to "The county needs this signed in front of a notary.",
+    "Too old" to "This is too old. Please send a recent one.",
+)
 
 /** Attorney side: ask for a document, see what came back, accept it or ask again. */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -135,10 +156,10 @@ fun CaseDocumentsSection(
     onReview: (requestId: Int, accept: Boolean, note: String) -> Unit,
 ) {
     SectionLabel("Documents from your client")
-    if (case.documentRequests.isEmpty()) {
-        Text("Ask for anything your county needs (W-9, deed, affidavit...). Your client gets a notification and uploads a photo.",
-            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
+    Text("Your client prepares the standard checklist (W-9 and affidavit signed in the app, proof of ownership and " +
+        "address) before you accept. Check each one: accept it, or send it back with the reason. Ask below for " +
+        "anything else this county needs.", style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 8.dp))
     case.documentRequests.forEach { r ->
         SectionCard(modifier = Modifier.padding(bottom = 8.dp).testTag("caseDoc${r.id}")) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -149,18 +170,32 @@ fun CaseDocumentsSection(
             if (r.hasFile) {
                 LaunchedEffect(r.uploadedAt) { onLoad(r) }
                 val bytes = images[requestedFileKey(case.id, r)]
-                val bmp = remember(bytes) { bytes?.let { BitmapFactory.decodeByteArray(it, 0, it.size)?.asImageBitmap() } }
-                if (bmp != null) Image(bmp, r.label, contentScale = ContentScale.Fit,
-                    modifier = Modifier.fillMaxWidth().heightIn(max = 260.dp).padding(top = 8.dp))
+                r.docId?.let { Text("Signed in the app with email and phone codes · fingerprint $it",
+                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary) }
+                if (bytes != null && bytes.size > 4 && String(bytes, 0, 4) == "%PDF") {
+                    PdfPages(bytes, Modifier.padding(top = 8.dp))
+                } else {
+                    val bmp = remember(bytes) { bytes?.let { BitmapFactory.decodeByteArray(it, 0, it.size)?.asImageBitmap() } }
+                    if (bmp != null) Image(bmp, r.label, contentScale = ContentScale.Fit,
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 260.dp).padding(top = 8.dp))
+                }
             }
             if (r.status == "uploaded") {
                 var note by rememberSaveable(r.id) { mutableStateOf("") }
-                OutlinedTextField(note, { note = it.take(500) }, label = { Text("Note if asking again (optional)") },
-                    modifier = Modifier.fillMaxWidth().padding(top = 6.dp))
+                Text("Not usable? Pick a reason or write your own:", style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier.padding(top = 8.dp))
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    REJECT_REASONS.forEach { (short, full) ->
+                        AssistChip(onClick = { note = full }, label = { Text(short) })
+                    }
+                }
+                OutlinedTextField(note, { note = it.take(500) }, label = { Text("What your client should do") },
+                    modifier = Modifier.fillMaxWidth().padding(top = 6.dp).testTag("rejectNote${r.id}"))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(onClick = { onReview(r.id, true, "") }, enabled = !form.busy,
                         modifier = Modifier.testTag("acceptDoc${r.id}")) { Text("Accept") }
-                    OutlinedButton(onClick = { onReview(r.id, false, note) }, enabled = !form.busy) { Text("Ask again") }
+                    OutlinedButton(onClick = { onReview(r.id, false, note) }, enabled = !form.busy && note.isNotBlank(),
+                        modifier = Modifier.testTag("rejectDoc${r.id}")) { Text("Send back") }
                 }
             }
         }

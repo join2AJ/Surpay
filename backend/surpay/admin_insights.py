@@ -21,7 +21,7 @@ router = APIRouter(tags=["admin"])
 STAGES = ["requested", "identity_submitted", "agreement_signed", "identity_verified", "attorney_assigned",
           "filed", "hearing_pending", "approved", "paid"]
 STAGE_LABELS = {"requested": "Claim started", "identity_submitted": "ID submitted", "agreement_signed": "Agreement signed",
-                "identity_verified": "ID verified, waiting for attorney", "attorney_assigned": "Attorney working on it",
+                "identity_verified": "Waiting for an attorney", "attorney_assigned": "Attorney working on it",
                 "filed": "Filed", "hearing_pending": "Waiting for county / court", "approved": "Approved",
                 "paid": "Money released", "denied": "Denied", "withdrawn": "Withdrawn"}
 
@@ -69,7 +69,9 @@ def insights(scope: Admin, session: DbSession) -> dict:
                {"step": "ID submitted", "key": "id_submitted", "count": sum(1 for u in claimants if u.identity)},
                {"step": "ID approved", "key": "id_approved",
                 "count": sum(1 for u in claimants if u.identity and u.identity.review_status == "approved")}]
-    journey += [{"step": STAGE_LABELS[s], "key": s, "count": reached[s]} for s in STAGES]
+    # The ID steps above already cover the claim's own ID stages.
+    journey += [{"step": STAGE_LABELS[s], "key": s, "count": reached[s]} for s in STAGES
+                if s not in ("identity_submitted", "identity_verified")]
     for i, step in enumerate(journey):
         prev = journey[i - 1]["count"] if i else step["count"]
         step["pct_of_previous"] = round(100 * step["count"] / prev) if prev else None

@@ -7,6 +7,7 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.ComposeContentTestRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -56,7 +57,21 @@ fun ComposeContentTestRule.signAgreement(name: String, timeout: Long = 15_000) {
         swipe(Offset(width * 0.45f, height * 0.3f), Offset(width * 0.8f, height * 0.65f), 200)
     }
     onNodeWithTag("agree").performScrollTo().performClick()
+    confirmCodes(timeout)
     onNodeWithTag("sign").performScrollTo().assertIsEnabled().performClick()
+}
+
+/** Two-factor before signing: send the email and phone codes and use the code a test server shows. */
+@OptIn(androidx.compose.ui.test.ExperimentalTestApi::class)
+fun ComposeContentTestRule.confirmCodes(timeout: Long = 15_000) {
+    for (channel in listOf("email", "phone")) {
+        if (onAllNodesWithTag("${channel}Confirmed").fetchSemanticsNodes().isNotEmpty()) continue  // confirmed in the last 30 min
+        onNodeWithTag("send_$channel").performScrollTo().performClick()
+        waitUntilAtLeastOneExists(hasTestTag("useCode_$channel"), timeout)
+        onNodeWithTag("useCode_$channel").performScrollTo().performClick()
+        onNodeWithTag("confirm_$channel").performScrollTo().performClick()
+        waitUntilAtLeastOneExists(hasTestTag("${channel}Confirmed"), timeout)
+    }
 }
 
 /** Welcome screen: pick "Find money owed to me" (or attorney), fill the form, accept the terms, submit. */

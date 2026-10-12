@@ -208,6 +208,15 @@ class SurpayRepository(private val remote: SurpayApi, private val tokens: TokenS
     suspend fun uploadDocument(claimId: Int, requestId: Int, jpeg: ByteArray): Claim =
         api.uploadDocument(claimId, requestId, DocumentUpload(java.util.Base64.getEncoder().encodeToString(jpeg)))
     suspend fun updateAttorney(body: AttorneyUpdate): AttorneyProfile = remote.updateAttorney(body)
+    suspend fun verifyState(): VerifyState = api.verifyState()
+    suspend fun sendCode(channel: String): CodeSent = api.sendCode(CodeStart(channel))
+    suspend fun confirmCode(channel: String, code: String): VerifyState = api.confirmCode(CodeConfirm(channel, code.trim()))
+    suspend fun formPrefill(claimId: Int, kind: String): FormPrefill = api.formPrefill(claimId, kind)
+    suspend fun signForm(claimId: Int, kind: String, fields: Map<String, String>, signaturePng: ByteArray): FormSigned =
+        api.signForm(claimId, kind, FormSubmit(fields, java.util.Base64.getEncoder().encodeToString(signaturePng), certify = true))
+    suspend fun myDocuments(): List<SignedDoc> = api.myDocuments()
+    suspend fun myDocumentPdf(docId: String): ByteArray = api.myDocumentPdf(docId).use { it.bytes() }
+    suspend fun myActivity(): List<ActivityEntry> = api.myActivity()
     suspend fun requestDocument(caseId: Int, kind: String, note: String): AttorneyCase =
         remote.requestDocument(caseId, DocumentRequestBody(kind, note))
     suspend fun requestedFile(caseId: Int, requestId: Int): ByteArray = remote.requestedFile(caseId, requestId).use { it.bytes() }

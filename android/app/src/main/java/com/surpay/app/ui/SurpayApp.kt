@@ -101,6 +101,10 @@ private object Routes {
     const val IDENTITY = "claim/{id}/identity"
     const val AGREEMENT = "claim/{id}/agreement"
     const val CHAT = "claim/{id}/chat"
+    const val FORM = "claim/{id}/form/{kind}"
+    const val DOCUMENTS = "documents"
+    const val ACTIVITY = "activity"
+    fun form(id: Int, kind: String) = "claim/$id/form/$kind"
     fun detail(id: Int) = "match/$id"
     fun claim(id: Int) = "claim/$id"
     fun identity(id: Int) = "claim/$id/identity"
@@ -283,6 +287,9 @@ private fun SignedInApp(vm: SurpayViewModel, session: SessionState.SignedIn) {
                                 Routes.CHAT -> "Messages"
                                 Routes.IDENTITY -> "Identity check"
                                 Routes.AGREEMENT -> "Agreement"
+                                Routes.FORM -> "Fill in and sign"
+                                Routes.DOCUMENTS -> "Signed documents"
+                                Routes.ACTIVITY -> "My activity"
                                 else -> "Your money"
                             },
                         )
@@ -381,10 +388,41 @@ private fun SignedInApp(vm: SurpayViewModel, session: SessionState.SignedIn) {
                     onNotifications = { nav.navigate(Routes.NOTIFICATIONS) },
                     onPrivacy = { nav.navigate(Routes.PRIVACY) },
                     onHelp = { nav.navigate(Routes.HELP) },
+                    onDocuments = { nav.navigate(Routes.DOCUMENTS) },
+                    onActivity = { nav.navigate(Routes.ACTIVITY) },
                     onLogout = vm::logout,
                 )
             }
             composable(Routes.HELP) { com.surpay.app.ui.screens.HelpScreen(attorney = false) }
+            composable(Routes.DOCUMENTS) {
+                val docs by vm.myDocs.collectAsStateWithLifecycle()
+                val opened by vm.openedDoc.collectAsStateWithLifecycle()
+                LaunchedEffect(Unit) { vm.loadMyDocs() }
+                com.surpay.app.ui.screens.SignedDocumentsScreen(docs, opened, onOpen = { vm.openMyDoc(it.docId) })
+            }
+            composable(Routes.ACTIVITY) {
+                val entries by vm.activity.collectAsStateWithLifecycle()
+                com.surpay.app.ui.screens.ActivityScreen(entries, onRefresh = vm::loadActivity)
+            }
+            composable(Routes.FORM, arguments = listOf(navArgument("id") { type = NavType.IntType },
+                navArgument("kind") { type = NavType.StringType })) { entry ->
+                val id = entry.arguments!!.getInt("id")
+                val kind = entry.arguments!!.getString("kind")!!
+                val prefill by vm.formPrefill.collectAsStateWithLifecycle()
+                val verify by vm.verify.collectAsStateWithLifecycle()
+                val sent by vm.codesSent.collectAsStateWithLifecycle()
+                LaunchedEffect(id, kind) { vm.loadForm(id, kind) }
+                com.surpay.app.ui.screens.FormSignScreen(
+                    prefill = prefill?.takeIf { it.kind == kind }, verify = verify, sent = sent, form = form,
+                    onSend = vm::sendCode, onConfirm = vm::confirmCode,
+                    onSign = { fields, png ->
+                        vm.signForm(id, kind, fields, png) { docId ->
+                            Toast.makeText(context, "Signed. Fingerprint $docId", Toast.LENGTH_LONG).show()
+                            nav.popBackStack()
+                        }
+                    },
+                )
+            }
             composable(Routes.DETAILS) {
                 ProfileScreen(
                     profile = session.profile, form = form, firstRun = false,
@@ -447,6 +485,7 @@ private fun SignedInApp(vm: SurpayViewModel, session: SessionState.SignedIn) {
                         onMessages = { nav.navigate(Routes.chat(id)) },
                         onChangeAttorney = { vm.changeAttorney(id) },
                         onUploadDocument = { rid, bytes -> vm.uploadDocument(id, rid, bytes) },
+                        onFillForm = { kind -> nav.navigate(Routes.form(id, kind)) },
                         busy = form.busy,
                     )
                 }
@@ -470,9 +509,12 @@ private fun SignedInApp(vm: SurpayViewModel, session: SessionState.SignedIn) {
             }
             composable(Routes.AGREEMENT, arguments = listOf(navArgument("id") { type = NavType.IntType })) { entry ->
                 val id = entry.arguments!!.getInt("id")
-                LaunchedEffect(id) { vm.loadAgreement(id) }
+                LaunchedEffect(id) { vm.loadAgreement(id); vm.loadVerify() }
+                val verify by vm.verify.collectAsStateWithLifecycle()
+                val sent by vm.codesSent.collectAsStateWithLifecycle()
                 AgreementScreen(
                     agreement = agreement, expectedName = session.profile.fullName, form = form,
+                    verify = verify, codesSent = sent, onSendCode = vm::sendCode, onConfirmCode = vm::confirmCode,
                     onSign = { name, png -> vm.signAgreement(id, name, png) { nav.popBackStack(Routes.CLAIM, inclusive = false) } },
                 )
             }

@@ -4,6 +4,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -115,23 +116,36 @@ class AttorneyEndToEndTest {
         val attorneyId = call("${url}me", headers = mapOf("Authorization" to "Bearer ${tokens.cached}")).jsonObject["id"]!!.jsonPrimitive.int
         call("${url}admin/attorneys/$attorneyId", "POST", """{"decision":"approved"}""", admin)
 
-        // 4. A verified client (the demo person) signs a claim in Demo County: it's offered to this attorney
+        // 4. A verified client (the demo person) signs a claim in Demo County. It goes to the demo attorney first,
+        // who hands it back, so it's offered to this attorney.
+        call("${url}auth/demo/reset", "POST")
         val demo = call("${url}auth/demo", "POST").jsonObject["token"]!!.jsonPrimitive.content
         val claimant = mapOf("Authorization" to "Bearer $demo")
         val recordId = call("${url}me/matches", headers = claimant).jsonObject["matches"]!!.jsonArray[0].jsonObject["record_id"]!!.jsonPrimitive.int
         val claimId = call("${url}me/claims", "POST", """{"record_id":$recordId}""", claimant).jsonObject["id"]!!.jsonPrimitive.int
+        for (channel in listOf("email", "phone")) {
+            val code = call("${url}me/verify/start", "POST", """{"channel":"$channel"}""", claimant).jsonObject["test_code"]!!.jsonPrimitive.content
+            call("${url}me/verify/confirm", "POST", """{"channel":"$channel","code":"$code"}""", claimant)
+        }
         call("${url}me/claims/$claimId/agreement", "POST",
             """{"signature_name":"Jordan Testwell","agreed":true,"signature_png_b64":"$SIGNATURE_PNG_B64"}""", claimant)
+        val avery = mapOf("Authorization" to "Bearer " + call("${url}auth/demo-attorney", "POST").jsonObject["token"]!!.jsonPrimitive.content)
+        call("${url}attorney/cases/$claimId/decline", "POST", """{"reason":"Handing to a colleague"}""", avery)
 
         compose.onNodeWithText("Check status now").performClick()
         compose.waitUntilAtLeastOneExists(hasTestTag("case$claimId"), timeout)
         compose.onNodeWithTag("case$claimId").assertExists()
         shot("3_cases")
 
-        // 5. Offer shows no personal details; accepting reveals the client and documents
+        // 5. Before accepting: only the names needed for the conflict check (no address, DOB or documents),
+        // the pay for the case and how the county takes the filing. Accepting reveals the rest.
         compose.onNodeWithTag("case$claimId").performClick()
         compose.waitUntilAtLeastOneExists(hasTestTag("acceptCase"), timeout)
-        compose.onNodeWithText("Jordan Testwell", substring = true).assertDoesNotExist()
+        compose.onNodeWithTag("conflictCard").performScrollTo().assertExists()
+        compose.onNodeWithText("412 Maple Ridge", substring = true).assertDoesNotExist()
+        compose.onNodeWithTag("payCard").performScrollTo().assertExists()
+        compose.onNodeWithTag("attestation", useUnmergedTree = true).assertTextContains("I, ", substring = true)
+        shot("2b_conflict_check")
         compose.onNodeWithTag("conflictChecked").performScrollTo().performClick()
         compose.onNodeWithTag("acceptCase").performScrollTo().performClick()
         compose.waitUntilAtLeastOneExists(hasTestTag("client"), timeout)

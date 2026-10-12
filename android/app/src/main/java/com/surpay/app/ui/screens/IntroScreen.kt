@@ -127,6 +127,16 @@ fun IntroScreen(onDone: () -> Unit) {
 
 /** What changed in each version, newest first. Shown once after an update. */
 val CHANGELOG: List<Pair<Int, List<String>>> = listOf(
+    7 to listOf(
+        "Fill in and sign your W-9 and sworn affidavit right in the app: we fill in the official forms for you",
+        "A document checklist on every claim, so everything is ready before your attorney files",
+        "Signing is confirmed with a code to your email and one to your phone",
+        "Signature times shown in your time zone, and every signed document kept under a fingerprint",
+        "Signed documents and My activity under Account, plus your account number",
+        "Claims in progress are shown in blue, apart from money you haven’t claimed yet",
+        "Attorneys: names to check for conflicts before accepting, your pay for each case, and how each county takes the filing",
+        "Demo: the claimant and attorney demos are connected, and “Start the demo over” resets them",
+    ),
     6 to listOf(
         "A countdown on every match and claim: how many days are left to claim, colour-coded green, amber or red",
         "A timeline from the sale to your last day to claim, with the date to file by, and what happens if it’s missed",

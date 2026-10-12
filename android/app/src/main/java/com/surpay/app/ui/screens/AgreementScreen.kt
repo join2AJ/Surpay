@@ -51,6 +51,10 @@ fun AgreementScreen(
     form: FormState,
     onSign: (name: String, signaturePng: ByteArray) -> Unit,
     modifier: Modifier = Modifier,
+    verify: com.surpay.app.data.VerifyState? = null,
+    codesSent: Map<String, com.surpay.app.data.CodeSent> = emptyMap(),
+    onSendCode: (String) -> Unit = {},
+    onConfirmCode: (String, String) -> Unit = { _, _ -> },
 ) {
     if (agreement == null) {
         Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -83,14 +87,19 @@ fun AgreementScreen(
         if (agreement.documentSha256.isNotBlank()) {
             Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Outlined.Fingerprint, null, Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(" Document fingerprint ${agreement.documentSha256.take(16)}…", style = MaterialTheme.typography.labelSmall,
+                Text(" Document fingerprint ${agreement.documentSha256.take(16)}", modifier = Modifier.testTag("fingerprint"), style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         Spacer(Modifier.height(16.dp))
 
         if (agreement.signed) {
-            Text("Signed electronically by ${agreement.signatureName} on ${prettyDate(agreement.signedAt)}.", fontStyle = FontStyle.Italic)
+            Text("Signed electronically by ${agreement.signatureName}, " +
+                agreement.signedAtDisplay.ifBlank { prettyDate(agreement.signedAt) } + ".", fontStyle = FontStyle.Italic,
+                modifier = Modifier.testTag("signedStamp"))
+            Text("Kept under fingerprint ${agreement.docId.ifBlank { agreement.documentSha256.take(16) }}. Find it any time " +
+                "under Account, Signed documents.", style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
             return@Column
         }
 
@@ -121,6 +130,8 @@ fun AgreementScreen(
             Text("I have read and agree to this agreement, and I understand Surpay is a technology platform, not a law firm.",
                 style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 12.dp))
         }
+        SectionLabel("3. Confirm it’s you")
+        TwoFactorPanel(verify, codesSent, form.busy, onSendCode, onConfirmCode)
         form.error?.let {
             Spacer(Modifier.height(8.dp))
             Text(it, color = MaterialTheme.colorScheme.error)
@@ -128,16 +139,16 @@ fun AgreementScreen(
         Spacer(Modifier.height(12.dp))
         Button(
             onClick = { onSign(typed.trim(), pad.toPng()) },
-            enabled = agreed && nameOk && !pad.isEmpty && !form.busy,
+            enabled = agreed && nameOk && !pad.isEmpty && !form.busy && verify?.readyToSign == true,
             modifier = Modifier.fillMaxWidth().height(54.dp).testTag("sign"),
         ) {
             if (form.busy) CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
             else Text("Sign agreement", fontWeight = FontWeight.Bold)
         }
         Text(
-            "Your drawn signature and typed name are your legal electronic signature. The time, IP address and device " +
-                "are recorded with a fingerprint of this document as proof of signing. You can cancel within 3 business " +
-                "days at no cost.",
+            "Your drawn signature and typed name are your legal electronic signature. The time (in your time zone and " +
+                "UTC), IP address, device and the codes confirmed by email and phone are recorded with a fingerprint of " +
+                "this document as proof of signing. You can cancel within 3 business days at no cost.",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(top = 8.dp),
         )

@@ -94,3 +94,23 @@ This audit reviewed the backend, the Android app and the legal set-up of Surpay,
   Postgres 16.
 - Test APKs share one signing key so updates install in place; release signing reads an upload key
   from the environment.
+
+## v0.6: connected demo, signing evidence, attorney economics, staff insights
+
+- Fixed: every demo sign-in wiped the demo data, so an attorney's acceptance and messages vanished and the
+  same case was offered again in a loop. The demo is now one persistent, connected world with a reset.
+- Forms signed in the app: the official IRS W-9 filled in, affidavits of ownership or heirship, each with
+  an electronic-signature certificate. Two-factor (email and phone code) before any signature.
+- Signed-document registry by fingerprint; timestamps in the signer's time zone and UTC; users can see
+  their signed documents and their own activity log; every account has a permanent number (SU-…).
+- Document checklist on every claim so clients prepare papers before an attorney is assigned; attorneys
+  review and send back with a reason.
+- Attorneys see the names to check for conflicts before accepting (attestation names them and their bar
+  number), their pay, and how the county takes the filing (court e-filing or claim form).
+- Attorney pay scales with the claim instead of a flat $500.
+- Legal: Texas Tax Code § 34.04(i) appears to cap any fee for recovering Texas tax-sale excess at the lesser
+  of 25% or $1,000 and to allow only attorneys to charge it; fees in Texas are capped accordingly until
+  Texas counsel confirms. Several counties refuse finders or powers of attorney (see filing methods).
+- Staff dashboard rebuilt: sidebar, sortable tables, click-through detail for every claim, record,
+  person and signed document, record provenance (source, file type, each column as read), journey and
+  drop-off insights, attorney performance, margins, and the audit trail.

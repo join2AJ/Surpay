@@ -65,6 +65,7 @@ fun ClaimScreen(
     onMessages: () -> Unit = {},
     onChangeAttorney: () -> Unit = {},
     onUploadDocument: (requestId: Int, jpeg: ByteArray) -> Unit = { _, _ -> },
+    onFillForm: (kind: String) -> Unit = {},
     busy: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
@@ -102,7 +103,7 @@ fun ClaimScreen(
         }
         if (claim.documentRequests.isNotEmpty()) {
             Spacer(Modifier.height(12.dp))
-            ClaimDocumentsCard(claim.documentRequests, busy, onUploadDocument)
+            ClaimDocumentsCard(claim.documentRequests, busy, onUploadDocument, onFillForm)
         }
 
         if (claim.estimatedCompletionEnd != null && claim.status !in setOf("paid", "denied", "withdrawn")) {

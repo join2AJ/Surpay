@@ -4,6 +4,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.CompositionLocalProvider
 import com.surpay.app.ui.LocalPhotoSource
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -88,7 +89,7 @@ class OfflineDemoTest {
 
         compose.waitUntilAtLeastOneExists(hasTestTag("totalAmount"), 10_000)
         compose.onNodeWithTag("offlineBanner").assertExists()
-        compose.onNodeWithText("$34,575.50").assertExists()
+        compose.onNodeWithTag("totalAmount").assertTextEquals("$34,575.50")
         compose.onNodeWithText("Name & address match").assertExists()
         compose.onNodeWithText("$28,371.65", substring = true).assertExists() // same net as the server
         shot("1_matches")

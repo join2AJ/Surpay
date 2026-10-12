@@ -360,6 +360,59 @@ class SurpayViewModel(
         }
     }
 
+    // --- Signing: two-factor codes, forms filled in the app, signed documents, activity -----------
+
+    private val _verify = MutableStateFlow<com.surpay.app.data.VerifyState?>(null)
+    val verify: StateFlow<com.surpay.app.data.VerifyState?> = _verify.asStateFlow()
+    private val _codesSent = MutableStateFlow<Map<String, com.surpay.app.data.CodeSent>>(emptyMap())
+    val codesSent: StateFlow<Map<String, com.surpay.app.data.CodeSent>> = _codesSent.asStateFlow()
+
+    fun loadVerify() = viewModelScope.launch {
+        runCatching { repo.verifyState() }.onSuccess { _verify.value = it }
+    }
+
+    fun sendCode(channel: String) = submit {
+        _codesSent.update { it + (channel to repo.sendCode(channel)) }
+    }
+
+    fun confirmCode(channel: String, code: String) = submit {
+        _verify.value = repo.confirmCode(channel, code)
+        _codesSent.update { it - channel }
+    }
+
+    private val _formPrefill = MutableStateFlow<com.surpay.app.data.FormPrefill?>(null)
+    val formPrefill: StateFlow<com.surpay.app.data.FormPrefill?> = _formPrefill.asStateFlow()
+
+    fun loadForm(claimId: Int, kind: String) {
+        _formPrefill.value = null
+        loadVerify()
+        submit { _formPrefill.value = repo.formPrefill(claimId, kind) }
+    }
+
+    fun signForm(claimId: Int, kind: String, fields: Map<String, String>, png: ByteArray, onDone: (String) -> Unit) = submit {
+        val signed = repo.signForm(claimId, kind, fields, png)
+        upsertClaims(listOf(signed.claim))
+        _myDocs.value = null
+        onDone(signed.document.docId)
+    }
+
+    private val _myDocs = MutableStateFlow<List<com.surpay.app.data.SignedDoc>?>(null)
+    val myDocs: StateFlow<List<com.surpay.app.data.SignedDoc>?> = _myDocs.asStateFlow()
+    private val _openedDoc = MutableStateFlow<Pair<String, ByteArray>?>(null)
+    val openedDoc: StateFlow<Pair<String, ByteArray>?> = _openedDoc.asStateFlow()
+
+    fun loadMyDocs() = viewModelScope.launch { runCatching { repo.myDocuments() }.onSuccess { _myDocs.value = it } }
+
+    fun openMyDoc(docId: String) {
+        if (_openedDoc.value?.first == docId) { _openedDoc.value = null; return }
+        submit { _openedDoc.value = docId to repo.myDocumentPdf(docId) }
+    }
+
+    private val _activity = MutableStateFlow<List<com.surpay.app.data.ActivityEntry>?>(null)
+    val activity: StateFlow<List<com.surpay.app.data.ActivityEntry>?> = _activity.asStateFlow()
+
+    fun loadActivity() = viewModelScope.launch { runCatching { repo.myActivity() }.onSuccess { _activity.value = it } }
+
     fun signAgreement(claimId: Int, name: String, signaturePng: ByteArray, onDone: () -> Unit) = submit {
         upsertClaims(listOf(repo.signAgreement(claimId, name, signaturePng)))
         onDone()

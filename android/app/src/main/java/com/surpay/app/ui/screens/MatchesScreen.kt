@@ -6,6 +6,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -74,10 +78,19 @@ fun MatchesScreen(
                 // Money that can still be claimed first, closest deadline first; passed deadlines last.
                 val ordered = data.matches.sortedWith(compareBy<Match>(
                     { it.clock().urgency == "expired" },
-                    { it.claimStatus != null },
                     { it.clock().daysLeft ?: Int.MAX_VALUE },
                 ))
-                items(ordered, key = { it.recordId }) { MatchCard(it, onClick = { onOpen(it) }) }
+                // Money you're already claiming, set apart (and coloured) from money not claimed yet.
+                val claimed = ordered.filter { it.claimStatus != null }
+                val open = ordered.filter { it.claimStatus == null }
+                if (open.isNotEmpty()) {
+                    item { GroupHeader("Not claimed yet", open.size, open.sumOf { it.amountCents }, claimed = false) }
+                    items(open, key = { it.recordId }) { MatchCard(it, onClick = { onOpen(it) }) }
+                }
+                if (claimed.isNotEmpty()) {
+                    item { GroupHeader("Claims in progress", claimed.size, claimed.sumOf { it.amountCents }, claimed = true) }
+                    items(claimed, key = { it.recordId }) { MatchCard(it, onClick = { onOpen(it) }) }
+                }
                 item { DeadlineLegend() }
                 item {
                     Text(
@@ -162,8 +175,33 @@ fun ConfidenceChip(confidence: String) {
 }
 
 @Composable
+private fun GroupHeader(title: String, count: Int, cents: Long, claimed: Boolean) {
+    val color = if (claimed) InProgressBlue else MaterialTheme.colorScheme.primary
+    Row(Modifier.fillMaxWidth().padding(top = 8.dp).testTag(if (claimed) "groupClaimed" else "groupOpen"),
+        verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(10.dp).background(color, RoundedCornerShape(5.dp)))
+        Text("  $title ($count)", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold,
+            color = color, modifier = Modifier.weight(1f))
+        Text(dollars(cents), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+/** Blue for claims under way, so they stand apart from the green "money found" cards. */
+private val InProgressBlue = Color(0xFF2563EB)
+
+@Composable
 private fun MatchCard(match: Match, onClick: () -> Unit) {
-    SectionCard(onClick = onClick, modifier = Modifier.testTag("match${match.recordId}")) {
+    val claimed = match.claimStatus != null
+    Card(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth().testTag("match${match.recordId}"),
+        shape = MaterialTheme.shapes.medium,
+        colors = CardDefaults.cardColors(containerColor = if (claimed) InProgressBlue.copy(alpha = 0.07f)
+            else MaterialTheme.colorScheme.surfaceContainerLowest),
+        border = androidx.compose.foundation.BorderStroke(if (claimed) 1.5.dp else 1.dp,
+            if (claimed) InProgressBlue.copy(alpha = 0.6f) else MaterialTheme.colorScheme.outlineVariant),
+    ) { Row(Modifier.height(androidx.compose.foundation.layout.IntrinsicSize.Min)) { Box(Modifier.width(6.dp).fillMaxHeight().background(if (claimed) InProgressBlue else MaterialTheme.colorScheme.primary))
+      Column(Modifier.padding(16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(dollars(match.amountCents), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold,
                 modifier = Modifier.weight(1f))
@@ -192,7 +230,8 @@ private fun MatchCard(match: Match, onClick: () -> Unit) {
         }
         match.claimStatus?.let {
             Spacer(Modifier.height(8.dp))
-            Text(claimStatusLabel(it), color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
+            Pill("Claim in progress · ${claimStatusLabel(it)}", InProgressBlue.copy(alpha = 0.14f), InProgressBlue,
+                modifier = Modifier.testTag("claimedPill"))
         }
-    }
+    } } }
 }

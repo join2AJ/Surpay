@@ -61,6 +61,8 @@ data class Profile(
     @SerialName("terms_current") val termsCurrent: Boolean = true,
     @SerialName("unread_notifications") val unreadNotifications: Int = 0,
     @SerialName("deletion_requested") val deletionRequested: Boolean = false,
+    /** Permanent account number, e.g. "SU-100042". */
+    @SerialName("app_number") val appNumber: String = "",
 )
 
 @Serializable
@@ -209,6 +211,7 @@ data class Claim(
     /** "SP-000123": quote it to support. */
     @SerialName("reference_code") val referenceCode: String = "",
     @SerialName("document_requests") val documentRequests: List<DocumentRequest> = emptyList(),
+    @SerialName("filing_method") val filingMethod: FilingMethod = FilingMethod(),
 )
 
 /** A document the attorney asked the client for (W-9, deed...). */
@@ -224,6 +227,12 @@ data class DocumentRequest(
     @SerialName("review_note") val reviewNote: String = "",
     @SerialName("has_file") val hasFile: Boolean = false,
     @SerialName("uploaded_at") val uploadedAt: String? = null,
+    /** Filled in and signed in the app (W-9, affidavits) rather than photographed. */
+    @SerialName("fill_in_app") val fillInApp: Boolean = false,
+    /** checklist (prepared before an attorney is assigned) | attorney (asked for later) */
+    val source: String = "attorney",
+    /** Fingerprint of the signed PDF, once signed in the app. */
+    @SerialName("doc_id") val docId: String? = null,
 )
 
 @Serializable
@@ -367,6 +376,9 @@ data class AttorneyCase(
     @SerialName("other_claimants") val otherClaimants: Int = 0,
     @SerialName("reference_code") val referenceCode: String = "",
     @SerialName("document_requests") val documentRequests: List<DocumentRequest> = emptyList(),
+    @SerialName("conflict_check") val conflictCheck: ConflictCheck = ConflictCheck(),
+    val pay: AttorneyPay = AttorneyPay(),
+    @SerialName("filing_method") val filingMethod: FilingMethod = FilingMethod(),
     val claimant: CaseClaimant? = null,
     val agreement: CaseAgreement? = null,
     val record: CaseRecord? = null,
@@ -417,6 +429,9 @@ data class AgreementDoc(
     /** The typed signature must match this: the name on the verified ID. */
     @SerialName("expected_name") val expectedName: String = "",
     @SerialName("document_sha256") val documentSha256: String = "",
+    /** "Oct 11, 2026, 3:42 PM EDT (19:42 UTC)" */
+    @SerialName("signed_at_display") val signedAtDisplay: String = "",
+    @SerialName("doc_id") val docId: String = "",
 )
 
 @Serializable
@@ -524,8 +539,81 @@ data class DeviceInfo(
     fun headers() = mapOf(
         "X-Device-Id" to deviceId, "X-Install-Id" to installId, "X-Device-Model" to model,
         "X-OS-Version" to osVersion, "X-App-Version" to appVersion,
+        // So signatures show the time as the signer saw it.
+        "X-Time-Zone" to java.util.TimeZone.getDefault().id,
     )
 }
+
+/** Two-factor confirmation before signing: a code to the email and one to the phone. */
+@Serializable
+data class ChannelState(
+    val destination: String = "",
+    @SerialName("verified_at") val verifiedAt: String? = null,
+    val fresh: Boolean = false,
+)
+
+@Serializable
+data class VerifyState(
+    val email: ChannelState = ChannelState(),
+    val phone: ChannelState = ChannelState(),
+    @SerialName("ready_to_sign") val readyToSign: Boolean = false,
+)
+
+@Serializable
+data class CodeStart(val channel: String)
+
+@Serializable
+data class CodeSent(
+    val channel: String,
+    @SerialName("sent_to") val sentTo: String = "",
+    val sent: Boolean = false,
+    /** Only on a test server, which can't send real codes. */
+    @SerialName("test_code") val testCode: String? = null,
+)
+
+@Serializable
+data class CodeConfirm(val channel: String, val code: String)
+
+@Serializable
+data class FormPrefill(
+    val kind: String,
+    val title: String,
+    val fields: Map<String, String> = emptyMap(),
+    val certification: String = "",
+)
+
+@Serializable
+data class FormSubmit(
+    val fields: Map<String, String>,
+    @SerialName("signature_png_b64") val signaturePngB64: String,
+    val certify: Boolean,
+)
+
+@Serializable
+data class SignedDoc(
+    @SerialName("doc_id") val docId: String,
+    val kind: String,
+    val title: String,
+    @SerialName("claim_id") val claimId: Int? = null,
+    @SerialName("signer_name") val signerName: String = "",
+    @SerialName("signed_at_display") val signedAtDisplay: String = "",
+    @SerialName("two_factor") val twoFactor: Boolean = false,
+)
+
+@Serializable
+data class FormSigned(val document: SignedDoc, val claim: Claim)
+
+@Serializable
+data class ActivityEntry(
+    val id: Int,
+    val at: String,
+    val action: String,
+    val label: String = "",
+    val ip: String = "",
+    @SerialName("device_info") val deviceInfo: String = "",
+    val mine: Boolean = true,
+    val hash: String = "",
+)
 
 @Serializable
 data class DemoAdminPass(val token: String, @SerialName("expires_in_hours") val expiresInHours: Int = 2)
@@ -541,6 +629,16 @@ interface SurpayApi {
     @POST("auth/demo-attorney") suspend fun demoAttorneyLogin(): TokenResponse
     @POST("auth/demo-admin") suspend fun demoAdmin(): DemoAdminPass
     @POST("auth/demo/reset") suspend fun resetDemo(): kotlinx.serialization.json.JsonObject
+
+    // --- Signing: two-factor codes, forms filled in the app, signed documents, activity ---
+    @GET("me/verify") suspend fun verifyState(): VerifyState
+    @POST("me/verify/start") suspend fun sendCode(@Body body: CodeStart): CodeSent
+    @POST("me/verify/confirm") suspend fun confirmCode(@Body body: CodeConfirm): VerifyState
+    @GET("me/claims/{id}/forms/{kind}") suspend fun formPrefill(@Path("id") id: Int, @Path("kind") kind: String): FormPrefill
+    @POST("me/claims/{id}/forms/{kind}") suspend fun signForm(@Path("id") id: Int, @Path("kind") kind: String, @Body body: FormSubmit): FormSigned
+    @GET("me/documents") suspend fun myDocuments(): List<SignedDoc>
+    @GET("me/documents/{doc}/pdf") suspend fun myDocumentPdf(@Path("doc") docId: String): okhttp3.ResponseBody
+    @GET("me/activity") suspend fun myActivity(): List<ActivityEntry>
     @GET("me") suspend fun me(): Profile
     @PUT("me") suspend fun updateMe(@Body body: ProfileUpdate): Profile
     @GET("me/matches") suspend fun matches(): MatchesResponse
@@ -633,3 +731,45 @@ interface SurpayApi {
         }
     }
 }
+
+@Serializable
+data class ConflictParty(val role: String, val name: String)
+
+/** Names to check for conflicts before accepting, and the attestation the attorney gives. */
+@Serializable
+data class ConflictCheck(
+    val parties: List<ConflictParty> = emptyList(),
+    @SerialName("lienholders_note") val lienholdersNote: String = "",
+    val attestation: String = "",
+    @SerialName("how_to") val howTo: String = "",
+)
+
+@Serializable
+data class AttorneyPay(
+    @SerialName("total_cents") val totalCents: Long = 0,
+    @SerialName("size_cents") val sizeCents: Long = 0,
+    @SerialName("heir_bonus_cents") val heirBonusCents: Long = 0,
+    @SerialName("hearing_bonus_cents") val hearingBonusCents: Long = 0,
+    @SerialName("if_denied_cents") val ifDeniedCents: Long = 0,
+    val explanation: String = "",
+)
+
+@Serializable
+data class FormLink(val name: String, val url: String = "")
+
+/** How the claim is filed in this county: court e-filing, or a claim form by mail/email. */
+@Serializable
+data class FilingMethod(
+    val kind: String = "unknown",
+    val method: String = "",
+    val where: String = "",
+    val address: String = "",
+    val url: String = "",
+    val forms: List<FormLink> = emptyList(),
+    val notarized: String = "",
+    val fee: String = "",
+    @SerialName("who_may_file") val whoMayFile: String = "",
+    val processing: String = "",
+    val notes: String = "",
+    val researched: Boolean = false,
+)

@@ -50,11 +50,12 @@ def _ensure_records(session: Session) -> None:
 
 def _clear_activity(session: Session, user: User) -> None:
     """Remove a demo account's claims, family members, notifications and messages."""
-    from .models import Message
+    from .models import Message, OneTimeCode, SignedDocument
     user.claims = []
     user.relatives = []
     session.flush()
-    for model, col in ((Notification, Notification.user_id), (Message, Message.sender_id)):
+    for model, col in ((Notification, Notification.user_id), (Message, Message.sender_id),
+                       (OneTimeCode, OneTimeCode.user_id), (SignedDocument, SignedDocument.user_id)):
         for row in session.scalars(select(model).where(col == user.id)):
             session.delete(row)
 

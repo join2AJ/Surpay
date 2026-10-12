@@ -14,6 +14,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Logout
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.FamilyRestroom
+import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.PrivacyTip
@@ -50,12 +51,18 @@ fun AccountScreen(
     onPrivacy: () -> Unit,
     onLogout: () -> Unit,
     onHelp: () -> Unit = {},
+    onDocuments: () -> Unit = {},
+    onActivity: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp)) {
         HeroCard {
             Text(profile.fullName, style = MaterialTheme.typography.titleLarge)
             Text(profile.email, style = MaterialTheme.typography.bodyMedium)
+            if (profile.appNumber.isNotBlank()) {
+                Text("Account number ${profile.appNumber}", style = MaterialTheme.typography.labelLarge,
+                    modifier = Modifier.testTag("appNumber"))
+            }
             Spacer(Modifier.height(10.dp))
             Pill(if (profile.identityStatus == "approved") "✓ Identity verified" else "Identity not verified yet",
                 androidx.compose.ui.graphics.Color.White.copy(alpha = 0.18f), androidx.compose.ui.graphics.Color.White)
@@ -67,6 +74,10 @@ fun AccountScreen(
             onClick = onFamily, modifier = Modifier.testTag("navFamily"))
         NavRow(Icons.Outlined.Notifications, "Notifications", "Claim updates and messages", badge = profile.unreadNotifications,
             onClick = onNotifications, modifier = Modifier.testTag("navNotifications"))
+        NavRow(Icons.Outlined.Description, "Signed documents", "Everything you’ve signed, with its fingerprint",
+            onClick = onDocuments, modifier = Modifier.testTag("navDocuments"))
+        NavRow(Icons.Outlined.History, "My activity", "Every sign-in, signature and change, with time and device",
+            onClick = onActivity, modifier = Modifier.testTag("navActivity"))
         NavRow(Icons.Outlined.PrivacyTip, "Privacy and data", "Download your data, delete your account",
             onClick = onPrivacy, modifier = Modifier.testTag("navPrivacy"))
         NavRow(Icons.Outlined.Description, "Help and FAQ", "Costs, timing, payment, your attorney",

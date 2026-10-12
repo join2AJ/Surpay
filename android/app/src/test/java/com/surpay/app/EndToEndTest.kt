@@ -101,7 +101,7 @@ class EndToEndTest {
 
         // Results unlock
         compose.waitUntilAtLeastOneExists(hasTestTag("totalAmount"), timeout)
-        compose.onNodeWithText("$34,575.50").assertExists()
+        compose.onNodeWithTag("totalAmount").assertTextEquals("$34,575.50")
         compose.onNodeWithText("Name & address match").assertExists()
         // The legal clock: one demo record is under 60 days from its deadline
         compose.onNodeWithTag("deadlineBanner").assertExists()
@@ -165,6 +165,7 @@ class EndToEndTest {
         val server = ServerStore(context, url!!)
         val vm = SurpayViewModel(SurpayRepository(SurpayApi.create({ server.current }, { tokens.cached }), tokens), server)
         compose.setContent { SurpayTheme { Surface { SurpayApp(vm) } } }
+        post("${url}auth/demo/reset")
 
         compose.waitUntilAtLeastOneExists(hasTestTag("demoLogin"), 15_000)
         compose.onNodeWithTag("demoLogin").performScrollTo()
@@ -172,7 +173,7 @@ class EndToEndTest {
         compose.onNodeWithTag("demoLogin").performClick()
         // Straight to matches: the demo profile already has an address, so the strong match shows.
         compose.waitUntilAtLeastOneExists(hasTestTag("totalAmount"), 15_000)
-        compose.onNodeWithText("$34,575.50").assertExists()
+        compose.onNodeWithTag("totalAmount").assertTextEquals("$34,575.50")
         compose.onNodeWithText("Name & address match").assertExists()
         shot("7_demo_matches")
     }
@@ -187,11 +188,60 @@ class EndToEndTest {
         val vm = SurpayViewModel(SurpayRepository(SurpayApi.create({ server.current }, { tokens.cached }), tokens), server)
         compose.setContent { SurpayTheme { Surface { SurpayApp(vm) } } }
 
+        post("${url}auth/demo/reset")
         compose.waitUntilAtLeastOneExists(hasTestTag("demoAttorneyLogin"), 15_000)
         compose.onNodeWithTag("demoAttorneyLogin").performScrollTo().performClick()
         // Straight to the case list, with a verified demo client's case waiting
         compose.waitUntilAtLeastOneExists(hasText("New cases: accept or decline"), 15_000)
-        compose.onNodeWithText("Demo County, OH", substring = true).assertExists()
+        assert(compose.onAllNodesWithText("Demo County, OH", substring = true).fetchSemanticsNodes().isNotEmpty())
         shot("11_attorney_demo")
+    }
+
+    private fun post(url: String, body: String = "{}", headers: Map<String, String> = emptyMap()): String {
+        val b = okhttp3.Request.Builder().url(url).post(body.toRequestBody("application/json".toMediaType()))
+        headers.forEach { (k, v) -> b.header(k, v) }
+        return okhttp3.OkHttpClient().newCall(b.build()).execute().use { r ->
+            check(r.isSuccessful) { "POST $url -> ${r.code} ${r.body?.string()}" }
+            r.body!!.string()
+        }
+    }
+
+    /** The demo is one connected world: Jordan signs in the app, the demo attorney accepts and writes,
+     *  and Jordan sees the attorney and the message on the claim. Nothing is wiped by signing in again. */
+    @Test fun demoClaimantAndAttorneyAreConnected() {
+        val url = System.getProperty("surpay.e2eUrl")
+        assumeTrue("set -Pe2eUrl to run", !url.isNullOrBlank())
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val tokens = TokenStore(context).also { runBlocking { it.clear() } }
+        val server = ServerStore(context, url!!)
+        val vm = SurpayViewModel(SurpayRepository(SurpayApi.create({ server.current }, { tokens.cached }), tokens), server)
+        compose.setContent { SurpayTheme { Surface { SurpayApp(vm) } } }
+        post("${url}auth/demo/reset")
+        val timeout = 15_000L
+
+        compose.waitUntilAtLeastOneExists(hasTestTag("demoLogin"), timeout)
+        compose.onNodeWithTag("demoLogin").performScrollTo().performClick()
+        compose.waitUntilAtLeastOneExists(hasTestTag("totalAmount"), timeout)
+        compose.onNodeWithText("$28,450.00").performClick()
+        compose.waitUntilAtLeastOneExists(hasTestTag("startClaim"), timeout)
+        compose.onNodeWithTag("startClaim").performScrollTo().performClick()
+        compose.signAgreement("Jordan Testwell")
+        shot("12_demo_signed")
+        compose.waitUntilAtLeastOneExists(hasTestTag("claimDocuments"), timeout)
+        val claimId = vm.claims.value!!.first { it.amountCents == 2_845_000L }.id
+
+        // The demo attorney gets the case, accepts it and writes first
+        val avery = Regex("\"token\":\"([^\"]+)").find(post("${url}auth/demo-attorney"))!!.groupValues[1]
+        val auth = mapOf("Authorization" to "Bearer $avery")
+        post("${url}attorney/cases/$claimId/accept", """{"conflict_checked":true}""", auth)
+        post("${url}attorney/cases/$claimId/messages", """{"body":"Hello Jordan, I have your case."}""", auth)
+
+        // Jordan's claim shows the attorney and the message
+        vm.reloadClaim(claimId)
+        compose.waitUntilAtLeastOneExists(hasTestTag("yourAttorney"), timeout)
+        compose.onNodeWithText("Avery Counsel", substring = true).assertExists()
+        compose.onNodeWithTag("openChat").performScrollTo().performClick()
+        compose.waitUntilAtLeastOneExists(hasText("Hello Jordan, I have your case."), timeout)
+        shot("13_demo_connected_chat")
     }
 }

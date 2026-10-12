@@ -177,6 +177,34 @@ passed). New claims can't be started after the deadline. Reminders go to the cla
 the daily GitHub Action and after each Render start). Lists without sale dates show "Claim as soon as
 possible" rather than a countdown.
 
+## Signing: email and phone codes
+
+Every signature (the agreement, W-9s and affidavits) needs a 6-digit code confirmed by email and one by
+text message within the last 30 minutes. Set these in Render to send real codes:
+
+- Email (any SMTP service, e.g. Brevo's free 300/day): `SURPAY_SMTP_HOST`, `SURPAY_SMTP_PORT` (587),
+  `SURPAY_SMTP_USER`, `SURPAY_SMTP_PASSWORD`, `SURPAY_SMTP_FROM`.
+- Text messages (Twilio): `SURPAY_TWILIO_SID`, `SURPAY_TWILIO_TOKEN`, `SURPAY_TWILIO_FROM`.
+
+While `SURPAY_SEED_DEMO=true` the server shows the code in the app instead ("Test server: your code is
+…"). With demo off and no provider set, signing is refused, so set them up before real users.
+
+Every signed PDF is kept encrypted under its fingerprint (staff: Signed documents), with the IP address,
+device, time zone, and when each code was confirmed.
+
+## Demo
+
+The Claimant, Attorney and Admin demo buttons share one connected world: a claim Jordan signs goes to
+Avery, Avery's acceptance and messages reach Jordan, and the admin demo sees it all. Progress is kept
+until someone taps "Start the demo over" (or nobody uses the demo for 12 hours).
+
+## Attorney pay
+
+Staff set it under Fees and attorney pay: a base amount by claim size, plus a % of the amount up to a cap,
+plus bonuses for heir claims and contested hearings, paid when the money is released (half the
+size-based amount if the claim is denied). Each claim's detail shows the client's fee, the attorney's pay
+and what Surpay keeps. Have ethics counsel review the arrangement in each state.
+
 ## Before real users
 
 - Set `SURPAY_SEED_DEMO=false` in Render. The fake Demo County disappears and the demo sign-in is switched off.

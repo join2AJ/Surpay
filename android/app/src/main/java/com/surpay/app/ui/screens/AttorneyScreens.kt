@@ -390,8 +390,8 @@ fun CaseDetailScreen(
 
         if (case.assignmentStatus == "offered") {
             Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth()) {
-                Text("The client’s identity is verified and the agreement is signed. Their details and documents appear once " +
-                    "you accept.", Modifier.padding(12.dp), style = MaterialTheme.typography.bodyMedium)
+                Text("The client’s identity is verified and the agreement is signed. Below are only the names you need for your " +
+                    "conflict check; their address, ID and documents appear once you accept.", Modifier.padding(12.dp), style = MaterialTheme.typography.bodyMedium)
             }
             if (case.otherClaimants > 0) {
                 Spacer(Modifier.height(8.dp))
@@ -399,12 +399,16 @@ fun CaseDetailScreen(
                     "or a disputed claim). Consider this in your conflict check.")
             }
             Spacer(Modifier.height(12.dp))
+            PayCard(case.pay)
+            Spacer(Modifier.height(12.dp))
             var conflictChecked by rememberSaveable { mutableStateOf(false) }
+            ConflictCheckCard(case.conflictCheck)
             Row(verticalAlignment = Alignment.Top) {
                 Checkbox(conflictChecked, { conflictChecked = it }, modifier = Modifier.testTag("conflictChecked"))
-                Text("I’ve run a conflict check and have no conflict with this client, the former owner, other " +
-                    "claimants or lienholders (Rule 1.7).", style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(top = 12.dp))
+                Text(case.conflictCheck.attestation.ifBlank {
+                    "I have checked my conflict records against the names above and have no conflict of interest " +
+                        "in representing this client (Rule 1.7)."
+                }, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 12.dp).testTag("attestation"))
             }
             Button(onClick = onAccept, enabled = conflictChecked && !form.busy,
                 modifier = Modifier.fillMaxWidth().height(50.dp).testTag("acceptCase")) {
@@ -412,6 +416,8 @@ fun CaseDetailScreen(
             }
             OutlinedButton(onClick = { dialog = "decline" }, enabled = !form.busy, modifier = Modifier.fillMaxWidth()) { Text("Decline") }
             dialog?.let { a -> ConfirmPanel(a, form.busy, onConfirm = { note -> onDecline(note); dialog = null }, onCancel = { dialog = null }) }
+            Spacer(Modifier.height(12.dp))
+            FilingMethodCard(case.filingMethod, case.county)
             Spacer(Modifier.height(12.dp))
             FilingGuideCard(case)
             Spacer(Modifier.height(12.dp))
@@ -481,6 +487,10 @@ fun CaseDetailScreen(
                 TextButton(onClick = { showText = !showText }) { Text(if (showText) "Hide agreement" else "Read agreement") }
                 if (showText) Text(a.text, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Serif)
             }
+            Spacer(Modifier.height(12.dp))
+            FilingMethodCard(case.filingMethod, case.county)
+            Spacer(Modifier.height(12.dp))
+            PayCard(case.pay)
             Spacer(Modifier.height(12.dp))
             FilingGuideCard(case)
             Spacer(Modifier.height(12.dp))
@@ -606,5 +616,81 @@ private fun Detail2(label: String, value: String) {
     Column(Modifier.padding(vertical = 2.dp)) {
         Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(value, style = MaterialTheme.typography.bodyMedium)
+    }
+}
+
+
+/** The names to check before accepting, and how to do the check. */
+@Composable
+private fun ConflictCheckCard(c: com.surpay.app.data.ConflictCheck) {
+    if (c.parties.isEmpty()) return
+    SectionCard(modifier = Modifier.testTag("conflictCard")) {
+        Text("Conflict check", fontWeight = FontWeight.Bold)
+        Text(c.howTo, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(8.dp))
+        c.parties.forEach { p ->
+            Row(Modifier.padding(vertical = 3.dp)) {
+                Text(p.role, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(0.45f))
+                Text(p.name, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(0.55f).testTag("party_${p.role.take(6)}"))
+            }
+        }
+        if (c.lienholdersNote.isNotBlank()) {
+            Text(c.lienholdersNote, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 6.dp))
+        }
+    }
+}
+
+/** What the attorney is paid for this case, and how it's worked out. */
+@Composable
+private fun PayCard(pay: com.surpay.app.data.AttorneyPay) {
+    if (pay.totalCents <= 0) return
+    SectionCard(modifier = Modifier.testTag("payCard")) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Your pay for this case", style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(dollars(pay.totalCents), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            }
+        }
+        Text(pay.explanation, style = MaterialTheme.typography.bodySmall)
+        if (pay.ifDeniedCents > 0) {
+            Text("If the claim is denied after you file: ${dollars(pay.ifDeniedCents)}.", style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+/** How this county takes the claim: e-filing in court, or a claim form by mail or email. */
+@Composable
+private fun FilingMethodCard(m: com.surpay.app.data.FilingMethod, county: String) {
+    if (m.method.isBlank()) return
+    val uri = androidx.compose.ui.platform.LocalUriHandler.current
+    val court = m.kind == "court"
+    SectionCard(modifier = Modifier.testTag("filingMethod")) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Surface(color = if (court) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.secondaryContainer,
+                shape = MaterialTheme.shapes.small) {
+                Text(if (court) "Court filing" else if (m.kind == "administrative") "Claim form" else "Check first",
+                    Modifier.padding(horizontal = 8.dp, vertical = 2.dp), style = MaterialTheme.typography.labelMedium)
+            }
+            Text("  How $county County takes it", fontWeight = FontWeight.Bold)
+        }
+        Spacer(Modifier.height(6.dp))
+        listOf("Method" to m.method, "Where" to m.where, "Address" to m.address, "Notarized" to m.notarized,
+            "Filing fee" to m.fee, "Who may file" to m.whoMayFile, "Processing" to m.processing, "Note" to m.notes)
+            .filter { it.second.isNotBlank() }.forEach { (k, v) ->
+                Row(Modifier.padding(vertical = 2.dp)) {
+                    Text(k, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(0.3f))
+                    Text(v, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(0.7f))
+                }
+            }
+        m.forms.forEach { f ->
+            TextButton(onClick = { if (f.url.isNotBlank()) uri.openUri(f.url) }) { Text("Form: ${f.name}") }
+        }
+        if (m.url.isNotBlank()) TextButton(onClick = { uri.openUri(m.url) }) { Text("Official page") }
+        if (!m.researched) Text("Not yet confirmed for this county: phone the office before filing.",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
     }
 }

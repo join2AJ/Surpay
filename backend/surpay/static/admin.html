@@ -4,38 +4,62 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
-<title>Surpay Review</title>
+<title>Surpay Staff</title>
 <style>
-  :root { --bg:#f5f7fb; --card:#fff; --text:#0f172a; --muted:#5b6474; --line:#e3e8f0; --brand:#0b6e4f; --warn:#8a5a00; --bad:#b42318; }
-  @media (prefers-color-scheme: dark) { :root { --bg:#0b1120; --card:#131c2e; --text:#e6eaf2; --muted:#9aa4b5; --line:#23304a; --brand:#34c38f; --warn:#f2c26b; --bad:#ff8a80; } }
-  * { box-sizing: border-box; }
-  body { margin:0; background:var(--bg); color:var(--text); font:15px/1.5 system-ui, -apple-system, Segoe UI, sans-serif; }
-  header { padding:16px; display:flex; gap:8px; flex-wrap:wrap; align-items:center; border-bottom:1px solid var(--line); background:var(--card); position:sticky; top:0; }
-  header h1 { font-size:18px; margin:0 auto 0 0; }
-  input, select, button, textarea { font:inherit; padding:8px 10px; border-radius:8px; border:1px solid var(--line); background:var(--bg); color:var(--text); }
+  :root {
+    --bg:#f4f6fa; --card:#ffffff; --sunk:#f8fafc; --text:#0f172a; --muted:#5b6474; --line:#e3e8f0;
+    --brand:#0b6e4f; --brand-soft:#e6f4ee; --blue:#2563eb; --warn:#8a5a00; --bad:#b42318;
+    --urgent:#b91c1c; --soon:#b45309; --safe:#15803d; --expired:#6b7280; --side:#0b1f17; --side-text:#cfe9dd;
+    --shadow:0 1px 2px rgba(15,23,42,.06), 0 4px 16px rgba(15,23,42,.05);
+  }
+  :root:not([data-theme="light"]) { color-scheme: light dark; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+    --bg:#0b1120; --card:#131c2e; --sunk:#0f1726; --text:#e6eaf2; --muted:#9aa4b5; --line:#23304a; --brand:#34c38f;
+    --brand-soft:#123326; --blue:#7aa7ff; --warn:#f2c26b; --bad:#ff8a80; --urgent:#ff8a80; --soon:#f6c26b; --safe:#5bd68c;
+    --expired:#a3aab8; --side:#060c18; --side-text:#b9c7dc; --shadow:none; } }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  a { color:var(--blue); }
+  .shell { display:grid; grid-template-columns: 230px 1fr; min-height:100vh; }
+  aside#side { background:var(--side); color:var(--side-text); padding:18px 12px; position:sticky; top:0; height:100vh; overflow:auto; }
+  aside .brand { font-weight:800; font-size:18px; color:#fff; padding:4px 10px 16px; letter-spacing:.2px; }
+  aside .brand span { color:#34c38f; }
+  aside button.nav { display:flex; width:100%; gap:10px; align-items:center; background:transparent; color:var(--side-text);
+    border:0; padding:9px 10px; border-radius:10px; font-weight:600; text-align:left; cursor:pointer; font-size:14px; }
+  aside button.nav:hover { background:rgba(255,255,255,.07); }
+  aside button.nav.on { background:#34c38f22; color:#fff; box-shadow: inset 3px 0 0 #34c38f; }
+  aside .count { margin-left:auto; background:#34c38f33; color:#fff; border-radius:999px; padding:0 8px; font-size:12px; }
+  aside .sep { font-size:11px; text-transform:uppercase; letter-spacing:.08em; opacity:.6; padding:14px 10px 4px; }
+  header { display:flex; gap:10px; align-items:center; padding:14px 22px; background:var(--card); border-bottom:1px solid var(--line);
+    position:sticky; top:0; z-index:5; }
+  header h1 { font-size:18px; margin:0; flex:1; }
+  main { padding:18px 22px 60px; display:grid; gap:16px; }
+  input, select, button, textarea { font:inherit; padding:8px 10px; border-radius:9px; border:1px solid var(--line); background:var(--sunk); color:var(--text); }
   button { background:var(--brand); color:#fff; border:0; font-weight:600; cursor:pointer; }
   button.secondary { background:transparent; color:var(--text); border:1px solid var(--line); }
   button.danger { background:var(--bad); }
-  main:empty { display:none; }
-  .kpis { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:10px; }
-  .kpi { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px; }
-  .kpi b { display:block; font-size:22px; } .kpi span { color:var(--muted); font-size:12px; }
-  table { width:100%; border-collapse:collapse; font-size:13px; } th, td { text-align:left; padding:6px 4px; border-bottom:1px solid var(--line); vertical-align:top; }
-  .alert { background:#fff1d6; color:#6b4a00; border-radius:10px; padding:8px 12px; margin:4px 0; font-size:14px; }
-  .bar { height:8px; background:var(--brand); border-radius:4px; }
-  main { padding:16px; max-width:900px; margin:0 auto; display:grid; gap:16px; }
-  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px; }
+  button:disabled { opacity:.5; cursor:default; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px 18px; box-shadow:var(--shadow); }
+  .card h2 { font-size:16px; margin:0 0 10px; }
+  h3 { font-size:12px; margin:14px 0 6px; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; }
   .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
   .muted { color:var(--muted); font-size:13px; }
-  .pill { display:inline-block; padding:2px 10px; border-radius:999px; font-size:12px; font-weight:600; border:1px solid var(--line); }
-  .pill.pending { color:var(--warn); } .pill.approved { color:var(--brand); } .pill.rejected { color:var(--bad); }
-  .grid { display:grid; grid-template-columns: 1fr 1fr; gap:4px 16px; margin:8px 0; }
-  .grid div:nth-child(odd) { color:var(--muted); font-size:13px; }
-  .docs { display:flex; gap:8px; flex-wrap:wrap; margin:8px 0; }
-  .docs img { width:150px; height:110px; object-fit:cover; border-radius:8px; border:1px solid var(--line); cursor:zoom-in; }
-  h2 { font-size:17px; margin:0; }
-  h3 { font-size:14px; margin:12px 0 4px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
-  ol { margin:4px 0; padding-left:20px; }
+  .kpis { display:grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap:10px; }
+  .kpi { background:var(--sunk); border:1px solid var(--line); border-radius:12px; padding:12px 14px; cursor:default; }
+  .kpi.click { cursor:pointer; } .kpi.click:hover { border-color:var(--brand); }
+  .kpi b { display:block; font-size:22px; letter-spacing:-.3px; } .kpi span { color:var(--muted); font-size:12px; }
+  .grid2 { display:grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap:16px; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th, td { text-align:left; padding:8px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { color:var(--muted); font-weight:600; font-size:12px; white-space:nowrap; position:sticky; top:0; background:var(--card); }
+  th.sort { cursor:pointer; user-select:none; } th.sort:hover { color:var(--text); }
+  th .dir { opacity:.8; }
+  td.num, th.num { text-align:right; font-variant-numeric: tabular-nums; }
+  tr.click { cursor:pointer; } tr.click:hover td { background:var(--sunk); }
+  .tablewrap { overflow:auto; max-height:70vh; border:1px solid var(--line); border-radius:12px; }
+  .pill { display:inline-block; padding:2px 10px; border-radius:999px; font-size:12px; font-weight:600; border:1px solid var(--line); white-space:nowrap; }
+  .pill.pending { color:var(--warn); } .pill.approved { color:var(--safe); } .pill.rejected { color:var(--bad); }
+  .stage { display:inline-block; padding:2px 9px; border-radius:7px; font-size:12px; font-weight:600; background:var(--brand-soft); color:var(--brand); }
   .clock { display:inline-flex; align-items:center; gap:6px; padding:2px 10px; border-radius:999px; font-size:12px; font-weight:700; white-space:nowrap; }
   .clock::before { content:""; width:8px; height:8px; border-radius:50%; background:currentColor; }
   .track { height:6px; border-radius:3px; background:var(--line); overflow:hidden; margin-top:4px; min-width:90px; }
@@ -43,45 +67,91 @@
   .tile { border-radius:12px; padding:12px; cursor:pointer; border:1px solid transparent; }
   .tile b { display:block; font-size:22px; } .tile span { font-size:12px; font-weight:600; }
   .tile:hover { border-color:currentColor; }
-  #msg { padding:0 16px; }
-  @media (max-width: 560px) { .grid { grid-template-columns: 1fr; } .grid div:nth-child(odd) { margin-top:6px; } }
+  .bar { height:10px; background:var(--brand); border-radius:0 4px 4px 0; min-width:2px; }
+  .funnel { display:grid; grid-template-columns: 200px 1fr 70px 60px; gap:6px 10px; align-items:center; font-size:13px; }
+  .funnel .lbl { color:var(--text); } .funnel .pct { color:var(--muted); text-align:right; font-variant-numeric: tabular-nums; }
+  .funnel .n { text-align:right; font-weight:700; font-variant-numeric: tabular-nums; }
+  .cols { display:flex; align-items:flex-end; gap:6px; height:110px; padding-top:6px; }
+  .cols div { flex:1; background:var(--brand); border-radius:4px 4px 0 0; min-height:2px; position:relative; }
+  .cols div:hover { opacity:.8; }
+  .alert { padding:10px 12px; border-radius:10px; background:#fff1d6; color:#6b4a00; margin:6px 0; font-weight:600; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .alert { background:#33260f; color:#f6c26b; } }
+  .grid { display:grid; grid-template-columns: 170px 1fr; gap:6px 12px; }
+  .grid > div:nth-child(odd) { color:var(--muted); font-size:13px; }
+  .docs { display:flex; gap:10px; flex-wrap:wrap; margin-top:8px; }
+  .docs img { width:150px; height:110px; object-fit:cover; border-radius:8px; border:1px solid var(--line); cursor:zoom-in; }
+  ol { margin:4px 0; padding-left:20px; }
+  code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:12px; word-break:break-all; }
+  #banner { display:none; margin:0; padding:10px 22px; background:#fff1d6; color:#6b4a00; font-weight:600; }
+  #msg { margin:0; }
+  /* Detail drawer */
+  #scrim { position:fixed; inset:0; background:rgba(2,6,23,.45); display:none; z-index:20; }
+  #drawer { color:var(--text); position:fixed; top:0; right:0; height:100vh; width:min(760px, 100vw); background:var(--bg); z-index:21;
+    transform:translateX(100%); transition:transform .2s ease; overflow:auto; box-shadow:-8px 0 30px rgba(0,0,0,.2); }
+  #drawer.open { transform:none; } #scrim.open { display:block; }
+  #drawer .top { position:sticky; top:0; background:var(--card); border-bottom:1px solid var(--line); padding:14px 18px; display:flex; gap:10px; align-items:center; z-index:2; }
+  #drawer .top h2 { margin:0; font-size:17px; flex:1; }
+  #drawer .body { padding:16px 18px; display:grid; gap:14px; }
+  .login { max-width:420px; margin:12vh auto; }
+  @media (max-width: 860px) {
+    .shell { grid-template-columns: 1fr; }
+    aside#side { position:static; height:auto; display:flex; gap:4px; overflow-x:auto; padding:8px; }
+    aside .brand, aside .sep { display:none; }
+    aside button.nav { white-space:nowrap; width:auto; }
+    .funnel { grid-template-columns: 120px 1fr 50px 44px; }
+    .grid { grid-template-columns: 1fr; }
+    main, header { padding-left:16px; padding-right:16px; }
+  }
 </style>
 </head>
 <body>
-<header>
-  <h1>Surpay staff review</h1>
-  <input id="token" type="password" placeholder="Admin token" autocomplete="off">
-  <button id="load">Load</button>
-  <select id="view">
-    <option value="overview">Overview</option>
-    <option value="reviews">Reviews (attorneys, IDs, family)</option>
-    <option value="claims">Claims</option>
-    <option value="records">County records</option>
-    <option value="users">People</option>
-    <option value="fees">Fee rules</option>
-    <option value="audit">Audit trail</option>
-  </select>
-  <select id="filter">
-    <option value="">All claims</option>
-    <option value="identity_submitted,agreement_signed">Needs ID review</option>
-    <option value="identity_verified,attorney_assigned,filed,hearing_pending,approved">In progress</option>
-    <option value="paid,denied,withdrawn">Closed</option>
-  </select>
-</header>
-<p id="banner" style="display:none;margin:0;padding:10px 16px;background:#fff1d6;color:#6b4a00;font-weight:600"></p>
-<p id="msg" class="muted"></p>
-<main id="lawyers"></main>
-<main id="pending"></main>
-<main id="relatives"></main>
-<main id="list"></main>
-<main id="overview"></main>
-<main id="records"></main>
-<main id="users"></main>
-<main id="fees"></main>
-<main id="audit"></main>
-
+<div class="shell">
+  <aside id="side">
+    <div class="brand">Sur<span>pay</span> staff</div>
+    <button class="nav" data-view="overview">◎ Overview</button>
+    <button class="nav" data-view="insights">↗ Where people are</button>
+    <div class="sep">Work</div>
+    <button class="nav" data-view="reviews">✓ Reviews <span class="count" id="cnt-reviews"></span></button>
+    <button class="nav" data-view="claims">▤ Claims</button>
+    <button class="nav" data-view="users">☺ People</button>
+    <div class="sep">Data</div>
+    <button class="nav" data-view="records">⌂ County records</button>
+    <button class="nav" data-view="documents">✎ Signed documents</button>
+    <button class="nav" data-view="audit">⛓ Audit trail</button>
+    <div class="sep">Settings</div>
+    <button class="nav" data-view="fees">$ Fees and attorney pay</button>
+  </aside>
+  <div>
+    <header>
+      <h1 id="title">Overview</h1>
+      <input id="token" type="password" placeholder="Admin token" autocomplete="off" style="width:200px">
+      <button id="load">Sign in</button>
+      <select id="view" style="display:none">
+        <option value="overview"></option><option value="insights"></option><option value="reviews"></option>
+        <option value="claims"></option><option value="records"></option><option value="users"></option>
+        <option value="documents"></option><option value="fees"></option><option value="audit"></option>
+      </select>
+    </header>
+    <p id="banner"></p>
+    <main>
+      <p id="msg" class="muted"></p>
+      <div id="view-root" style="display:grid;gap:16px"></div>
+    </main>
+  </div>
+</div>
+<div id="scrim"></div>
+<aside id="drawer" aria-label="Details"><div class="top"><h2 id="drawer-title"></h2>
+  <button class="secondary" id="drawer-close">Close ✕</button></div><div class="body" id="drawer-body"></div></aside>
 <script>
 const STATUSES = ["requested","identity_submitted","agreement_signed","identity_verified","attorney_assigned","filed","hearing_pending","approved","paid","denied","withdrawn"];
+const STAGE = { requested: "Claim started", identity_submitted: "ID submitted", agreement_signed: "Agreement signed",
+  identity_verified: "Waiting for attorney", attorney_assigned: "Attorney working", filed: "Filed", hearing_pending: "County / court",
+  approved: "Approved", paid: "Money released", denied: "Denied", withdrawn: "Withdrawn" };
+const TITLES = { overview: "Overview", insights: "Where people are", reviews: "Reviews", claims: "Claims", records: "County records",
+  users: "People", documents: "Signed documents", audit: "Audit trail", fees: "Fees and attorney pay" };
+const URGENCY = { urgent: "60 days or less", soon: "2 to 6 months", safe: "over 6 months", expired: "deadline passed", unknown: "no fixed deadline", met: "filed in time" };
+const URGENCY_COLOR = { urgent: "var(--urgent)", soon: "var(--soon)", safe: "var(--safe)", expired: "var(--expired)", unknown: "var(--muted)" };
+
 const $ = (s) => document.querySelector(s);
 const tokenInput = $("#token");
 try { tokenInput.value = sessionStorage.getItem("surpay-admin") || ""; } catch {}
@@ -91,21 +161,532 @@ if (demoPass) { tokenInput.value = decodeURIComponent(demoPass); history.replace
 
 function el(tag, attrs = {}, ...children) {
   const n = document.createElement(tag);
-  for (const [k, v] of Object.entries(attrs)) {
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (v == null || v === false) continue;
     if (k === "class") n.className = v; else if (k.startsWith("on")) n.addEventListener(k.slice(2), v); else n.setAttribute(k, v);
   }
-  for (const c of children) if (c != null) n.append(c instanceof Node ? c : document.createTextNode(String(c)));
+  for (const c of children.flat()) if (c != null && c !== false) n.append(c instanceof Node ? c : document.createTextNode(String(c)));
   return n;
 }
-const money = (c) => "$" + (c / 100).toLocaleString("en-US", { minimumFractionDigits: 2 });
+const money = (c) => "$" + ((c || 0) / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const money0 = (c) => "$" + Math.round((c || 0) / 100).toLocaleString("en-US");
 const when = (s) => s ? new Date(s).toLocaleString() : "";
+const day = (s) => s ? new Date(s).toLocaleDateString() : "";
+const kpi = (label, value, onclick) => el("div", { class: "kpi" + (onclick ? " click" : ""), onclick, title: onclick ? "Open" : null }, el("b", {}, value), el("span", {}, label));
+const stage = (s) => el("span", { class: "stage" }, STAGE[s] || s);
 
 async function api(path, opts = {}) {
   const r = await fetch(path, { ...opts, headers: { "X-Admin-Token": tokenInput.value, "Content-Type": "application/json", ...(opts.headers || {}) } });
   if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
   return r;
 }
+const getJson = async (path) => (await api(path)).json();
 
+// ---- Sortable tables: click a header to sort; click a row to open its details. ----
+function sortableTable(cols, rows, onRow, opts = {}) {
+  let key = opts.sortKey || null, dir = opts.sortDir || -1;
+  const wrap = el("div", { class: "tablewrap" });
+  const draw = () => {
+    const sorted = key ? [...rows].sort((a, b) => {
+      const c = cols.find(c => c.key === key);
+      const va = c.sort ? c.sort(a) : a[key], vb = c.sort ? c.sort(b) : b[key];
+      if (va == null && vb == null) return 0; if (va == null) return 1; if (vb == null) return -1;
+      return (typeof va === "number" && typeof vb === "number" ? va - vb : String(va).localeCompare(String(vb))) * dir;
+    }) : rows;
+    const head = el("tr", {}, ...cols.map(c => el("th", {
+      class: (c.num ? "num " : "") + (c.nosort ? "" : "sort"), title: c.nosort ? null : "Sort",
+      onclick: c.nosort ? null : () => { dir = key === c.key ? -dir : (c.num ? -1 : 1); key = c.key; draw(); },
+    }, c.label, key === c.key ? el("span", { class: "dir" }, dir > 0 ? " ▲" : " ▼") : "")));
+    const body = sorted.map(r => el("tr", { class: onRow ? "click" : "", onclick: onRow ? () => onRow(r) : null },
+      ...cols.map(c => el("td", { class: c.num ? "num" : "" }, c.render ? c.render(r) : (r[c.key] ?? "")))));
+    wrap.replaceChildren(el("table", {}, el("thead", {}, head), el("tbody", {}, ...(body.length ? body
+      : [el("tr", {}, el("td", { colspan: cols.length, class: "muted" }, opts.empty || "Nothing here."))]))));
+  };
+  draw();
+  return wrap;
+}
+
+// ---- Drawer with full details ----
+function openDrawer(title, ...nodes) {
+  $("#drawer-title").textContent = title;
+  $("#drawer-body").replaceChildren(...nodes.flat().filter(Boolean));
+  $("#drawer").classList.add("open"); $("#scrim").classList.add("open");
+  $("#drawer").scrollTop = 0;
+}
+function closeDrawer() { $("#drawer").classList.remove("open"); $("#scrim").classList.remove("open"); }
+$("#drawer-close").onclick = closeDrawer; $("#scrim").onclick = closeDrawer;
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeDrawer(); });
+const loading = () => el("p", { class: "muted" }, "Loading…");
+const card = (title, ...kids) => el("section", { class: "card" }, title ? el("h2", {}, title) : null, ...kids);
+const pairs = (obj) => el("div", { class: "grid" }, ...Object.entries(obj).filter(([, v]) => v != null && v !== "")
+  .flatMap(([k, v]) => [el("div", {}, k), el("div", {}, v instanceof Node ? v : String(v))]));
+
+function auditTable(entries) {
+  return sortableTable([
+    { key: "id", label: "#", num: true },
+    { key: "at", label: "When", render: e => when(e.at) },
+    { key: "action", label: "What" },
+    { key: "actor_type", label: "Who", render: e => `${e.actor_type}${e.actor_id ? " " + e.actor_id : ""}` },
+    { key: "entity_type", label: "On", render: e => e.entity_type ? `${e.entity_type} ${e.entity_id ?? ""}` : "" },
+    { key: "ip", label: "IP / device", render: e => el("span", {}, e.ip || "–", el("div", { class: "muted" }, e.device_info || e.user_agent || "")) },
+  ], entries, e => openDrawer(`Audit entry #${e.id}`, card("", pairs({ When: when(e.at), Action: e.action, Actor: `${e.actor_type} ${e.actor_id ?? ""}`,
+    Entity: `${e.entity_type} ${e.entity_id ?? ""}`, IP: e.ip, Device: e.device_info, "Device id": e.device_id, "User agent": e.user_agent,
+    "Chain hash": el("span", { class: "mono" }, e.hash) }), el("h3", {}, "Details"), el("pre", { class: "mono" }, JSON.stringify(e.details, null, 2)))),
+    { sortKey: "id", sortDir: -1, empty: "No activity yet." });
+}
+
+// ---- Detail drawers ----
+async function showClaim(id) {
+  openDrawer(`Claim SP-${String(id).padStart(6, "0")}`, loading());
+  try {
+    const c = await getJson(`/admin/claims/${id}/detail`);
+    const pay = c.pay || {};
+    const p = c.provenance || {};
+    openDrawer(`Claim ${c.reference_code} · ${c.user.full_name}`,
+      card("At a glance", el("div", { class: "kpis" },
+        kpi("amount", money(c.amount_cents)), kpi("stage", STAGE[c.status] || c.status),
+        kpi("client fee", money(pay.client_fee_cents)), kpi("attorney pay", money(pay.total_cents)),
+        kpi("Surpay keeps", money(pay.surpay_margin_cents))),
+        pay.low_margin ? el("div", { class: "alert" }, "Low margin: Surpay keeps under 40% of the client's fee on this case.") : null,
+        el("div", { class: "row", style: "margin-top:10px" }, clock(c.deadline),
+          el("button", { class: "secondary", onclick: () => showUser(c.user.id) }, "Open claimant"),
+          el("button", { class: "secondary", onclick: () => showRecord(c.record_id) }, "Open county record"))),
+      card("Where this record came from", pairs({ Source: p.description || p.source, Publisher: p.publisher,
+        "File type": p.file_type, "County file": p.file_url ? el("a", { href: p.file_url, target: "_blank", rel: "noopener" }, "Open the county's list") : "",
+        "First seen": when(p.first_seen), "Last seen": when(p.last_seen) })),
+      (c.signed_documents || []).length ? card("Signed documents", ...c.signed_documents.map(docRow)) : null,
+      render(c),
+      card("Activity on this claim", auditTable(c.activity || [])));
+  } catch (e) { openDrawer("Claim", el("p", {}, e.message)); }
+}
+
+async function showRecord(id) {
+  openDrawer("County record", loading());
+  try {
+    const r = await getJson(`/admin/records/${id}`);
+    const p = r.provenance, f = r.filing_method || {};
+    openDrawer(`${r.owner_name} · ${money(r.amount_cents)}`,
+      card("Record", pairs({ County: `${r.county} County, ${r.state}`, Reference: r.reference, "Listed owner": r.owner_name,
+        "Owner address": r.owner_address, Amount: money(r.amount_cents), "Sale type": r.sale_type.replace(/_/g, " "),
+        "Sale date": r.sale_date || "not in the list", Status: r.status, "Time left": clock(r.deadline) || "" }),
+        r.deadline ? el("p", { class: "muted" }, r.deadline.message) : null),
+      card("Where it came from", pairs({ Source: `${p.description} (${p.source})`, Publisher: p.publisher,
+        "File type": p.file_type, "County file": p.file_url ? el("a", { href: p.file_url, target: "_blank", rel: "noopener" }, p.file_url) : "",
+        "List page": p.list_page ? el("a", { href: p.list_page, target: "_blank", rel: "noopener" }, p.list_page) : "",
+        "Updated": p.update_frequency, "Key in that list": el("span", { class: "mono" }, p.source_key),
+        "First seen": when(p.first_seen), "Last seen": when(p.last_seen), "Last successful scrape": when(p.last_successful_run),
+        Notes: p.registry_notes }),
+        el("h3", {}, "Each field as read from the county's file"),
+        sortableTable([{ key: "k", label: "Column" }, { key: "v", label: "Value", render: x => el("span", { class: "mono" }, x.v) }],
+          Object.entries(r.raw || {}).map(([k, v]) => ({ k, v: typeof v === "string" ? v : JSON.stringify(v) })), null, { empty: "No raw fields kept." })),
+      card("How it's filed", pairs({ Kind: f.kind, Method: f.method, Where: f.where, Address: f.address, Notarized: f.notarized,
+        Fee: f.fee, "Who may file": f.who_may_file, Processing: f.processing, Notes: f.notes }),
+        ...(f.forms || []).map(x => el("div", {}, el("a", { href: x.url, target: "_blank", rel: "noopener" }, x.name)))),
+      card(`Claims on this record (${r.claims.length})`, sortableTable([
+        { key: "ref", label: "Claim" }, { key: "claimant", label: "Claimant" }, { key: "status", label: "Stage", render: x => stage(x.status) }],
+        r.claims, x => showClaim(x.id), { empty: "No one has claimed it yet." })));
+  } catch (e) { openDrawer("County record", el("p", {}, e.message)); }
+}
+
+async function showUser(id) {
+  openDrawer("Person", loading());
+  try {
+    const u = await getJson(`/admin/users/${id}`);
+    const suspend = async (decision) => {
+      const note = decision === "rejected" ? prompt(`Suspend ${u.email}? Reason (kept in the audit log):`) : "";
+      if (decision === "rejected" && !note) return;
+      try { await api(`/admin/users/${u.id}/suspend`, { method: "POST", body: JSON.stringify({ decision, note }) }); showUser(id); }
+      catch (e) { alert(e.message); }
+    };
+    openDrawer(`${u.name} · ${u.app_number}`,
+      card("Account", pairs({ "App number": el("b", {}, u.app_number), Email: u.email, Phone: u.phone, Role: u.role, Joined: u.created,
+        "ID check": u.identity || "not submitted", "Email confirmed": when(u.email_verified_at) || "not yet",
+        "Phone confirmed": when(u.phone_verified_at) || "not yet",
+        Attorney: u.attorney ? `${u.attorney.status} · ${u.attorney.bar} · ${u.attorney.counties.join(", ")}${u.attorney.available ? "" : " · paused"}` : "",
+        Homes: u.addresses.join(" · ") }),
+        u.suspended ? el("div", { class: "alert" }, "Suspended: " + u.suspended_reason) : null,
+        el("div", { class: "row", style: "margin-top:10px" }, u.suspended
+          ? el("button", { class: "secondary", onclick: () => suspend("approved") }, "Reinstate")
+          : el("button", { class: "danger", onclick: () => suspend("rejected") }, "Suspend"))),
+      card(`Claims and cases (${u.claims.length})`, sortableTable([
+        { key: "ref", label: "Claim" }, { key: "as", label: "As" }, { key: "county", label: "County" },
+        { key: "amount_cents", label: "Amount", num: true, render: x => money(x.amount_cents) },
+        { key: "status", label: "Stage", render: x => stage(x.status) }], u.claims, x => showClaim(x.id), { empty: "None." })),
+      (u.documents || []).length ? card("Signed documents", ...u.documents.map(docRow)) : null,
+      card("Activity (audit trail)", auditTable(u.activity)));
+  } catch (e) { openDrawer("Person", el("p", {}, e.message)); }
+}
+
+function docRow(d) {
+  return el("div", { class: "row", style: "justify-content:space-between;border-bottom:1px solid var(--line);padding:6px 0" },
+    el("div", {}, el("b", {}, d.title), el("div", { class: "muted" }, `${d.signer_name} · ${d.signed_at_display}`),
+      el("div", { class: "mono muted" }, "fingerprint " + d.doc_id + (d.two_factor ? " · email + phone confirmed" : ""))),
+    el("div", { class: "row" },
+      el("button", { class: "secondary", onclick: () => showDocument(d.doc_id) }, "Evidence"),
+      el("button", { class: "secondary", onclick: () => openPdf(`/admin/documents/${d.doc_id}/pdf`) }, "Open PDF")));
+}
+async function openPdf(path) {
+  try { const blob = await (await api(path)).blob(); window.open(URL.createObjectURL(blob), "_blank"); } catch (e) { alert(e.message); }
+}
+async function showDocument(docId) {
+  openDrawer("Signed document", loading());
+  try {
+    const d = await getJson(`/admin/documents/${docId}`);
+    openDrawer(`${d.title} · ${d.doc_id}`,
+      card("Signature evidence", pairs({ Fingerprint: el("span", { class: "mono" }, d.doc_id), "SHA-256": el("span", { class: "mono" }, d.sha256),
+        Signer: d.signer_name, Signed: d.signed_at_display, "Time zone": d.time_zone, "IP address": d.ip_address, Device: d.device,
+        "Device id": d.device_id, "Email confirmed": `${d.email} · ${when(d.email_verified_at)}`,
+        "Phone confirmed": `${d.phone} · ${when(d.phone_verified_at)}`, "Audit entry": d.audit_id ? `#${d.audit_id}` : "",
+        Claim: d.claim_id ? el("a", { href: "#", onclick: (e) => { e.preventDefault(); showClaim(d.claim_id); } }, `SP-${String(d.claim_id).padStart(6, "0")}`) : "",
+        Person: d.user_id ? el("a", { href: "#", onclick: (e) => { e.preventDefault(); showUser(d.user_id); } }, "Open person") : "" }),
+        el("div", { class: "row", style: "margin-top:10px" }, el("button", { onclick: () => openPdf(`/admin/documents/${d.doc_id}/pdf`) }, "Open the signed PDF"))),
+      card("What was filled in (SSN masked)", pairs(d.data || {})));
+  } catch (e) { openDrawer("Signed document", el("p", {}, e.message)); }
+}
+
+// ---- Views ----
+async function viewOverview(root) {
+  const o = await getJson("/admin/overview");
+  const r = o.records, p = o.people, c = o.claims;
+  const maxCounty = Math.max(1, ...r.by_county.map(x => x.total_cents));
+  root.append(
+    o.alerts.length ? card("Needs attention", ...o.alerts.map(a => el("div", { class: "alert" }, a))) : null,
+    card("County records we track", el("div", { class: "kpis" },
+      kpi("records listed now", r.listed.toLocaleString(), () => go("records")), kpi("total surplus", money0(r.total_cents), () => go("records")),
+      kpi("counties with records", r.counties), kpi("new in last 7 days", r.new_last_7_days.toLocaleString()),
+      kpi("no longer listed", r.delisted.toLocaleString()), kpi("counties in registry", (o.registry.total || 0).toLocaleString()))),
+    card("Legal deadlines on listed money",
+      el("p", { class: "muted" }, "Each record's last day to claim, from its sale date and the state's law. Click a group to see the records."),
+      el("div", { class: "kpis" }, ...["urgent", "soon", "safe", "expired", "unknown"].map(k => {
+        const v = r.deadlines[k];
+        return el("div", { class: "tile", style: `color:${URGENCY_COLOR[k]};background:color-mix(in srgb, ${URGENCY_COLOR[k]} 10%, transparent)`,
+          onclick: () => { recUrgency = k; recPage = 1; go("records"); } },
+          el("b", {}, v.records.toLocaleString()), el("span", {}, `${URGENCY[k]} · ${money0(v.total_cents)}`));
+      })),
+      el("div", { class: "row", style: "margin-top:8px" },
+        el("span", { class: "pill rejected" }, `Next 30 days: ${r.deadlines.next_30_days.records} records, ${money0(r.deadlines.next_30_days.total_cents)}`),
+        el("span", { class: "pill pending" }, `Next 90 days: ${r.deadlines.next_90_days.records} records, ${money0(r.deadlines.next_90_days.total_cents)}`))),
+    el("div", { class: "grid2" },
+      card("Claims", el("div", { class: "kpis" }, kpi("claims", c.total, () => go("claims")), kpi("active", c.active, () => go("claims")),
+          kpi("fees in pipeline", money0(c.pipeline_fee_cents)), kpi("recovered for clients", money0(c.recovered_cents)),
+          kpi("attorney payouts due", money0(c.payouts_due_cents))),
+        el("h3", {}, "By stage (click to open)"),
+        sortableTable([{ key: "s", label: "Stage", render: x => stage(x.s) }, { key: "n", label: "Claims", num: true }],
+          STATUSES.filter(s => c.by_status[s]).map(s => ({ s, n: c.by_status[s] })), x => { claimFilter = x.s; go("claims"); },
+          { empty: "No claims yet." })),
+      card("People", el("div", { class: "kpis" }, kpi("accounts", p.accounts, () => go("users")), kpi("claimants", p.claimants, () => go("users")),
+        kpi("IDs waiting", p.ids_pending, () => go("reviews")), kpi("IDs verified", p.ids_approved),
+        kpi("attorneys approved", p.attorneys_approved, () => go("users")), kpi("attorneys waiting", p.attorneys_pending, () => go("reviews")),
+        kpi("suspended", p.suspended)))),
+    card("Records by county",
+      sortableTable([
+        { key: "county", label: "County", render: x => `${x.county} County, ${x.state}` },
+        { key: "records", label: "Records", num: true, render: x => x.records.toLocaleString() },
+        { key: "total_cents", label: "Total", num: true, render: x => money0(x.total_cents) },
+        { key: "largest_cents", label: "Largest", num: true, render: x => money0(x.largest_cents) },
+        { key: "bar", label: "", nosort: true, render: x => el("div", { class: "bar", title: money0(x.total_cents), style: `width:${Math.round(100 * x.total_cents / maxCounty)}%` }) },
+      ], r.by_county, x => { recCounty = x.county; recState = x.state; recPage = 1; go("records"); }, { sortKey: "total_cents" }),
+      el("div", { class: "row", style: "margin-top:8px" },
+        el("button", { class: "secondary", onclick: () => download("/admin/records.csv", "surpay-records.csv") }, "Export records (CSV)"),
+        el("button", { class: "secondary", onclick: () => download("/admin/claims.csv", "surpay-claims.csv") }, "Export claims (CSV)"))),
+    card("County data sources", sortableTable([
+      { key: "healthy", label: "", render: s => s.healthy ? "✓" : "⚠", sort: s => s.healthy ? 1 : 0 },
+      { key: "description", label: "Source", render: s => el("span", {}, s.description || s.source, s.last_error ? el("div", { class: "muted" }, s.last_error) : null) },
+      { key: "records", label: "Records", num: true },
+      { key: "hours_since_success", label: "Last success", num: true, render: s => s.hours_since_success == null ? "never" : `${s.hours_since_success} h ago` },
+      { key: "run", label: "", nosort: true, render: s => el("button", { class: "secondary", onclick: async (e) => { e.stopPropagation();
+        try { alert((await (await api(`/admin/sources/${s.source}/scrape`, { method: "POST" })).json()).message); } catch (err) { alert(err.message); } } }, "Refresh now") },
+    ], o.sources, s => { recSource = s.source; go("records"); }, { sortKey: "records" })));
+}
+
+async function viewInsights(root) {
+  const i = await getJson("/admin/insights");
+  const top = Math.max(1, ...i.journey.map(s => s.count));
+  const wk = Math.max(1, ...i.weeks.map(w => Math.max(w.claimants, w.claims)));
+  root.append(
+    card("Claimant journey",
+      el("p", { class: "muted" }, "How many people reached each step. The % is the share of the step before who made it here: a low % is where people drop off."),
+      el("div", { class: "funnel" }, ...i.journey.flatMap(s => [
+        el("div", { class: "lbl" }, s.step),
+        el("div", {}, el("div", { class: "bar", title: `${s.step}: ${s.count}`, style: `width:${Math.max(0.5, 100 * s.count / top)}%` })),
+        el("div", { class: "n" }, s.count.toLocaleString()),
+        el("div", { class: "pct" }, s.pct_of_previous == null ? "" : s.pct_of_previous + "%")]))),
+    el("div", { class: "grid2" },
+      card("Where claims are now",
+        el("p", { class: "muted" }, "Click a stage to see its claims. Days = how long they've been at that stage."),
+        sortableTable([
+          { key: "label", label: "Stage" },
+          { key: "claims", label: "Claims", num: true },
+          { key: "amount_cents", label: "Amount", num: true, render: x => money0(x.amount_cents) },
+          { key: "median_days_here", label: "Median days", num: true },
+          { key: "longest_days_here", label: "Longest", num: true, render: x => el("a", { href: "#", onclick: (e) => { e.preventDefault(); e.stopPropagation(); showClaim(x.oldest_claim); } }, x.longest_days_here + " d") },
+        ], i.by_stage, x => { claimFilter = x.stage; go("claims"); }, { empty: "No claims yet." })),
+      card("People who haven't started a claim",
+        sortableTable([{ key: "k", label: "Where they stopped" }, { key: "n", label: "People", num: true }],
+          Object.entries(i.onboarding).map(([k, n]) => ({ k, n })), () => go("users"), { sortKey: "n", empty: "Everyone verified has started a claim." }))),
+    card("Attorneys",
+      el("p", { class: "muted" }, "Click an attorney for their cases and activity. Response = days from offer to accepting."),
+      sortableTable([
+        { key: "name", label: "Attorney", render: a => el("span", {}, el("b", {}, a.name), el("div", { class: "muted" }, `${a.app_number} · ${a.firm || ""} · ${(a.counties || []).join(", ")}`)) },
+        { key: "status", label: "Status", render: a => el("span", { class: "pill " + (a.status === "approved" ? "approved" : "pending") }, a.available ? a.status : a.status + " · paused") },
+        { key: "offered_now", label: "Offers", num: true }, { key: "active", label: "Active", num: true },
+        { key: "filed", label: "Filed", num: true }, { key: "paid", label: "Paid out", num: true },
+        { key: "declined", label: "Declined", num: true },
+        { key: "median_response_days", label: "Response", num: true, render: a => a.median_response_days == null ? "–" : a.median_response_days + " d" },
+        { key: "pipeline_cents", label: "Pay in pipeline", num: true, render: a => money0(a.pipeline_cents) },
+        { key: "due_cents", label: "Due", num: true, render: a => money0(a.due_cents) },
+        { key: "earned_cents", label: "Paid", num: true, render: a => money0(a.earned_cents) },
+      ], i.attorneys, a => showUser(a.user_id), { sortKey: "active", empty: "No attorneys yet." })),
+    el("div", { class: "grid2" },
+      card("Client documents",
+        sortableTable([{ key: "document", label: "Document" }, { key: "requested", label: "To do", num: true },
+          { key: "uploaded", label: "Waiting review", num: true }, { key: "accepted", label: "Accepted", num: true },
+          { key: "rejected", label: "Sent back", num: true }], i.documents, null, { empty: "No documents yet." })),
+      card("Money on active cases",
+        el("div", { class: "kpis" }, kpi("cases with an attorney", i.margin.cases), kpi("client fees", money0(i.margin.client_fees_cents)),
+          kpi("attorney pay", money0(i.margin.attorney_cents)), kpi("Surpay keeps", money0(i.margin.surpay_cents))),
+        i.margin.low_margin_claims.length ? el("div", { class: "alert" }, "Low margin: ",
+          ...i.margin.low_margin_claims.map(id => el("a", { href: "#", style: "margin-right:8px", onclick: (e) => { e.preventDefault(); showClaim(id); } }, `SP-${String(id).padStart(6, "0")}`))) : null)),
+    el("div", { class: "grid2" },
+      card("New claimants per week (last 8 weeks)",
+        el("div", { class: "cols" }, ...i.weeks.map(w => el("div", { title: `Week of ${w.week_of}: ${w.claimants} claimants`, style: `height:${Math.max(2, 100 * w.claimants / wk)}%` }))),
+        el("div", { class: "muted" }, `${i.weeks[0].week_of} to ${i.weeks[i.weeks.length - 1].week_of} · hover a bar for the count`)),
+      card("New claims per week (last 8 weeks)",
+        el("div", { class: "cols" }, ...i.weeks.map(w => el("div", { title: `Week of ${w.week_of}: ${w.claims} claims`, style: `height:${Math.max(2, 100 * w.claims / wk)}%` }))),
+        el("div", { class: "muted" }, "Same scale as sign-ups, so the two can be compared"))));
+}
+
+let claimFilter = "";
+async function viewClaims(root) {
+  const all = await getJson("/admin/claims");
+  const q = el("input", { placeholder: "Search name, email, SP- reference, county, attorney", style: "flex:1;min-width:220px" });
+  const f = el("select", {}, el("option", { value: "" }, "Every stage"), ...STATUSES.map(s => el("option", { value: s, selected: s === claimFilter ? "" : null }, STAGE[s])));
+  const holder = el("div");
+  const draw = () => {
+    claimFilter = f.value;
+    const term = q.value.trim().toLowerCase();
+    const rows = all.filter(c => (!claimFilter || c.status === claimFilter) && (!term ||
+      [c.reference_code, c.user.full_name, c.user.email, c.reference, c.county, c.attorney?.name].join(" ").toLowerCase().includes(term)));
+    holder.replaceChildren(el("p", { class: "muted" }, `${rows.length} of ${all.length} claims · click a row for everything about it`),
+      sortableTable([
+        { key: "reference_code", label: "Claim", sort: c => c.id },
+        { key: "claimant", label: "Claimant", sort: c => c.user.full_name, render: c => el("span", {}, el("b", {}, c.user.full_name), el("div", { class: "muted" }, c.user.email)) },
+        { key: "county", label: "County", render: c => `${c.county}, ${c.state}` },
+        { key: "amount_cents", label: "Amount", num: true, render: c => money0(c.amount_cents) },
+        { key: "status", label: "Stage", sort: c => STATUSES.indexOf(c.status), render: c => stage(c.status) },
+        { key: "deadline", label: "Time left", sort: c => c.deadline?.days_left ?? 1e9, render: c => clock(c.deadline) },
+        { key: "attorney", label: "Attorney", sort: c => c.attorney?.name || "", render: c => c.attorney ? `${c.attorney.name} (${c.attorney.assignment_status})` : "–" },
+        { key: "docs", label: "Docs ready", num: true, sort: c => docsDone(c) / Math.max(1, (c.document_requests || []).length),
+          render: c => `${docsDone(c)}/${(c.document_requests || []).length}` },
+        { key: "updated_at", label: "Updated", render: c => day(c.updated_at) },
+      ], rows, c => showClaim(c.id), { sortKey: "reference_code", sortDir: -1 }));
+  };
+  q.addEventListener("input", draw); f.addEventListener("change", draw);
+  root.append(card("", el("div", { class: "row" }, q, f,
+    el("button", { class: "secondary", onclick: () => download("/admin/claims.csv", "surpay-claims.csv") }, "Export CSV")), holder));
+  draw();
+}
+const docsDone = (c) => (c.document_requests || []).filter(d => ["uploaded", "accepted"].includes(d.status)).length;
+
+let recPage = 1, recUrgency = "", recCounty = "", recState = "", recSource = "", recSort = "amount";
+async function viewRecords(root) {
+  const inp = (ph, v, w) => el("input", { placeholder: ph, value: v, style: `width:${w}` });
+  const qIn = inp("Owner name or reference", "", "220px"), stIn = inp("State", recState, "70px"), coIn = inp("County", recCounty, "130px"), minIn = inp("Min $", "", "90px");
+  const sel = (opts, v) => el("select", {}, ...opts.map(([k, t]) => el("option", { value: k, selected: k === v ? "" : null }, t)));
+  const urg = sel([["", "Any deadline"], ["urgent", "60 days or less"], ["soon", "2 to 6 months"], ["safe", "Over 6 months"], ["expired", "Deadline passed"], ["unknown", "No fixed deadline"]], recUrgency);
+  const st = sel([["listed", "Listed"], ["delisted", "No longer listed"], ["", "All"]], "listed");
+  const holder = el("div");
+  const params = () => new URLSearchParams({ q: qIn.value, state: stIn.value, county: coIn.value, min_cents: Math.round((Number(minIn.value) || 0) * 100),
+    sort: recSort, status_: st.value, urgency: urg.value, page: recPage, per_page: 100 });
+  const draw = async () => {
+    recUrgency = urg.value; recState = stIn.value; recCounty = coIn.value;
+    holder.replaceChildren(loading());
+    const d = await getJson(`/admin/records?${params()}`);
+    let rows = d.records;
+    if (recSource) rows = rows.filter(r => r.source === recSource);
+    const pages = Math.max(1, Math.ceil(d.total / d.per_page));
+    const serverSort = (key) => () => { recSort = key; recPage = 1; draw(); };
+    holder.replaceChildren(
+      el("div", { class: "row", style: "justify-content:space-between" },
+        el("span", { class: "muted" }, `${d.total.toLocaleString()} records${recSource ? " from " + recSource : ""} · page ${d.page} of ${pages} · sorted server-side by `,
+          sel([["amount", "largest amount"], ["deadline", "closest deadline"], ["newest", "newest"], ["sale_date", "oldest sale"], ["owner", "owner A-Z"]], recSort)),
+        el("span", { class: "row" },
+          el("button", { class: "secondary", onclick: () => { if (recPage > 1) { recPage--; draw(); } } }, "‹ Previous"),
+          el("button", { class: "secondary", onclick: () => { if (recPage < pages) { recPage++; draw(); } } }, "Next ›"))),
+      sortableTable([
+        { key: "amount_cents", label: "Amount", num: true, render: r => el("b", {}, money0(r.amount_cents)) },
+        { key: "owner_name", label: "Owner", render: r => el("span", {}, r.owner_name, el("div", { class: "muted" }, r.owner_address || "")) },
+        { key: "county", label: "County", render: r => el("span", {}, `${r.county}, ${r.state}`, el("div", { class: "muted" }, r.reference)) },
+        { key: "days_left", label: "Time left", num: true, render: r => el("span", { class: "clock", style: `color:${r.deadline_color};background:${r.deadline_color}1f` }, r.deadline_label) },
+        { key: "sale_date", label: "Sold", render: r => r.sale_date || "?" },
+        { key: "source", label: "From", render: r => el("span", {}, r.source, el("div", { class: "muted" }, r.file_type || "")) },
+        { key: "claims", label: "Claims", num: true, render: r => r.claims ? el("span", { class: "pill approved" }, r.claims) : "" },
+      ], rows, r => showRecord(r.id), { empty: "No records match." }));
+    holder.querySelector("select").addEventListener("change", (e) => serverSort(e.target.value)());
+  };
+  for (const i of [qIn, stIn, coIn, minIn]) i.addEventListener("keydown", e => { if (e.key === "Enter") { recPage = 1; recSource = ""; draw(); } });
+  urg.addEventListener("change", () => { recPage = 1; draw(); }); st.addEventListener("change", () => { recPage = 1; draw(); });
+  root.append(card("", el("div", { class: "row" }, qIn, stIn, coIn, minIn, urg, st,
+    el("button", { onclick: () => { recPage = 1; recSource = ""; draw(); } }, "Search"),
+    el("button", { class: "secondary", onclick: () => download(`/admin/records.csv?${params()}`, "surpay-records.csv") }, "Export CSV")),
+    el("p", { class: "muted" }, "Click a column to sort this page; click a record for where it came from (file, page, every column as read)."), holder));
+  await draw();
+}
+
+async function viewUsers(root) {
+  const rows = await getJson("/admin/users?limit=500");
+  const q = el("input", { placeholder: "Search name, email or app number", style: "flex:1;min-width:220px" });
+  const role = el("select", {}, ...[["", "Everyone"], ["claimant", "Claimants"], ["attorney", "Attorneys"]].map(([k, t]) => el("option", { value: k }, t)));
+  const holder = el("div");
+  const draw = () => {
+    const term = q.value.trim().toLowerCase();
+    const shown = rows.filter(u => (!role.value || u.role === role.value) &&
+      (!term || [u.name, u.email, "su-" + (100000 + u.id)].join(" ").toLowerCase().includes(term)));
+    holder.replaceChildren(el("p", { class: "muted" }, `${shown.length} people · click a person for their claims, documents and full activity`),
+      sortableTable([
+        { key: "id", label: "App no.", num: true, render: u => "SU-" + (100000 + u.id) },
+        { key: "name", label: "Person", render: u => el("span", {}, el("b", {}, u.name), el("div", { class: "muted" }, u.email)) },
+        { key: "role", label: "Role" },
+        { key: "identity", label: "ID / bar", render: u => u.attorney ? `${u.attorney.status} · ${u.attorney.bar}` : (u.identity || "not submitted") },
+        { key: "claims", label: "Claims", num: true },
+        { key: "created", label: "Joined" },
+        { key: "flags", label: "", sort: u => (u.suspended ? 2 : 0) + (u.deletion_requested ? 1 : 0),
+          render: u => el("span", {}, u.suspended ? el("span", { class: "pill rejected" }, "suspended") : null,
+            u.deletion_requested ? el("span", { class: "pill pending" }, "closing") : null) },
+      ], shown, u => showUser(u.id), { sortKey: "id", sortDir: -1 }));
+  };
+  q.addEventListener("input", draw); role.addEventListener("change", draw);
+  root.append(card("", el("div", { class: "row" }, q, role), holder));
+  draw();
+}
+
+async function viewReviews(root) {
+  const [rels, lawyers, pending] = await Promise.all([getJson("/admin/relatives"), getJson("/admin/attorneys"), getJson("/admin/identities")]);
+  root.append(
+    card("", el("div", { class: "kpis" }, kpi("ID reviews waiting", pending.length), kpi("attorney applications", lawyers.length),
+      kpi("family claims waiting", rels.length))),
+    ...pending.map(renderIdentity), ...lawyers.map(renderAttorney), ...rels.map(renderRelative));
+  if (!rels.length && !lawyers.length && !pending.length) root.append(card("", el("p", { class: "muted" }, "Nothing waiting for review.")));
+}
+
+async function viewDocuments(root) {
+  const q = el("input", { placeholder: "Fingerprint (e.g. 6b3389550b204db6), SP- claim or signer name", style: "flex:1;min-width:260px" });
+  const holder = el("div");
+  const draw = async () => {
+    const rows = await getJson(`/admin/documents?${new URLSearchParams({ q: q.value })}`);
+    holder.replaceChildren(sortableTable([
+      { key: "doc_id", label: "Fingerprint", render: d => el("span", { class: "mono" }, d.doc_id) },
+      { key: "title", label: "Document" }, { key: "signer_name", label: "Signer" },
+      { key: "claim_id", label: "Claim", num: true, render: d => d.claim_id ? `SP-${String(d.claim_id).padStart(6, "0")}` : "" },
+      { key: "signed_at", label: "Signed", render: d => d.signed_at_display },
+      { key: "two_factor", label: "2FA", render: d => d.two_factor ? "✓ email + phone" : "–" },
+      { key: "ip_address", label: "IP" },
+    ], rows, d => showDocument(d.doc_id), { empty: "No signed documents match." }));
+  };
+  q.addEventListener("keydown", e => { if (e.key === "Enter") draw(); });
+  root.append(card("Every signed document", el("p", { class: "muted" },
+    "Agreements, W-9s and affidavits signed in the app, kept exactly as signed. Look one up by its fingerprint to check a copy someone sends you."),
+    el("div", { class: "row" }, q, el("button", { onclick: draw }, "Find")), holder));
+  await draw();
+}
+
+async function viewAudit(root) {
+  const v = await getJson("/admin/audit/verify");
+  const user = el("input", { placeholder: "User id", style: "width:100px" }), claim = el("input", { placeholder: "Claim id", style: "width:100px" });
+  const holder = el("div");
+  const draw = async () => {
+    const qs = new URLSearchParams({ limit: 500 });
+    if (user.value) qs.set("user_id", user.value);
+    if (claim.value) qs.set("claim_id", claim.value);
+    holder.replaceChildren(auditTable(await getJson(`/admin/audit?${qs}`)));
+  };
+  root.append(card("Audit trail",
+    el("p", { class: v.ok ? "muted" : "alert" }, v.ok ? `Chain intact: ${v.entries.toLocaleString()} entries, each linked to the previous by SHA-256.`
+      : `CHAIN BROKEN at entry #${v.broken_at}: a past record was changed or removed.`),
+    el("div", { class: "row" }, user, claim, el("button", { onclick: draw }, "Filter")), holder));
+  await draw();
+}
+
+async function viewFees(root) {
+  const f = await getJson("/admin/fees");
+  const pay = await getJson("/admin/pay");
+  const state = el("input", { placeholder: "State (OH)", maxlength: "2", style: "width:90px" });
+  const county = el("input", { placeholder: "County (blank = whole state)" });
+  const base = el("input", { type: "number", step: "0.5", placeholder: "Usual %", style: "width:100px" });
+  const cap = el("input", { type: "number", step: "0.5", placeholder: "Legal max %", style: "width:110px" });
+  const source = el("input", { placeholder: "Law / source for the max", style: "flex:1" });
+  const num = (i) => i.value === "" ? null : Number(i.value);
+  const save = async () => {
+    try { await api("/admin/fees/rules", { method: "POST", body: JSON.stringify({ state: state.value, county: county.value, base_pct: num(base), legal_max_pct: num(cap), legal_source: source.value }) }); go("fees"); }
+    catch (e) { alert(e.message); }
+  };
+  const bands = el("textarea", { rows: "5", style: "width:100%;font-family:monospace" });
+  bands.value = f.bands.map(b => `${b.up_to_cents == null ? "above" : b.up_to_cents / 100} ${b.pct}`).join("\n");
+  const saveBands = async () => {
+    const parsed = bands.value.trim().split(/\n+/).map(l => { const [a, p] = l.trim().split(/\s+/); return { up_to_cents: a === "above" ? null : Math.round(Number(a) * 100), pct: Number(p) }; });
+    try { await api("/admin/fees/bands", { method: "PUT", body: JSON.stringify({ bands: parsed }) }); go("fees"); } catch (e) { alert(e.message); }
+  };
+  const payRows = pay.bands.map(b => {
+    const baseIn = el("input", { type: "number", value: b.base_cents / 100, style: "width:100px" });
+    const pctIn = el("input", { type: "number", step: "0.25", value: b.pct, style: "width:80px" });
+    const capIn = el("input", { type: "number", value: b.cap_cents == null ? "" : b.cap_cents / 100, placeholder: "no cap", style: "width:100px" });
+    return el("tr", {}, el("td", {}, b.up_to_cents == null ? "Above" : "Up to " + money0(b.up_to_cents)),
+      el("td", {}, "$ ", baseIn), el("td", {}, pctIn, " %"), el("td", {}, "$ ", capIn),
+      el("td", {}, el("button", { class: "secondary", onclick: async () => {
+        try { await api(`/admin/pay/${b.id}`, { method: "POST", body: JSON.stringify({ base_cents: Math.round(Number(baseIn.value) * 100),
+          pct: Number(pctIn.value), cap_cents: capIn.value === "" ? null : Math.round(Number(capIn.value) * 100) }) }); go("fees"); }
+        catch (e) { alert(e.message); } } }, "Save")));
+  });
+  root.append(
+    card("What attorneys are paid",
+      el("p", { class: "muted" }, "Pay grows with the claim (bigger claims are more often contested and need more work), with a cap, plus bonuses for heir claims and hearings. Paid when the money is released; half the size-based amount if the court denies it. Every case shows the attorney their pay before they accept, and the claim detail shows what Surpay keeps."),
+      el("table", {}, el("tr", {}, el("th", {}, "Claim size"), el("th", {}, "Base"), el("th", {}, "+ % of amount"), el("th", {}, "Cap"), el("th", {}, "")), ...payRows),
+      el("p", { class: "muted" }, `Plus ${money0(pay.heir_bonus_cents)} for heir claims and ${money0(pay.hearing_bonus_cents)} when a contested hearing is needed.`)),
+    card("How the client's fee is set",
+      el("p", { class: "muted" }, `${f.formula}. Default usual rate: ${f.default_pct}%. Users only see the final percentage.`),
+      el("h3", {}, "Amount bands (amount in dollars, then %; last line 'above')"), bands,
+      el("div", { class: "row" }, el("button", { onclick: saveBands }, "Save bands"))),
+    card("State and county rules (including legal caps)",
+      el("div", { class: "row" }, state, county, base, cap, source, el("button", { onclick: save }, "Save rule")),
+      sortableTable([
+        { key: "state", label: "Where", render: r => `${r.state}${r.county ? " · " + r.county : " (whole state)"}` },
+        { key: "base_pct", label: "Usual", num: true, render: r => r.base_pct != null ? r.base_pct + "%" : "default" },
+        { key: "legal_max_pct", label: "Legal max", num: true, render: r => r.legal_max_pct != null ? r.legal_max_pct + "%" : "none" },
+        { key: "legal_source", label: "Source / note", render: r => el("span", {}, r.legal_source || "", r.note ? el("div", { class: "muted" }, r.note) : null) },
+        { key: "del", label: "", nosort: true, render: r => el("button", { class: "secondary", onclick: async (e) => { e.stopPropagation();
+          if (confirm("Delete this rule?")) { await api(`/admin/fees/rules/${r.id}`, { method: "DELETE" }); go("fees"); } } }, "Delete") },
+      ], f.rules, null)));
+}
+
+const VIEWS = { overview: viewOverview, insights: viewInsights, reviews: viewReviews, claims: viewClaims, records: viewRecords,
+  users: viewUsers, documents: viewDocuments, audit: viewAudit, fees: viewFees };
+
+function go(view) { $("#view").value = view; load(); }
+
+async function load() {
+  try { sessionStorage.setItem("surpay-admin", tokenInput.value); } catch {}
+  const view = $("#view").value || "overview";
+  document.querySelectorAll("button.nav").forEach(b => b.classList.toggle("on", b.dataset.view === view));
+  $("#title").textContent = TITLES[view];
+  const root = $("#view-root");
+  root.replaceChildren();
+  $("#msg").textContent = "Loading…";
+  try {
+    const who = await getJson("/admin/whoami");
+    const banner = $("#banner");
+    banner.style.display = who.demo ? "block" : "none";
+    banner.textContent = who.demo ? "Admin demo: you see and act only on demo data (Demo County, the demo accounts, and Demo County attorneys). Real people's records stay hidden. Fee and pay settings are read-only." : "";
+    $("#load").textContent = "Refresh";
+    await VIEWS[view](root);
+    $("#msg").textContent = "";
+    getJson("/admin/identities").then(p => { $("#cnt-reviews").textContent = p.length || ""; }).catch(() => {});
+  } catch (e) { $("#msg").textContent = e.message; }
+}
+document.querySelectorAll("button.nav").forEach(b => b.addEventListener("click", () => { closeDrawer(); recSource = ""; go(b.dataset.view); }));
+$("#load").addEventListener("click", load);
+if (tokenInput.value) load(); else $("#msg").textContent = "Enter the admin token to sign in.";
+
+// --- Review cards and claim actions (unchanged) ---
 async function loadImage(img, userId, kind, path) {
   try {
     const blob = await (await api(path || `/admin/users/${userId}/documents/${kind}`)).blob();
@@ -114,12 +695,11 @@ async function loadImage(img, userId, kind, path) {
   } catch (e) { img.alt = "Not available"; }
 }
 
-// The legal clock (days left to claim), colour-coded the same way in the app.
-const URGENCY = { urgent: "60 days or less", soon: "2 to 6 months", safe: "over 6 months", expired: "deadline passed", unknown: "no fixed deadline", met: "filed in time" };
 function clock(d) {
   if (!d) return null;
   return el("span", { class: "clock", title: d.message, style: `color:${d.color};background:${d.color}1f` }, d.label);
 }
+
 function track(d) {
   if (!d || d.elapsed_pct == null || d.urgency === "met") return null;
   return el("div", { class: "track", title: `${d.elapsed_pct}% of the claim period has passed` },
@@ -358,45 +938,6 @@ function renderRelative(r) {
       el("button", { class: "danger", onclick: () => decide("rejected") }, "Reject (ask for documents)")));
 }
 
-async function loadFees() {
-  const f = await (await api("/admin/fees")).json();
-  const state = el("input", { placeholder: "State (OH)", maxlength: "2", style: "width:90px" });
-  const county = el("input", { placeholder: "County (blank = whole state)" });
-  const base = el("input", { type: "number", step: "0.5", placeholder: "Usual %", style: "width:100px" });
-  const cap = el("input", { type: "number", step: "0.5", placeholder: "Legal max %", style: "width:110px" });
-  const source = el("input", { placeholder: "Law / source for the max" });
-  const num = (i) => i.value === "" ? null : Number(i.value);
-  const save = async () => {
-    try { await api("/admin/fees/rules", { method: "POST", body: JSON.stringify({ state: state.value, county: county.value, base_pct: num(base), legal_max_pct: num(cap), legal_source: source.value }) }); loadFees(); }
-    catch (e) { alert(e.message); }
-  };
-  const bands = el("textarea", { rows: "5", style: "width:100%;font-family:monospace" });
-  bands.value = f.bands.map(b => `${b.up_to_cents == null ? "above" : b.up_to_cents / 100} ${b.pct}`).join("\n");
-  const saveBands = async () => {
-    const parsed = bands.value.trim().split(/\n+/).map(l => { const [a, p] = l.trim().split(/\s+/); return { up_to_cents: a === "above" ? null : Math.round(Number(a) * 100), pct: Number(p) }; });
-    try { await api("/admin/fees/bands", { method: "PUT", body: JSON.stringify({ bands: parsed }) }); loadFees(); } catch (e) { alert(e.message); }
-  };
-  $("#fees").replaceChildren(
-    el("section", { class: "card" }, el("h2", {}, "How fees are set"),
-      el("p", { class: "muted" }, `${f.formula}. Default usual rate: ${f.default_pct}%. Users only see the final percentage.`),
-      el("h3", {}, "Amount bands (amount in dollars, then %; last line 'above')"), bands,
-      el("div", { class: "row" }, el("button", { onclick: saveBands }, "Save bands"))),
-    el("section", { class: "card" }, el("h2", {}, "State and county rules"),
-      el("div", { class: "row" }, state, county, base, cap, source, el("button", { onclick: save }, "Save rule")),
-      el("ol", {}, ...f.rules.map(r => el("li", {},
-        `${r.state}${r.county ? " · " + r.county : " (whole state)"}: usual ${r.base_pct != null ? r.base_pct + "%" : "default"}, legal max ${r.legal_max_pct != null ? r.legal_max_pct + "%" : "none"} ${r.legal_source ? "· " + r.legal_source : ""} `,
-        el("button", { class: "secondary", onclick: async () => { if (confirm("Delete this rule?")) { await api(`/admin/fees/rules/${r.id}`, { method: "DELETE" }); loadFees(); } } }, "Delete"))))));
-}
-
-async function loadAudit() {
-  const v = await (await api("/admin/audit/verify")).json();
-  const rows = await (await api("/admin/audit?limit=200")).json();
-  $("#audit").replaceChildren(
-    el("section", { class: "card" }, el("h2", {}, "Audit trail"),
-      el("p", { class: v.ok ? "muted" : "" }, v.ok ? `Chain intact: ${v.entries} entries, each linked to the previous by SHA-256.` : `CHAIN BROKEN at entry #${v.broken_at}: a past record was changed or removed.`),
-      el("ol", {}, ...rows.map(e => el("li", {}, `#${e.id} ${e.at} · ${e.actor_type}${e.actor_id ? " " + e.actor_id : ""} · ${e.action}${e.entity_type ? " · " + e.entity_type + " " + (e.entity_id ?? "") : ""} · ${e.ip || "-"} · ${e.device_info || e.user_agent || "-"}`)))));
-}
-
 async function download(path, name) {
   try {
     const blob = await (await api(path)).blob();
@@ -405,180 +946,11 @@ async function download(path, name) {
   } catch (e) { alert(e.message); }
 }
 
-const kpi = (label, value) => el("div", { class: "kpi" }, el("b", {}, value), el("span", {}, label));
-
-async function loadOverview() {
-  const o = await (await api("/admin/overview")).json();
-  const r = o.records, p = o.people, c = o.claims;
-  const maxCounty = Math.max(1, ...r.by_county.map(x => x.total_cents));
-  const order = ["requested","identity_submitted","agreement_signed","identity_verified","attorney_assigned","filed","hearing_pending","approved","paid","denied","withdrawn"];
-  $("#overview").replaceChildren(
-    el("section", { class: "card" }, el("h2", {}, "County records we track"),
-      el("div", { class: "kpis" },
-        kpi("records listed now", r.listed.toLocaleString()), kpi("total surplus", money(r.total_cents)),
-        kpi("counties with records", r.counties), kpi("new in last 7 days", r.new_last_7_days),
-        kpi("no longer listed", r.delisted), kpi("counties in registry", (o.registry.total || 0).toLocaleString())),
-      el("h3", {}, "By county"),
-      el("table", {}, el("tr", {}, el("th", {}, "County"), el("th", {}, "Records"), el("th", {}, "Total"), el("th", {}, "Largest"), el("th", {}, "")),
-        ...r.by_county.map(x => el("tr", {}, el("td", {}, `${x.county} County, ${x.state}`), el("td", {}, x.records),
-          el("td", {}, money(x.total_cents)), el("td", {}, money(x.largest_cents)),
-          el("td", { style: "width:30%" }, el("div", { class: "bar", style: `width:${Math.round(100 * x.total_cents / maxCounty)}%` }))))),
-      el("h3", {}, "By amount"),
-      el("div", { class: "row" }, ...Object.entries(r.by_size).map(([k, v]) => el("span", { class: "pill" }, `${k}: ${v}`))),
-      el("div", { class: "row", style: "margin-top:8px" },
-        el("button", { class: "secondary", onclick: () => { $("#view").value = "records"; load(); } }, "Browse records"),
-        el("button", { class: "secondary", onclick: () => download("/admin/records.csv", "surpay-records.csv") }, "Export records (CSV)"))),
-    el("section", { class: "card" }, el("h2", {}, "Legal deadlines on listed money"),
-      el("p", { class: "muted" }, "Each record's last day to claim, from its sale date and the state's law. Click a group to see the records."),
-      el("div", { class: "kpis" }, ...["urgent", "soon", "safe", "expired", "unknown"].map(k => {
-        const v = r.deadlines[k], color = { urgent: "#b91c1c", soon: "#b45309", safe: "#15803d", expired: "#6b7280", unknown: "#64748b" }[k];
-        return el("div", { class: "tile", style: `color:${color};background:${color}14`,
-                           onclick: () => { $("#view").value = "records"; recUrgency = k; recPage = 1; load(); } },
-          el("b", {}, v.records.toLocaleString()), el("span", {}, `${URGENCY[k]} · ${money(v.total_cents)}`));
-      })),
-      el("div", { class: "row", style: "margin-top:8px" },
-        el("span", { class: "pill rejected" }, `Next 30 days: ${r.deadlines.next_30_days.records} records, ${money(r.deadlines.next_30_days.total_cents)}`),
-        el("span", { class: "pill pending" }, `Next 90 days: ${r.deadlines.next_90_days.records} records, ${money(r.deadlines.next_90_days.total_cents)}`))),
-    el("section", { class: "card" }, el("h2", {}, "Needs attention"),
-      ...(o.alerts.length ? o.alerts.map(a => el("div", { class: "alert" }, a)) : [el("p", { class: "muted" }, "Nothing urgent.")])),
-    el("section", { class: "card" }, el("h2", {}, "Claims"),
-      el("div", { class: "kpis" }, kpi("claims", c.total), kpi("active", c.active), kpi("fees in pipeline", money(c.pipeline_fee_cents)),
-        kpi("recovered for clients", money(c.recovered_cents)), kpi("attorney payouts due", money(c.payouts_due_cents))),
-      el("h3", {}, "By stage"),
-      el("table", {}, ...order.filter(s => c.by_status[s]).map(s => el("tr", {}, el("td", {}, s.replace(/_/g, " ")), el("td", {}, c.by_status[s])))),
-      el("button", { class: "secondary", onclick: () => download("/admin/claims.csv", "surpay-claims.csv") }, "Export claims (CSV)")),
-    el("section", { class: "card" }, el("h2", {}, "People"),
-      el("div", { class: "kpis" }, kpi("accounts", p.accounts), kpi("claimants", p.claimants), kpi("IDs waiting", p.ids_pending),
-        kpi("IDs verified", p.ids_approved), kpi("attorneys approved", p.attorneys_approved), kpi("attorneys waiting", p.attorneys_pending),
-        kpi("suspended", p.suspended))),
-    el("section", { class: "card" }, el("h2", {}, "County data sources"),
-      el("table", {}, el("tr", {}, el("th", {}, "Source"), el("th", {}, "Records"), el("th", {}, "Last success"), el("th", {}, "")),
-        ...o.sources.map(s => el("tr", {},
-          el("td", {}, el("b", {}, s.healthy ? "✓ " : "⚠ "), s.description || s.source, s.last_error ? el("div", { class: "muted" }, s.last_error) : null),
-          el("td", {}, s.records), el("td", {}, s.hours_since_success == null ? "never" : `${s.hours_since_success} h ago`),
-          el("td", {}, el("button", { class: "secondary", onclick: async () => {
-            try { alert((await (await api(`/admin/sources/${s.source}/scrape`, { method: "POST" })).json()).message); } catch (e) { alert(e.message); } } }, "Refresh now"))))),
-      el("h3", {}, "County registry (all US counties)"),
-      el("div", { class: "row" }, ...Object.entries(o.registry.by_status || {}).map(([k, v]) => el("span", { class: "pill" }, `${k.replace(/_/g, " ")}: ${v}`)))),
-  );
-}
-
-let recPage = 1, recUrgency = "";
-async function loadRecords() {
-  const f = { q: $("#rq")?.value || "", state: $("#rstate")?.value || "", county: $("#rcounty")?.value || "",
-              min: $("#rmin")?.value || "", sort: $("#rsort")?.value || "amount", status_: $("#rstatus")?.value || "listed",
-              urgency: $("#rurg") ? $("#rurg").value : recUrgency };
-  recUrgency = f.urgency;
-  const qs = new URLSearchParams({ q: f.q, state: f.state, county: f.county, min_cents: Math.round((Number(f.min) || 0) * 100),
-                                   sort: f.sort, status_: f.status_, urgency: f.urgency, page: recPage, per_page: 50 });
-  const d = await (await api(`/admin/records?${qs}`)).json();
-  const inp = (id, ph, v, w) => el("input", { id, placeholder: ph, value: v, style: `width:${w}` });
-  const sel = (id, opts, v) => { const s = el("select", { id }, ...opts.map(([k, t]) => { const o = el("option", { value: k }, t); if (k === v) o.selected = true; return o; })); return s; };
-  const go = () => { recPage = 1; loadRecords(); };
-  const pages = Math.max(1, Math.ceil(d.total / d.per_page));
-  $("#records").replaceChildren(el("section", { class: "card" },
-    el("h2", {}, `County records (${d.total.toLocaleString()})`),
-    el("div", { class: "row" }, inp("rq", "Owner name or reference", f.q, "200px"), inp("rstate", "State", f.state, "70px"),
-      inp("rcounty", "County", f.county, "130px"), inp("rmin", "Min $", f.min, "90px"),
-      sel("rsort", [["amount", "Largest first"], ["newest", "Newest"], ["deadline", "Closest deadline"], ["sale_date", "Oldest sale"], ["owner", "Owner A-Z"]], f.sort),
-      sel("rstatus", [["listed", "Listed"], ["delisted", "No longer listed"], ["", "All"]], f.status_),
-      sel("rurg", [["", "Any deadline"], ["urgent", "60 days or less"], ["soon", "2 to 6 months"], ["safe", "Over 6 months"], ["expired", "Deadline passed"], ["unknown", "No fixed deadline"]], f.urgency),
-      el("button", { onclick: go }, "Search"),
-      el("button", { class: "secondary", onclick: () => download(`/admin/records.csv?${qs}`, "surpay-records.csv") }, "Export CSV")),
-    el("table", {}, el("tr", {}, el("th", {}, "Amount"), el("th", {}, "Owner"), el("th", {}, "County"), el("th", {}, "Time left to claim"), el("th", {}, "Claims")),
-      ...d.records.map(r => el("tr", {}, el("td", {}, el("b", {}, money(r.amount_cents))),
-        el("td", {}, r.owner_name, el("div", { class: "muted" }, r.owner_address || "")),
-        el("td", {}, `${r.county}, ${r.state}`, el("div", { class: "muted" }, r.reference)),
-        el("td", {}, el("span", { class: "clock", style: `color:${r.deadline_color};background:${r.deadline_color}1f` }, r.deadline_label),
-          el("div", { class: "muted" }, `sold ${r.sale_date || "?"}${r.deadline ? " · claim by " + r.deadline : ""}`)),
-        el("td", {}, r.claims ? el("span", { class: "pill approved" }, r.claims) : "")))),
-    el("div", { class: "row", style: "margin-top:8px" },
-      el("button", { class: "secondary", onclick: () => { if (recPage > 1) { recPage--; loadRecords(); } } }, "Previous"),
-      el("span", { class: "muted" }, `Page ${d.page} of ${pages}`),
-      el("button", { class: "secondary", onclick: () => { if (recPage < pages) { recPage++; loadRecords(); } } }, "Next"))));
-  $("#rq").addEventListener("keydown", e => { if (e.key === "Enter") go(); });
-}
-
-async function loadUsers() {
-  const q = $("#uq")?.value || "", role = $("#urole")?.value || "";
-  const rows = await (await api(`/admin/users?${new URLSearchParams({ q, role })}`)).json();
-  const qIn = el("input", { id: "uq", placeholder: "Email or name", value: q });
-  const roleSel = el("select", { id: "urole" }, ...[["", "Everyone"], ["claimant", "Claimants"], ["attorney", "Attorneys"]].map(([k, t]) => {
-    const o = el("option", { value: k }, t); if (k === role) o.selected = true; return o; }));
-  const suspend = async (u, decision) => {
-    const note = decision === "rejected" ? prompt(`Suspend ${u.email}? Reason (kept in the audit log):`) : "";
-    if (decision === "rejected" && !note) return;
-    try { await api(`/admin/users/${u.id}/suspend`, { method: "POST", body: JSON.stringify({ decision, note }) }); loadUsers(); }
-    catch (e) { alert(e.message); }
-  };
-  $("#users").replaceChildren(el("section", { class: "card" }, el("h2", {}, `People (${rows.length})`),
-    el("div", { class: "row" }, qIn, roleSel, el("button", { onclick: loadUsers }, "Search")),
-    el("table", {}, el("tr", {}, el("th", {}, "Person"), el("th", {}, "Role / ID"), el("th", {}, "Claims"), el("th", {}, "")),
-      ...rows.map(u => el("tr", {},
-        el("td", {}, el("b", {}, u.name), el("div", { class: "muted" }, `${u.email} · joined ${u.created}`),
-          u.suspended ? el("div", { class: "pill rejected" }, "Suspended: " + u.suspended_reason) : null,
-          u.deletion_requested ? el("div", { class: "pill pending" }, "Asked to close account") : null),
-        el("td", {}, u.role, u.attorney ? el("div", { class: "muted" }, `${u.attorney.status} · ${u.attorney.bar} · ${u.attorney.counties.join(", ")}${u.attorney.available ? "" : " · paused"}`)
-          : el("div", { class: "muted" }, `ID: ${u.identity || "not submitted"}`)),
-        el("td", {}, u.claims),
-        el("td", {}, u.suspended ? el("button", { class: "secondary", onclick: () => suspend(u, "approved") }, "Reinstate")
-          : el("button", { class: "danger", onclick: () => suspend(u, "rejected") }, "Suspend")))))));
-  $("#uq").addEventListener("keydown", e => { if (e.key === "Enter") loadUsers(); });
-}
-
 async function claimAction(c, path, msg) {
   if (!confirm(msg)) return;
   try { await api(`/admin/claims/${c.id}/${path}`, { method: "POST" }); load(); } catch (e) { alert(e.message); }
 }
 
-async function load() {
-  try { sessionStorage.setItem("surpay-admin", tokenInput.value); } catch {}
-  $("#msg").textContent = "Loading…";
-  const view = $("#view").value;
-  for (const id of ["#list", "#pending", "#lawyers", "#relatives", "#fees", "#audit", "#overview", "#records", "#users"]) $(id).replaceChildren();
-  $("#filter").style.display = view === "claims" ? "" : "none";
-  try {
-    const who = await (await api("/admin/whoami")).json();
-    const banner = $("#banner");
-    banner.style.display = who.demo ? "block" : "none";
-    banner.textContent = who.demo ? "Admin demo: you see and act only on demo data (Demo County, the demo accounts, and Demo County attorneys). Real people's records stay hidden. Fee settings are read-only." : "";
-    if (view === "overview") { await loadOverview(); $("#msg").textContent = ""; return; }
-    if (view === "records") { await loadRecords(); $("#msg").textContent = ""; return; }
-    if (view === "users") { await loadUsers(); $("#msg").textContent = ""; return; }
-    if (view === "fees") { await loadFees(); $("#msg").textContent = ""; return; }
-    if (view === "audit") { await loadAudit(); $("#msg").textContent = ""; return; }
-    if (view === "claims") {
-      const all = await (await api("/admin/claims")).json();
-      const f = $("#filter").value;
-      const term = ($("#cq")?.value || "").trim().toLowerCase();
-      const rows = (f ? all.filter(c => f.split(",").includes(c.status)) : all).filter(c => !term ||
-        [c.reference_code, c.user.full_name, c.user.email, c.reference, c.county, c.attorney?.name].join(" ").toLowerCase().includes(term));
-      const search = el("input", { id: "cq", placeholder: "Search name, email, SP- reference, county, attorney", value: term, style: "width:100%" });
-      search.addEventListener("keydown", e => { if (e.key === "Enter") load(); });
-      $("#list").replaceChildren(el("div", { class: "row" }, search,
-        el("button", { class: "secondary", onclick: () => download("/admin/claims.csv", "surpay-claims.csv") }, "Export CSV")), ...rows.map(render));
-      $("#msg").textContent = `${rows.length} of ${all.length} claims`;
-      return;
-    }
-    const rels = await (await api("/admin/relatives")).json();
-    $("#relatives").replaceChildren(
-      ...(rels.length ? [el("h2", {}, `Family claim reviews (${rels.length})`)] : []),
-      ...rels.map(renderRelative));
-    const lawyers = await (await api("/admin/attorneys")).json();
-    $("#lawyers").replaceChildren(
-      ...(lawyers.length ? [el("h2", {}, `Attorney applications (${lawyers.length})`)] : []),
-      ...lawyers.map(renderAttorney));
-    const pending = await (await api("/admin/identities")).json();
-    $("#pending").replaceChildren(
-      ...(pending.length ? [el("h2", {}, `Pending ID reviews (${pending.length})`)] : []),
-      ...pending.map(renderIdentity));
-    $("#msg").textContent = `${lawyers.length} attorney applications · ${pending.length} ID reviews · ${rels.length} family reviews waiting`;
-  } catch (e) { $("#msg").textContent = e.message; }
-}
-$("#load").addEventListener("click", load);
-$("#filter").addEventListener("change", load);
-$("#view").addEventListener("change", () => { recPage = 1; load(); });
-if (tokenInput.value) load();
 </script>
 </body>
 </html>
