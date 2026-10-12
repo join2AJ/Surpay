@@ -714,7 +714,8 @@ async function showTrace(recordId) {
     };
     const kind = el("select", {}, ...["email", "phone", "address", "profile", "obituary", "link"].map(k => el("option", { value: k }, k)));
     const val = el("input", { placeholder: "Value (email, phone, address or URL)", style: "flex:1;min-width:220px" });
-    const note = el("input", { placeholder: "Where you found it / note", style: "flex:1;min-width:180px" });
+    const note = el("input", { placeholder: "Where you found it (site and page)", style: "flex:1;min-width:180px" });
+    const matches = el("input", { type: "checkbox", id: "matchesProperty" });
     openDrawer(`Find: ${t.person || t.owner_name}`,
       card("What we searched", pairs({ "On the county list": t.owner_name, "Searched as": t.person || "(business or unreadable name)",
         "Place": t.search_place, "Web search": t.search_provider || "not set up", "Note": t.deceased_hint ? "The list suggests the owner died: look for heirs" : "" }),
@@ -739,8 +740,10 @@ async function showTrace(recordId) {
         ...(t.read_only ? [el("div", { class: "alert" }, "Admin demo: you can search this real county record and see what was found (emails and phones partly hidden). Adding contacts and sending letters or emails to real people is for Surpay staff.")]
           : [el("h3", {}, "Add what you found"),
         el("div", { class: "row" }, kind, val, note, el("button", { onclick: async () => {
-          try { await api(`/admin/records/${recordId}/contacts`, { method: "POST", body: JSON.stringify({ kind: kind.value, value: val.value, note: note.value }) }); showTrace(recordId); }
-          catch (e) { alert(e.message); } } }, "Add"))])),
+          try { await api(`/admin/records/${recordId}/contacts`, { method: "POST", body: JSON.stringify({ kind: kind.value, value: val.value, note: note.value, matches_property: matches.checked }) }); showTrace(recordId); }
+          catch (e) { alert(e.message); } } }, "Add")),
+        el("label", { class: "row muted", style: "margin-top:6px" }, matches,
+          " Their address history on that site includes the sold property (strong proof it's the same person: marked high confidence)")])),
       card("Search further by hand", el("p", { class: "muted" }, "Each link opens a search already filled in. Note what you find above, or nothing, so nobody repeats it."),
         ...t.manual_sources.map(m => el("div", { style: "padding:5px 0;border-bottom:1px solid var(--line)" },
           el("a", { href: m.url, target: "_blank", rel: "noopener" }, el("b", {}, m.name)), el("div", { class: "muted" }, m.why)))),

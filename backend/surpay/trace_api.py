@@ -27,6 +27,8 @@ class ContactIn(BaseModel):
     source_url: str = ""
     note: str = ""
     confidence: str = Field(default="medium", pattern=r"^(low|medium|high)$")
+    # The source's address history includes the property that was sold: strong proof it's the same person.
+    matches_property: bool = False
 
 
 class ContactUpdate(BaseModel):
@@ -171,8 +173,11 @@ def trace_one(record_id: int, scope: Admin, session: DbSession, client: Client) 
 @router.post("/admin/records/{record_id}/contacts")
 def add_contact(record_id: int, body: ContactIn, scope: Admin, session: DbSession, client: Client) -> dict:
     r = _record(session, scope, record_id)
+    note = body.note.strip()
+    if body.matches_property:
+        note = (note + " · " if note else "") + f"Address history includes the sold property ({r.owner_address or r.reference})"
     c = OwnerContact(record_id=r.id, kind=body.kind, value=body.value.strip(), label=body.label, source="manual",
-                     source_url=body.source_url, confidence=body.confidence, note=body.note)
+                     source_url=body.source_url, confidence="high" if body.matches_property else body.confidence, note=note)
     session.add(c)
     session.flush()
     _log(session, "admin.contact_added", client, entity_type="record", entity_id=r.id, kind=body.kind)

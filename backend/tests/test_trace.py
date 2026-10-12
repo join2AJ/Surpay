@@ -77,6 +77,11 @@ def test_staff_tools_letters_and_opt_out(client, session, admin):  # noqa: F811
     t = client.post(f"/admin/records/{rid}/contacts", headers=admin,
                     json={"kind": "email", "value": "pat@example.com", "note": "From the obituary"}).json()
     assert any(c["kind"] == "email" and c["source"] == "manual" for c in t["contacts"])
+    assert any(m["name"] == "National Public Data" and "site%3Anationalpublicdata.com" in m["url"] for m in t["manual_sources"])
+    t = client.post(f"/admin/records/{rid}/contacts", headers=admin, json={
+        "kind": "phone", "value": "555-010-1234", "note": "nationalpublicdata.com", "matches_property": True}).json()
+    phone = [c for c in t["contacts"] if c["kind"] == "phone"][0]
+    assert phone["confidence"] == "high" and "includes the sold property" in phone["note"]
 
     o = client.post(f"/admin/records/{rid}/outreach", headers=admin, json={"channel": "letter", "contact_id": address["id"]}).json()
     assert o["status"] == "ready" and len(o["code"]) == 8

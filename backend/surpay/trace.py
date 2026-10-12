@@ -36,7 +36,7 @@ BUSINESS_WORDS = {"llc", "inc", "corp", "corporation", "co", "company", "trust",
                   "ministries", "county", "city", "state", "group", "realty", "enterprises", "mortgage", "fund", "llp"}
 PEOPLE_SEARCH = ("whitepages.com", "truepeoplesearch.com", "fastpeoplesearch.com", "spokeo.com", "beenverified.com",
                  "radaris.com", "peoplefinders.com", "thatsthem.com", "searchpeoplefree.com", "clustrmaps.com",
-                 "fastbackgroundcheck.com", "nuwber.com", "usphonebook.com")
+                 "fastbackgroundcheck.com", "nuwber.com", "usphonebook.com", "nationalpublicdata.com")
 PROFILE_SITES = ("linkedin.com/in", "facebook.com", "instagram.com", "x.com", "twitter.com")
 _EMAIL = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
 _PHONE = re.compile(r"\(?\b\d{3}\)?[\s.-]?\d{3}[\s.-]\d{4}\b")
@@ -293,6 +293,8 @@ def manual_sources(r: SurplusRecord, list_page: str = "") -> list[dict]:
          "why": "Current address, phones and relatives (public records)"},
         {"name": "Whitepages", "url": f"https://www.whitepages.com/name/{quote_plus(who.replace(' ', '-'))}/{quote_plus(state)}",
          "why": "Current address and landline"},
+        {"name": "National Public Data", "url": g(f'site:nationalpublicdata.com "{who}"'),
+         "why": "Address history, phone and email. Check the history includes the sold property before trusting it"},
         {"name": "Google: probate", "url": g(f'"{who}" probate {r.county} County {state}'), "why": "An estate case names the administrator"},
         {"name": "Missing Money (state unclaimed property)", "url": "https://www.missingmoney.com/",
          "why": "If they've claimed other unclaimed money, the state may have a newer address"},
