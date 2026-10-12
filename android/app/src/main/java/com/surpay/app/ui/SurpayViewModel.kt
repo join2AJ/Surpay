@@ -195,6 +195,16 @@ class SurpayViewModel(
         open("${server.current.trimEnd('/')}/admin#demo=${java.net.URLEncoder.encode(pass, "UTF-8")}")
     }
 
+    /** Testing: wipe the shared demo's claims, cases and messages so it starts from the beginning. */
+    fun resetDemo(onDone: () -> Unit = {}) = submit {
+        repo.resetDemo()
+        _demoNotice.value = "The demo has started over: Jordan has no claims, and Avery has one new case."
+        onDone()
+    }
+
+    private val _demoNotice = MutableStateFlow<String?>(null)
+    val demoNotice: StateFlow<String?> = _demoNotice
+
     fun demoAttorneyLogin() = submit {
         _session.value = SessionState.SignedIn(repo.demoAttorneyLogin())
     }

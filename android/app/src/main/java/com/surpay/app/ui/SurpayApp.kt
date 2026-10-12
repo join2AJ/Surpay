@@ -115,6 +115,7 @@ fun SurpayApp(vm: SurpayViewModel) {
     val session by vm.session.collectAsStateWithLifecycle()
     val form by vm.form.collectAsStateWithLifecycle()
     val coverage by vm.coverage.collectAsStateWithLifecycle()
+    val demoNotice by vm.demoNotice.collectAsStateWithLifecycle()
     val serverUrl by vm.serverUrl.collectAsStateWithLifecycle()
     val policies by vm.policies.collectAsStateWithLifecycle()
     var showServer by rememberSaveable { mutableStateOf(false) }
@@ -140,6 +141,8 @@ fun SurpayApp(vm: SurpayViewModel) {
                 onDemoLogin = vm::demoLogin,
                 onDemoAttorneyLogin = vm::demoAttorneyLogin,
                 onDemoAdmin = { vm.openAdminDemo { url -> uriHandler.openUri(url) } },
+                onResetDemo = { vm.resetDemo() },
+                demoNotice = demoNotice,
                 onStaffDashboard = { uriHandler.openUri("${serverUrl.trimEnd('/')}/admin") },
                 onClearError = vm::clearFormError,
                 onServerSettings = { showServer = true },

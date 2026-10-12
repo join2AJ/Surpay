@@ -193,6 +193,8 @@ class ClaimOut(BaseModel):
     record_listed: bool = True
     # "SP-000123": quote this to support.
     reference_code: str = ""
+    # How the claim is filed in this county (court e-filing, or a claim form by mail/email).
+    filing_method: dict = Field(default_factory=dict)
     # Documents the attorney asked for (W-9, deed...), and their status.
     document_requests: list[dict] = Field(default_factory=list)
 
@@ -357,6 +359,12 @@ class CaseOut(BaseModel):
     # Other accounts that also started a claim on this record (co-owner, heir... or fraud).
     other_claimants: int = 0
     reference_code: str = ""
+    # How the claim is filed in this county: e-file in court or a claim form by mail/email.
+    filing_method: dict = Field(default_factory=dict)
+    # Names to check for conflicts before accepting, and the attestation the attorney gives.
+    conflict_check: dict = Field(default_factory=dict)
+    # What the attorney is paid for this case and how it's worked out.
+    pay: dict = Field(default_factory=dict)
     document_requests: list[dict] = Field(default_factory=list)
     # After accepting:
     claimant: dict | None = None

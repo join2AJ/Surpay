@@ -176,7 +176,7 @@ class OfflineDemoApi : SurpayApi {
                 "Claimant: ${profile.fullName}\nFunds: ${r.ref}, Demo County, OH\n\n" +
                 "This is a demonstration only. On a real server this screen shows the full agreement: " +
                 "a ${pct}% fee only if funds are recovered, nothing upfront, your right to claim the " +
-                "funds yourself for free, Surpay's role as a facilitator, and a 3-business-day cancellation window.",
+                "funds directly, Surpay's role as a facilitator, and a 3-business-day cancellation window.",
             feePct = pct, signed = id in signed, signatureName = signed[id], expectedName = profile.fullName,
         )
     }
@@ -231,6 +231,7 @@ class OfflineDemoApi : SurpayApi {
     override suspend fun caseDocument(id: Int, kind: String): okhttp3.ResponseBody = offline()
 
     override suspend fun demoAttorneyLogin(): TokenResponse = offline()
+    override suspend fun resetDemo(): kotlinx.serialization.json.JsonObject = offline()
     override suspend fun demoAdmin(): DemoAdminPass = offline()
     override suspend fun signup(body: SignupRequest): TokenResponse = offline()
     override suspend fun login(body: LoginRequest): TokenResponse = offline()

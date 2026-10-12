@@ -85,10 +85,10 @@ fun MatchDetailScreen(
         Spacer(Modifier.height(12.dp))
         Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = MaterialTheme.shapes.medium) {
             Text(
-                "You can claim this money yourself, for free, by contacting the ${match.county} County " +
-                    "office that holds it. If you’d rather not, an independent licensed attorney files the claim for you " +
-                    "and you pay nothing unless it succeeds. Surpay is a technology platform, not a law firm. Other " +
-                    "lienholders may have a claim to part of the funds.",
+                "A licensed attorney who practises in ${match.county} County prepares your paperwork, files the claim, " +
+                    "attends any hearing and follows up with the county until the money is released, and you follow " +
+                    "every step here. Nothing upfront: the fee comes only out of money actually recovered. Surpay is a " +
+                    "technology platform, not a law firm. Lienholders may have a claim to part of the funds.",
                 Modifier.padding(14.dp),
                 style = MaterialTheme.typography.bodySmall,
             )

@@ -64,7 +64,7 @@ private val PAGES = listOf(
         Icons.Outlined.Gavel,
         "A licensed attorney files your claim",
         "Sign the agreement in the app and a licensed attorney in that county takes your case. Nothing upfront: " +
-            "a fee only if money is recovered. You can always claim it yourself, free.",
+            "a fee only if money is recovered, and the attorney does the legal work.",
         listOf("See the law that entitles you", "Know your deadline and what to prove"),
     ),
     IntroPage(

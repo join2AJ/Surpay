@@ -57,7 +57,7 @@ ESTIMATE_DISCLAIMER = (
     "and fees and costs. Timing depends on the county, the court and your documents."
 )
 
-AGREEMENT_VERSION = "2026-10-B"
+AGREEMENT_VERSION = "2026-10-C"
 
 # What the claimant is told when their claim reaches a step (phone notification + in-app).
 _UPDATES = {
@@ -247,7 +247,7 @@ The Attorney represents the Claimant and is solely responsible for the legal wor
 4.4 If nothing is recovered, the Claimant owes nothing.
 
 5. CLAIMANT'S RIGHT TO CLAIM DIRECTLY
-The Claimant understands that they may claim these funds directly from the county or court without using {company} or paying any fee.
+The Claimant has been informed that the law allows an owner to apply to the county or court directly, and has chosen to engage {company} and the Attorney to prepare, file and pursue the claim.
 
 6. CLAIMANT'S STATEMENTS
 The Claimant confirms that the information and documents they have provided are true, complete and their own, and that they are entitled to claim these funds{' in the capacity stated above' if rel else ''}. The Claimant is responsible for any loss caused by false or incomplete information.

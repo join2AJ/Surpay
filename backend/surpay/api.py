@@ -6,13 +6,13 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, object_session
 
-from . import attorneys, audit, chat, claims, config, crypto, documents, fees
+from . import attorneys, audit, chat, claims, config, crypto, documents, fees, filing_methods
 from .admin_api import router as admin_router
 from .attorney_api import router as attorney_router
 from .auth import create_token, hash_password, verify_password
 from .claims import ESTIMATE_DISCLAIMER
 from .db import init_db
-from .demo import reset_demo_attorney, reset_demo_user
+from .demo import demo_world
 from .deps import Client, CurrentUser, DbSession, encrypt_image
 from .legal import deadline_for, legal_basis, record_deadline
 from .matching import find_all_matches, find_matches
@@ -207,7 +207,7 @@ def demo_login(session: DbSession, client: Client):
     """One-tap sign-in to a shared, fictional test account. Only when SURPAY_SEED_DEMO=true."""
     if not config.DEMO_ENABLED:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Demo login is turned off on this server")
-    user = reset_demo_user(session)
+    user = demo_world(session)["claimant"]
     for kind, version in (("terms", TERMS_VERSION), ("privacy", PRIVACY_VERSION)):
         record_consent(session, user, kind, version, client)
     audit.record(session, "auth.demo_login", actor_id=user.id, entity_type="user", entity_id=user.id, client=client)
@@ -220,13 +220,24 @@ def demo_attorney_login(session: DbSession, client: Client):
     """One-tap sign-in as a shared, fictional, already-verified attorney with a demo case waiting."""
     if not config.DEMO_ENABLED:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Demo login is turned off on this server")
-    user = reset_demo_attorney(session)
+    user = demo_world(session)["attorney"]
     for kind, version in (("terms", TERMS_VERSION), ("privacy", PRIVACY_VERSION)):
         record_consent(session, user, kind, version, client)
     audit.record(session, "auth.demo_login", actor_type="attorney", actor_id=user.id, entity_type="user",
                  entity_id=user.id, client=client)
     session.commit()
     return TokenOut(token=create_token(user), user=_profile(user))
+
+
+@app.post("/auth/demo/reset")
+def demo_reset(session: DbSession, client: Client) -> dict:
+    """Start the shared demo over: Jordan's and Casey's claims, Avery's cases, messages and alerts."""
+    if not config.DEMO_ENABLED:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Demo login is turned off on this server")
+    demo_world(session, reset=True)
+    audit.record(session, "demo.reset", actor_type="system", client=client)
+    session.commit()
+    return {"ok": True, "message": "The demo has started over."}
 
 
 @app.post("/auth/demo-admin")
@@ -350,6 +361,7 @@ def claim_out(c: Claim) -> ClaimOut:
         unread_messages=sum(1 for m in chat.thread(c) if m.sender_role == "attorney" and m.read_at is None),
         record_listed=r.status == "listed",
         reference_code=f"SP-{c.id:06d}",
+        filing_method=filing_methods.method_for(r.state, r.county),
         document_requests=[documents.request_out(d) for d in c.document_requests],
     )
 

@@ -4,8 +4,9 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Response, status
 from sqlalchemy import select
+from sqlalchemy.orm import object_session
 
-from . import attorneys, audit, chat, claims, config, crypto, documents, packet
+from . import attorney_pay, attorneys, filing_methods, audit, chat, claims, config, crypto, documents, packet
 from .deps import Client, CurrentUser, DbSession, encrypt_image
 from .legal import filing_guide, legal_basis, record_deadline
 from .models import AttorneyProfile, Claim, ClaimEvent, User
@@ -16,12 +17,18 @@ from .schemas import (
 
 router = APIRouter(prefix="/attorney", tags=["attorney"])
 
-TERMS_VERSION = "attorney-2026-10-B"
+TERMS_VERSION = "attorney-2026-10-C"
 
 
-def terms_text(state: str) -> str:
+def terms_text(state: str, session=None) -> str:
     """Have ethics counsel in each state review this arrangement and wording before launch."""
-    fee = config.attorney_fee_for(state) / 100
+    from . import attorney_pay
+    from .db import SessionLocal
+    if session is None:
+        with SessionLocal() as s:
+            schedule = attorney_pay.schedule_text(s)
+    else:
+        schedule = attorney_pay.schedule_text(session)
     c = config.COMPANY_NAME
     return f"""PARTNER ATTORNEY TERMS
 Version {TERMS_VERSION}
@@ -38,7 +45,9 @@ When you accept a case you represent the client, not {c}. You exercise independe
 {c} is a technology platform. It is not a law firm, does not practise law and is not responsible for the legal work on any case. You agree not to describe {c} as your law firm or as the client's lawyer.
 
 4. PAYMENT
-{c} pays you ${fee:,.2f} per case for your work on it, due when the case closes (funds released or claim denied). You will not charge the client any additional fee or cost for the claim without {c}'s written agreement and the client's informed consent in writing.
+{c} pays you for your work on each case according to this schedule, shown on every case offer before you accept:
+{schedule}
+Payment is due when the case closes. You will not charge the client any additional fee or cost for the claim without {c}'s written agreement and the client's informed consent in writing.
 
 5. STATUS UPDATES
 You will record each stage in the app as it happens: claim filed, waiting for the county or court, approved, money released, or denied. The client sees these updates.
@@ -154,6 +163,36 @@ def other_claimants(c: Claim) -> int:
         Claim.record_id == c.record_id, Claim.id != c.id, Claim.status != "withdrawn")) or 0
 
 
+def conflict_check(c: Claim) -> dict:
+    """The names an attorney must check for conflicts before accepting (ABA Model Rule 1.7): shown
+    before the case is accepted, without any other personal details."""
+    from sqlalchemy.orm import object_session
+    session = object_session(c)
+    ident = c.user.identity
+    others = []
+    if session is not None:
+        others = [o.user.identity.legal_name if o.user.identity else o.user.full_name
+                  for o in session.scalars(select(Claim).where(Claim.record_id == c.record_id, Claim.id != c.id,
+                                                               Claim.status != "withdrawn"))]
+    lawyer = c.attorney.attorney if c.attorney is not None and c.attorney.attorney is not None else None
+    parties = [("Client", ident.legal_name if ident else c.user.full_name),
+               ("Former owner (as the county lists it)", c.record.owner_name)]
+    if c.relative is not None:
+        parties.append(("Deceased owner the client is heir to", c.relative.full_name))
+    parties += [("Another person claiming this money", n) for n in others]
+    who = f"{lawyer.full_name} ({lawyer.bar_state} Bar #{lawyer.bar_number})" if lawyer else "the attorney"
+    return {
+        "parties": [{"role": r, "name": n} for r, n in parties],
+        "lienholders_note": "Lienholders aren't on the county list: check the deed and title records for "
+                            "mortgage or lien holders before filing.",
+        "attestation": f"I, {who}, have checked my and my firm's conflict records against every name above and "
+                       f"have no conflict of interest in representing this client in this claim (Rule 1.7).",
+        "how_to": "Search your firm's client and matter records (conflicts database) for each name, including "
+                  "past clients and anyone adverse to them. Tick the box only if none is a current or former "
+                  "client whose interests conflict with this claim. If one is, decline the case.",
+    }
+
+
 def case_out(c: Claim, full: bool) -> CaseOut:
     r = c.record
     out = CaseOut(
@@ -166,6 +205,9 @@ def case_out(c: Claim, full: bool) -> CaseOut:
         unread_messages=sum(1 for m in chat.thread(c) if m.sender_role == "claimant" and m.read_at is None),
         other_claimants=other_claimants(c),
         reference_code=f"SP-{c.id:06d}",
+        conflict_check=conflict_check(c),
+        filing_method=filing_methods.method_for(r.state, r.county),
+        pay=attorney_pay.quote(object_session(c), c) if object_session(c) is not None else {},
         document_requests=[documents.request_out(d) for d in c.document_requests] if c.assignment_status == "accepted" else [],
     )
     if full:
@@ -243,8 +285,11 @@ def accept_case(case_id: int, user: CurrentUser, session: DbSession, client: Cli
         if not claims.advance(c, "attorney_assigned", f"{user.attorney.full_name} accepted your case"):
             c.events.append(ClaimEvent(status=c.status, note=f"Attorney {user.attorney.full_name} took your case",
                                        created_at=datetime.now(timezone.utc)))
+        check = conflict_check(c)
         audit.record(session, "case.accepted", actor_type="attorney", actor_id=user.id, entity_type="claim",
-                     entity_id=c.id, client=client, details={"conflict_checked": True})
+                     entity_id=c.id, client=client,
+                     details={"conflict_checked": True, "attestation": check["attestation"],
+                              "names_checked": [p["name"] for p in check["parties"]]})
         session.commit()
     return case_out(c, full=True)
 

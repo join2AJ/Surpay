@@ -273,7 +273,7 @@ fun QuickReplies(onPick: (String) -> Unit) {
 
 private val CLAIMANT_FAQ = listOf(
     "Is this money really mine?" to "When a home is sold at a tax or foreclosure auction for more than was owed, the extra belongs to the former owner (or their heirs). The U.S. Supreme Court confirmed this in Tyler v. Hennepin County (2023).",
-    "Do I have to use Surpay?" to "No. You can always claim the money yourself, for free, from the county or court. Surpay connects you with a licensed attorney and handles the paperwork if you'd rather not.",
+    "What does Surpay do for me?" to "We find money held in your name, verify you, and connect you with a licensed attorney who prepares and files the claim, attends hearings and follows up with the county. You pay nothing upfront; the fee comes only out of money actually recovered.",
     "What does it cost?" to "Nothing upfront. If money is recovered, the fee shown in your agreement is taken from what is paid out. If nothing is recovered, you owe nothing.",
     "How long does it take?" to "Usually 2 to 6 months from filing, depending on the county and court. Your claim's timeline shows estimated dates for each step.",
     "Why do you need my ID and a selfie?" to "So only the real owner can see and claim the money. Nobody can use Surpay to look someone else up.",

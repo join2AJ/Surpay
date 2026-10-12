@@ -1,7 +1,9 @@
 from datetime import date, datetime, timezone
 
 from sqlalchemy import JSON, BigInteger, Date, DateTime, Float, ForeignKey, Integer, LargeBinary, String, Text, UniqueConstraint
+from sqlalchemy import event
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm.attributes import set_committed_value
 
 from .crypto import EncryptedDate, EncryptedText
 from .db import Base
@@ -73,6 +75,11 @@ class User(Base):
     # Set by staff to block an account (fraud, a broker posing as an owner, abuse).
     suspended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     suspended_reason: Mapped[str] = mapped_column(Text, default="")
+    # Everyone's permanent reference, e.g. "SU-100042": quoted to support, shown in the app and admin.
+    app_number: Mapped[str | None] = mapped_column(String(16), unique=True, nullable=True)
+    # When the user last proved they control this email address / phone number with a one-time code.
+    email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    phone_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     addresses: Mapped[list["PreviousAddress"]] = relationship(
         back_populates="user", cascade="all, delete-orphan", order_by="PreviousAddress.id"
@@ -222,6 +229,8 @@ class Agreement(Base):
     device_id: Mapped[str] = mapped_column(String(128), default="")
     device_info: Mapped[str] = mapped_column(String(255), default="")
     legal_name_on_id: Mapped[str] = mapped_column(String(255), default="")
+    # The signer's time zone (IANA name from their phone), to show the signing time as they saw it.
+    signer_tz: Mapped[str] = mapped_column(String(64), default="")
 
     claim: Mapped[Claim] = relationship(back_populates="agreement")
 
@@ -408,6 +417,8 @@ class FeeRule(Base):
     county: Mapped[str] = mapped_column(String(64), default="")
     base_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
     legal_max_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # A cap in dollars as well (e.g. Texas: the lesser of 25% or $1,000).
+    legal_max_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
     legal_source: Mapped[str] = mapped_column(Text, default="")
     note: Mapped[str] = mapped_column(Text, default="")
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
@@ -450,5 +461,84 @@ class DocumentRequest(Base):
     status: Mapped[str] = mapped_column(String(16), default="requested")
     review_note: Mapped[str] = mapped_column(Text, default="")
     file: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)  # encrypted image
+    # checklist: added when the claim starts, so the client can prepare it before an attorney is
+    # assigned; attorney: asked for later by the attorney.
+    source: Mapped[str] = mapped_column(String(16), default="attorney")
+    # For forms filled in and signed in the app (W-9, affidavit): the signed PDF in the registry.
+    signed_document_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     requested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     uploaded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class SignedDocument(Base):
+    """Every document signed in Surpay (agreements, W-9s, affidavits), kept as the exact PDF signed,
+    with the evidence of who signed it. Looked up later by its fingerprint ("6b3389550b204db6")."""
+
+    __tablename__ = "signed_documents"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    doc_id: Mapped[str] = mapped_column(String(16), unique=True, index=True)  # first 16 hex of sha256
+    sha256: Mapped[str] = mapped_column(String(64))
+    kind: Mapped[str] = mapped_column(String(32))  # agreement | w9 | ownership_affidavit | heirship_affidavit
+    title: Mapped[str] = mapped_column(String(255))
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    claim_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    pdf: Mapped[bytes] = mapped_column(LargeBinary)  # encrypted
+    # The answers the form was filled in with (encrypted JSON; a W-9 holds the full SSN).
+    data: Mapped[str] = mapped_column(EncryptedText, default="")
+    signer_name: Mapped[str] = mapped_column(String(255))
+    signed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    signer_tz: Mapped[str] = mapped_column(String(64), default="")
+    ip_address: Mapped[str] = mapped_column(String(64), default="")
+    device_id: Mapped[str] = mapped_column(String(128), default="")
+    device_info: Mapped[str] = mapped_column(String(255), default="")
+    # Two-factor evidence: when the signer confirmed a code sent to their email and to their phone.
+    email: Mapped[str] = mapped_column(String(255), default="")
+    email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    phone: Mapped[str] = mapped_column(String(32), default="")
+    phone_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    audit_id: Mapped[int | None] = mapped_column(Integer, nullable=True)  # the audit entry recording the signing
+
+
+class OneTimeCode(Base):
+    """A 6-digit code sent to the user's email or phone to confirm it's them (stored hashed)."""
+
+    __tablename__ = "one_time_codes"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    channel: Mapped[str] = mapped_column(String(8))  # email | phone
+    destination: Mapped[str] = mapped_column(String(255))
+    code_hash: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class AttorneyFeeBand(Base):
+    """What the partner attorney is paid per case, by the size of the claim (staff can edit).
+
+    Pay = base_cents + pct of the amount recovered, capped at cap_cents; plus bonuses for heir claims
+    and contested hearings (attorney_pay.py). Paid when the money is released.
+    """
+
+    __tablename__ = "attorney_fee_bands"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    up_to_cents: Mapped[int | None] = mapped_column(BigInteger, nullable=True)  # None: and above
+    base_cents: Mapped[int] = mapped_column(Integer)
+    pct: Mapped[float] = mapped_column(Float, default=0)
+    cap_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
+def app_number_for(user_id: int) -> str:
+    return f"SU-{100000 + user_id}"
+
+
+@event.listens_for(User, "after_insert")
+def _assign_app_number(mapper, connection, target: User) -> None:
+    """Give every new account its permanent number as soon as it has an id."""
+    number = app_number_for(target.id)
+    connection.execute(User.__table__.update().where(User.__table__.c.id == target.id).values(app_number=number))
+    set_committed_value(target, "app_number", number)

@@ -67,6 +67,8 @@ fun AuthScreen(
     onDemoLogin: () -> Unit = {},
     onDemoAttorneyLogin: () -> Unit = {},
     onDemoAdmin: () -> Unit = {},
+    onResetDemo: () -> Unit = {},
+    demoNotice: String? = null,
     onStaffDashboard: () -> Unit = {},
     onServerSettings: () -> Unit = {},
     policies: Policies? = null,
@@ -97,7 +99,8 @@ fun AuthScreen(
             null -> ChooseRole(coverage, showDemo, form, onChoose = { path = it; onClearError() },
                 onDemoLogin = { onClearError(); onDemoLogin() },
                 onDemoAttorneyLogin = { onClearError(); onDemoAttorneyLogin() },
-                onDemoAdmin = { onClearError(); onDemoAdmin() })
+                onDemoAdmin = { onClearError(); onDemoAdmin() },
+                onResetDemo = { onClearError(); onResetDemo() }, demoNotice = demoNotice)
             else -> AccountForm(
                 path = path!!, form = form, policies = policies, onLoadPolicies = onLoadPolicies,
                 onSwitch = { path = it; onClearError() }, onSignup = onSignup, onLogin = onLogin, onClearError = onClearError,
@@ -109,8 +112,8 @@ fun AuthScreen(
         TrustRow(Icons.Outlined.MoneyOff, "Nothing upfront. A fee only if money is recovered")
         Spacer(Modifier.height(12.dp))
         Text(
-            "Surpay is a technology platform, not a law firm or a government agency. Claims are made by you through " +
-                "an independent licensed attorney. You can always claim surplus funds yourself, for free, from the county.",
+            "Surpay is a technology platform, not a law firm or a government agency. A licensed attorney in your state " +
+                "prepares and files your claim, and Surpay tracks every step until the money reaches you.",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         TextButton(onClick = onStaffDashboard, modifier = Modifier.align(Alignment.CenterHorizontally).testTag("staffDashboard")) {
@@ -133,6 +136,8 @@ private fun ColumnScope.ChooseRole(
     onDemoLogin: () -> Unit,
     onDemoAttorneyLogin: () -> Unit,
     onDemoAdmin: () -> Unit,
+    onResetDemo: () -> Unit,
+    demoNotice: String?,
 ) {
     Text("The county won’t tell you they owe you money. We will.", style = MaterialTheme.typography.headlineMedium)
     Spacer(Modifier.height(10.dp))
@@ -180,10 +185,16 @@ private fun ColumnScope.ChooseRole(
                 if (form.busy) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp) else Text("Admin")
             }
         }
-        Text("Made-up people: “Jordan Testwell” with two matches, attorney “Avery Counsel” with a verified case " +
-            "waiting, and the staff dashboard limited to demo data. They reset each time.",
+        Text("Made-up people who are connected: claimant “Jordan Testwell” signs a claim, it goes to attorney " +
+            "“Avery Counsel”, who accepts and messages Jordan back. Switch between them to follow the whole case; " +
+            "the admin dashboard sees it too. Progress is kept until someone starts the demo over.",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(top = 4.dp))
+        TextButton(onClick = onResetDemo, enabled = !form.busy, modifier = Modifier.testTag("resetDemo")) {
+            Text("Start the demo over", fontWeight = FontWeight.SemiBold)
+        }
+        demoNotice?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.testTag("demoNotice")) }
         form.error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 6.dp).testTag("error")) }
     }
 }

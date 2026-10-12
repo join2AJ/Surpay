@@ -118,8 +118,8 @@ fun AgreementScreen(
         }
         Row(verticalAlignment = Alignment.Top) {
             Checkbox(checked = agreed, onCheckedChange = { agreed = it }, modifier = Modifier.testTag("agree"))
-            Text("I have read and agree to this agreement. I understand Surpay is not a law firm and that I can claim " +
-                "these funds myself for free.", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 12.dp))
+            Text("I have read and agree to this agreement, and I understand Surpay is a technology platform, not a law firm.",
+                style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 12.dp))
         }
         form.error?.let {
             Spacer(Modifier.height(8.dp))

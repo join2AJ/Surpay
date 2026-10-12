@@ -47,6 +47,13 @@ _ADDED_COLUMNS = [
     ("users", "suspended_at", "TIMESTAMP WITH TIME ZONE"),
     ("users", "suspended_reason", "TEXT NOT NULL DEFAULT ''"),
     ("attorney_profiles", "available", "BOOLEAN NOT NULL DEFAULT TRUE"),
+    ("users", "app_number", "VARCHAR(16)"),
+    ("fee_rules", "legal_max_cents", "INTEGER"),
+    ("users", "email_verified_at", "TIMESTAMP WITH TIME ZONE"),
+    ("users", "phone_verified_at", "TIMESTAMP WITH TIME ZONE"),
+    ("agreements", "signer_tz", "VARCHAR(64) NOT NULL DEFAULT ''"),
+    ("document_requests", "source", "VARCHAR(16) NOT NULL DEFAULT 'attorney'"),
+    ("document_requests", "signed_document_id", "INTEGER"),
 ]
 
 # Identity details that became encrypted: their columns must hold ciphertext (Postgres only;
@@ -89,10 +96,16 @@ def init_db(bind=None) -> None:
                     conn.execute(text(f"ALTER TABLE identity_verifications ALTER COLUMN {column} "
                                       f"TYPE TEXT USING {column}::text"))
         _encrypt_legacy_identity_rows(conn)
+        # Accounts made before app numbers existed get theirs now.
+        conn.execute(text("UPDATE users SET app_number = 'SU-' || CAST(100000 + id AS VARCHAR(12)) "
+                          "WHERE app_number IS NULL"))
+        conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_app_number ON users (app_number)"))
 
+    from .attorney_pay import seed_bands
     from .fees import seed_defaults
     with SessionLocal(bind=bind) as session:
         seed_defaults(session)
+        seed_bands(session)
 
 
 def get_session() -> Iterator[Session]:

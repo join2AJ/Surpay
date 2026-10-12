@@ -61,7 +61,7 @@ def test_attorney_enrollment_and_case_flow(client, session, admin):
     # Attorney applies; nothing is offered until staff verify the bar license
     ah, auid = attorney(client, admin, "alex@law.com", "Alex Counsel", ["Dallas County", "Collin County"])
     me = client.get("/attorney/me", headers=ah).json()
-    assert me["status"] == "pending" and me["fee_per_case_cents"] == 50000 and "independent professional judgment" in me["terms"]
+    assert me["status"] == "pending" and me["fee_per_case_cents"] > 0 and "independent professional judgment" in me["terms"]
     assert client.get("/attorney/cases", headers=ah).status_code == 403
     pending = client.get("/admin/attorneys", headers=admin).json()
     assert [p["user_id"] for p in pending] == [auid]
@@ -75,7 +75,7 @@ def test_attorney_enrollment_and_case_flow(client, session, admin):
     r = client.post(f"/admin/attorneys/{auid}", headers=admin, json={"decision": "approved"}).json()
     assert r["cases_offered"] == 1
     [case] = client.get("/attorney/cases", headers=ah).json()
-    assert case["assignment_status"] == "offered" and case["county"] == "Dallas" and case["fee_cents"] == 50000
+    assert case["assignment_status"] == "offered" and case["county"] == "Dallas" and case["fee_cents"] == case["pay"]["total_cents"] > 0
     assert case["claimant"] is None  # no personal details before accepting
     assert client.get(f"/attorney/cases/{case['id']}/documents/selfie", headers=ah).status_code == 403
 

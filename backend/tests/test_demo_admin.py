@@ -71,7 +71,7 @@ def test_tester_claiming_a_demo_record_stays_private(client, session, demo):
     verify_identity(client, h, "Jordan Testwell")
     rid = client.get("/me/matches", headers=h).json()["matches"][0]["record_id"]
     client.post("/me/claims", headers=h, json={"record_id": rid})
-    [c] = client.get("/admin/claims", headers=demo_admin(client)).json()
+    [c] = [c for c in client.get("/admin/claims", headers=demo_admin(client)).json() if c["record_id"] == rid]
     assert c["identity"] is None and "hidden" in c["user"]["email"]
     assert client.get(f"/admin/claims/{c['id']}/messages", headers=demo_admin(client)).status_code == 404
 

@@ -101,13 +101,14 @@ def test_demo_login_one_tap(client, monkeypatch):
 
     assert r.json()["user"]["identity_status"] == "approved"  # demo is pre-verified
 
-    # A tester starts a claim and edits the profile; the next demo sign-in starts fresh.
+    # A tester starts a claim: it's still there at the next demo sign-in (the demo is one shared,
+    # connected world) until someone taps "Start the demo over".
     client.post("/me/claims", headers=h, json={"record_id": m["matches"][0]["record_id"]})
-    client.put("/me", headers=h, json={"full_name": "Jordan Testwell", "other_names": [], "phone": "", "addresses": []})
-    r2 = client.post("/auth/demo").json()
-    h2 = {"Authorization": f"Bearer {r2['token']}"}
-    assert r2["user"]["full_name"] == "Jordan Testwell" and len(r2["user"]["addresses"]) == 1
-    assert client.get("/me/claims", headers=h2).json() == []
+    h2 = {"Authorization": f"Bearer {client.post('/auth/demo').json()['token']}"}
+    assert len(client.get("/me/claims", headers=h2).json()) == 1
+    assert client.post("/auth/demo/reset").json()["ok"] is True
+    h3 = {"Authorization": f"Bearer {client.post('/auth/demo').json()['token']}"}
+    assert client.get("/me/claims", headers=h3).json() == []
 
 
 def test_results_locked_until_identity_approved(client, session):

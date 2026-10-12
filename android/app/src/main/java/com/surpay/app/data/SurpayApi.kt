@@ -540,6 +540,7 @@ interface SurpayApi {
     @POST("auth/demo") suspend fun demoLogin(): TokenResponse
     @POST("auth/demo-attorney") suspend fun demoAttorneyLogin(): TokenResponse
     @POST("auth/demo-admin") suspend fun demoAdmin(): DemoAdminPass
+    @POST("auth/demo/reset") suspend fun resetDemo(): kotlinx.serialization.json.JsonObject
     @GET("me") suspend fun me(): Profile
     @PUT("me") suspend fun updateMe(@Body body: ProfileUpdate): Profile
     @GET("me/matches") suspend fun matches(): MatchesResponse

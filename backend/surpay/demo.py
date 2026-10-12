@@ -42,35 +42,40 @@ def demo_records() -> list[RecordIn]:
     ]
 
 
-def reset_demo_user(session: Session) -> User:
-    """Get the shared demo account in its starting state: profile filled in, ID approved, no claims.
-
-    Testers share this account, so each demo sign-in starts fresh.
-    """
+def _ensure_records(session: Session) -> None:
     if not session.scalar(select(SurplusRecord.id).where(SurplusRecord.source == "demo",
                                                          SurplusRecord.status == "listed").limit(1)):
         upsert(session, "demo", demo_records(), full_snapshot=True)
 
+
+def _clear_activity(session: Session, user: User) -> None:
+    """Remove a demo account's claims, family members, notifications and messages."""
+    from .models import Message
+    user.claims = []
+    user.relatives = []
+    session.flush()
+    for model, col in ((Notification, Notification.user_id), (Message, Message.sender_id)):
+        for row in session.scalars(select(model).where(col == user.id)):
+            session.delete(row)
+
+
+def _jordan(session: Session, fresh: bool) -> User:
+    """The demo claimant: profile filled in and ID approved, so testers go straight to results."""
     user = session.scalar(select(User).where(User.email == DEMO_EMAIL))
+    if user is not None and not fresh and user.identity is not None:
+        return user
     if user is None:
         # Random password: the account is only reachable through the demo button.
         user = User(email=DEMO_EMAIL, password_hash=hash_password(secrets.token_urlsafe(24)),
                     full_name=DEMO_NAME, other_names=[], phone="")
         session.add(user)
-    user.full_name = DEMO_NAME
-    user.other_names = []
-    user.phone = ""
-    user.relatives = []
+        session.flush()
+    user.full_name, user.other_names, user.phone = DEMO_NAME, [], ""
+    _clear_activity(session, user)
     user.addresses = [PreviousAddress(**DEMO_ADDRESS)]
-    user.claims = []
-    session.flush()
-    if user.id is not None:
-        for n in session.scalars(select(Notification).where(Notification.user_id == user.id)):
-            session.delete(n)
     if user.identity is not None:  # delete first: one identity per person
         session.delete(user.identity)
-    session.flush()
-    # Pre-verified, so testers go straight to results. The "photos" are placeholders.
+        session.flush()
     placeholder = crypto.encrypt(b"\xff\xd8\xff\xe0demo-placeholder")
     user.identity = IdentityVerification(
         legal_name=DEMO_NAME, date_of_birth=date(1980, 4, 2), ssn_last4="0000", phone="555-010-0000",
@@ -78,8 +83,7 @@ def reset_demo_user(session: Session) -> User:
         id_type="drivers_license", id_front=placeholder, selfie=placeholder,
         review_status="approved", review_note="Demo account",
     )
-    session.commit()
-    session.refresh(user)
+    session.flush()
     return user
 
 
@@ -106,37 +110,40 @@ def _demo_user(session: Session, email: str, name: str, role: str) -> User:
     return user
 
 
-def reset_demo_attorney(session: Session) -> User:
-    """The shared demo attorney: approved for Demo County, OH, with one fresh verified case offered.
-
-    The case belongs to a second fictional person (Casey Placeholder) who has verified their ID
-    and signed, so testers see exactly what a real attorney receives.
-    """
-    from . import attorneys, claims, fees
-    from .models import Agreement, AttorneyProfile, Claim
-
-    if not session.scalar(select(SurplusRecord.id).where(SurplusRecord.source == "demo",
-                                                         SurplusRecord.status == "listed").limit(1)):
-        upsert(session, "demo", demo_records(), full_snapshot=True)
-    placeholder = crypto.encrypt(b"\xff\xd8\xff\xe0demo-placeholder")
-
+def _avery(session: Session, fresh: bool) -> User:
+    """The demo attorney: approved for Demo County, OH."""
+    from .models import AttorneyProfile
     lawyer = _demo_user(session, DEMO_ATTORNEY_EMAIL, DEMO_ATTORNEY_NAME, "attorney")
     if lawyer.attorney is None:
         lawyer.attorney = AttorneyProfile(
             full_name=DEMO_ATTORNEY_NAME, bar_state="OH", bar_number="0000000 (demo)", firm="Demo Counsel LLP",
             phone="555-010-0100", office_address="1 Court St, Springfield, OH 45501", counties=["Demo County"],
-            bar_card=placeholder)
+            bar_card=crypto.encrypt(b"\xff\xd8\xff\xe0demo-placeholder"))
     lawyer.attorney.status, lawyer.attorney.review_note = "approved", "Demo attorney"
     lawyer.attorney.counties = ["Demo County"]
-    for n in session.scalars(select(Notification).where(Notification.user_id == lawyer.id)):
-        session.delete(n)
+    lawyer.attorney.available = True
+    if fresh:
+        for n in session.scalars(select(Notification).where(Notification.user_id == lawyer.id)):
+            session.delete(n)
+    session.flush()
+    return lawyer
+
+
+def _casey_case(session: Session, fresh: bool) -> None:
+    """A second fictional client (Casey) whose verified, signed case waits for the demo attorney, so
+    the attorney side has something to accept even before anyone has tried the claimant demo."""
+    from . import attorneys, claims, fees
+    from .models import Agreement
 
     client = _demo_user(session, DEMO_CLIENT_EMAIL, DEMO_CLIENT_NAME, "claimant")
+    if client.claims and not fresh:
+        return
+    _clear_activity(session, client)
     client.addresses = [PreviousAddress(**DEMO_CLIENT_ADDRESS)]
-    client.claims = []
     if client.identity is not None:
         session.delete(client.identity)
-    session.flush()
+        session.flush()
+    placeholder = crypto.encrypt(b"\xff\xd8\xff\xe0demo-placeholder")
     client.identity = IdentityVerification(
         legal_name=DEMO_CLIENT_NAME, date_of_birth=date(1975, 9, 14), ssn_last4="0000", phone="555-010-0003",
         street=DEMO_CLIENT_ADDRESS["street"], city="Springfield", state="OH", zip="45503",
@@ -144,7 +151,6 @@ def reset_demo_attorney(session: Session) -> User:
         review_status="approved", review_note="Demo account",
     )
     session.flush()
-
     record = session.scalar(select(SurplusRecord).where(SurplusRecord.source == "demo",
                                                         SurplusRecord.source_key == "D-1003"))
     claim = claims.new_claim(session, client, record.id)
@@ -158,14 +164,49 @@ def reset_demo_attorney(session: Session) -> User:
     claims.advance(claim, "agreement_signed")
     claims.advance(claim, "identity_verified")
     session.flush()
-    # Offer it to the demo attorney directly, whoever else serves Demo County.
-    others = [a.user_id for a in session.scalars(select(AttorneyProfile).where(AttorneyProfile.status == "approved"))
-              if a.user_id != lawyer.id]
-    claim.declined_by = others
     attorneys.offer(session, claim)
+
+
+# A shared demo left alone this long starts over at the next demo sign-in.
+DEMO_IDLE_RESET_HOURS = 12
+
+
+def _idle(session: Session) -> bool:
+    from datetime import datetime, timedelta, timezone
+
+    from .models import AuditLog
+    last = session.scalar(select(AuditLog.at).where(AuditLog.action.in_(("auth.demo_login", "demo.reset")))
+                          .order_by(AuditLog.id.desc()).limit(1))
+    if last is None:
+        return True
+    last = last if last.tzinfo else last.replace(tzinfo=timezone.utc)
+    return last < datetime.now(timezone.utc) - timedelta(hours=DEMO_IDLE_RESET_HOURS)
+
+
+def demo_world(session: Session, reset: bool = False) -> dict[str, User]:
+    """The connected demo: Jordan (claimant), Avery (attorney for Demo County) and Casey (Avery's
+    other client). Signing in as any of them keeps everyone's progress, so a claim Jordan signs is
+    offered to Avery, Avery's messages reach Jordan, and so on. `reset`, or 12 idle hours, starts over.
+    """
+    fresh = reset or _idle(session)
+    _ensure_records(session)
+    lawyer = _avery(session, fresh)
+    jordan = _jordan(session, fresh)
+    _casey_case(session, fresh)
     session.commit()
+    session.refresh(jordan)
     session.refresh(lawyer)
-    return lawyer
+    return {"claimant": jordan, "attorney": lawyer}
+
+
+def reset_demo_user(session: Session) -> User:
+    """Start the whole demo over and return the claimant."""
+    return demo_world(session, reset=True)["claimant"]
+
+
+def reset_demo_attorney(session: Session) -> User:
+    """Start the whole demo over and return the attorney."""
+    return demo_world(session, reset=True)["attorney"]
 
 
 def is_demo_user(user) -> bool:

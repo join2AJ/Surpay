@@ -118,15 +118,15 @@ def test_identity_details_encrypted_at_rest_and_legacy_rows_migrated(client, ses
 
 
 def test_fee_rules_bands_caps_and_override(client, session, admin):  # noqa: F811
-    upsert(session, "dallas_tx", [RecordIn(
-        source_key="F1", state="TX", county="Dallas", sale_type="tax_sale", reference="F1", owner_name="Fay Fee",
+    upsert(session, "adams_oh", [RecordIn(
+        source_key="F1", state="OH", county="Franklin", sale_type="tax_sale", reference="F1", owner_name="Fay Fee",
         owner_address="", amount_cents=8_000_000, sale_date=date(2025, 3, 1), source_url="")], full_snapshot=True)
     h = signup(client, "fay@example.com", "Fay Fee")
     verify_identity(client, h, "Fay Fee")
     [m] = client.get("/me/matches", headers=h).json()["matches"]
     assert m["fee_pct"] == 15.0  # default 15% and the $50k-$100k band (15%)
 
-    client.post("/admin/fees/rules", headers=admin, json={"state": "TX", "county": "Dallas County", "base_pct": 30,
+    client.post("/admin/fees/rules", headers=admin, json={"state": "OH", "county": "Franklin County", "base_pct": 30,
                                                           "legal_max_pct": 20, "legal_source": "test cap"})
     quote = client.get(f"/admin/fees/quote?record_id={m['record_id']}", headers=admin).json()
     assert quote["average_pct"] == 22.5 and quote["final_pct"] == 20 and quote["county_pct_from"] == "county"
@@ -138,6 +138,17 @@ def test_fee_rules_bands_caps_and_override(client, session, admin):  # noqa: F81
     assert r.status_code == 200 and r.json()["fee_basis"]["override"] is True
     assert client.get(f"/me/claims/{claim['id']}/agreement", headers=h).json()["fee_pct"] == 12
     assert client.get("/admin/fees", headers=admin).json()["bands"][-1]["up_to_cents"] is None
+
+
+def test_texas_dollar_cap(client, session):
+    """Tex. Tax Code 34.04(i): the lesser of 25% or $1,000."""
+    upsert(session, "dallas_tx", [RecordIn(
+        source_key="F2", state="TX", county="Dallas", sale_type="tax_sale", reference="F2", owner_name="Fay Fee",
+        owner_address="", amount_cents=8_000_000, sale_date=date(2025, 3, 1), source_url="")], full_snapshot=True)
+    h = signup(client, "fay@example.com", "Fay Fee")
+    verify_identity(client, h, "Fay Fee")
+    [m] = client.get("/me/matches", headers=h).json()["matches"]
+    assert m["fee_pct"] == 1.0 and m["estimated_fee_cents"] <= 100_000
 
 
 def test_family_member_claim(client, session, admin):  # noqa: F811

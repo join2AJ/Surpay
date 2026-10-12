@@ -8,6 +8,8 @@ The quoted fee is the average of 1 and 2, capped at 3, rounded to the nearest ha
 Staff can override it for a single case before the agreement is signed.
 """
 
+import math
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -21,6 +23,14 @@ DEFAULT_RULES = [
     {"state": "CO", "legal_max_pct": 0.0,
      "legal_source": "Denver Public Trustee guidance: no fee may be charged to help collect public trustee excess funds",
      "note": "Fees not allowed: tell claimants to claim directly, free."},
+    {"state": "TX", "legal_max_pct": 25.0, "legal_max_cents": 100_000,
+     "legal_source": "Tex. Tax Code § 34.04(i): a fee for helping an owner recover excess proceeds may not exceed "
+                     "the lesser of 25% or $1,000, and only an attorney may charge it",
+     "note": "VERIFY with Texas counsel: Surpay may not be able to charge its own fee on Texas tax-sale surplus."},
+    {"state": "AZ", "legal_max_cents": 250_000,
+     "legal_source": "A.R.S. § 33-812: a finder's fee over $2,500 (excluding attorney fees and costs) is presumed "
+                     "unreasonable unless the court approves it",
+     "note": "Verify with Arizona counsel."},
     {"state": "IN", "legal_max_pct": 10.0,
      "legal_source": "Indiana Court of Appeals on tax-sale surplus locator fees (10% cap)", "note": "Verify"},
 ]
@@ -74,8 +84,15 @@ def quote(session: Session, record: SurplusRecord) -> tuple[float, dict]:
             break
     if cap is not None:
         pct = min(pct, cap)
+    cap_cents = None
+    for rule in (county_rule, state_rule):
+        if rule is not None and rule.legal_max_cents is not None:
+            cap_cents, cap_source = rule.legal_max_cents, cap_source or rule.legal_source
+            break
+    if cap_cents is not None and record.amount_cents > 0 and fee_cents(record.amount_cents, pct) > cap_cents:
+        pct = math.floor(cap_cents * 100 / record.amount_cents * 2) / 2  # down, so the fee stays under the cap
     pct = round(pct * 2) / 2
-    return pct, {"county_pct": base, "county_pct_from": base_from, "amount_band_pct": band,
+    return pct, {"legal_max_cents": cap_cents,"county_pct": base, "county_pct_from": base_from, "amount_band_pct": band,
                  "legal_max_pct": cap, "legal_max_from": cap_from, "legal_source": cap_source,
                  "average_pct": round((base + band) / 2, 2), "final_pct": pct}
 

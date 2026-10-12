@@ -3,7 +3,7 @@
 from datetime import datetime, timezone
 
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, object_session
 
 from . import config
 from .claims import TERMINAL
@@ -49,12 +49,17 @@ def offer(session: Session, claim: Claim) -> AttorneyProfile | None:
     ]
     if not candidates:
         return None
-    chosen = min(candidates, key=lambda a: (_open_load(session, a.user_id), a.id))
+    from .demo import DEMO_ATTORNEY_EMAIL
+    # Demo cases go to the demo attorney first, so the shared demo stays connected end to end.
+    demo = r.source == "demo"
+    chosen = min(candidates, key=lambda a: (demo and a.user.email != DEMO_ATTORNEY_EMAIL,
+                                            _open_load(session, a.user_id), a.id))
     claim.attorney_id = chosen.user_id
     claim.assignment_status = "offered"
     claim.assigned_at = datetime.now(timezone.utc)
     claim.accepted_at = None
-    claim.attorney_fee_cents = config.attorney_fee_for(r.state)
+    from . import attorney_pay
+    attorney_pay.apply(session, claim)
     session.add(Notification(
         user_id=chosen.user_id, kind="case_offer", title="New case offered",
         body=f"${r.amount_cents / 100:,.2f} surplus in {r.county} County, {r.state}. Accept or decline in the app.",
@@ -89,7 +94,17 @@ def decline(session: Session, claim: Claim, attorney_user_id: int, reason: str =
 
 
 def settle_payout(claim: Claim) -> None:
-    """The attorney's per-case fee falls due once the case is finished either way."""
+    """The attorney's pay falls due once the case is finished either way: the full amount (with any
+    hearing bonus) when the money is released, a share of it if the claim is denied."""
+    from . import attorney_pay
+    session = object_session(claim)
+    if session is not None and claim.attorney_id and claim.payout_status == "":
+        if claim.status == "hearing_pending":
+            attorney_pay.apply(session, claim)
+        elif claim.status == "paid":
+            attorney_pay.apply(session, claim)
+        elif claim.status == "denied":
+            claim.attorney_fee_cents = attorney_pay.quote(session, claim)["if_denied_cents"]
     if claim.attorney_id and claim.status in ("paid", "denied") and claim.payout_status == "":
         claim.payout_status = "due"
 
